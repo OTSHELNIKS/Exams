@@ -1,0 +1,86 @@
+%% Задание 1. Логическая ER-модель в 3НФ.
+%% Цена/скидка ссылается ровно на одну сущность: товар ИЛИ ресурс.
+erDiagram
+    CUSTOMERS ||--o{ CUSTOMER_ORDERS : оформляет
+    CUSTOMER_ORDERS ||--|{ ORDER_ITEMS : содержит
+    PRODUCTS ||--o{ ORDER_ITEMS : заказан
+
+    PRODUCTS ||--o{ PRODUCT_SPECIFICATION : состоит_из
+    RESOURCES ||--o{ PRODUCT_SPECIFICATION : входит_в
+
+    PRODUCTS o|--o{ PRICES : цена_товара
+    RESOURCES o|--o{ PRICES : цена_ресурса
+    PRODUCTS o|--o{ DISCOUNTS : скидка_товара
+    RESOURCES o|--o{ DISCOUNTS : скидка_ресурса
+
+    PRODUCTION_ORDERS ||--|{ PRODUCTION_ORDER_ITEMS : содержит
+    PRODUCTS ||--o{ PRODUCTION_ORDER_ITEMS : выпускается
+
+    CUSTOMERS {
+        string customer_id PK
+        string name
+        string inn
+        string address
+        string phone
+        string party_type
+    }
+    CUSTOMER_ORDERS {
+        int order_id PK
+        string customer_id FK
+        date order_date
+        string status
+    }
+    ORDER_ITEMS {
+        int order_item_id PK
+        int source_order_item_id
+        int order_id FK
+        int product_id FK
+        int quantity
+        decimal unit_price_at_order "nullable snapshot"
+        decimal discount_per_unit
+    }
+    PRODUCTS {
+        int product_id PK
+        int source_product_id
+        string name
+        string category
+        boolean is_placeholder
+    }
+    RESOURCES {
+        int resource_id PK
+        int source_resource_id
+        string name
+        string resource_type
+    }
+    PRODUCT_SPECIFICATION {
+        int specification_id PK
+        int product_id FK
+        int resource_id FK
+        decimal quantity_per_product
+    }
+    PRICES {
+        int price_id PK
+        int product_id FK "nullable"
+        int resource_id FK "nullable"
+        decimal unit_price
+    }
+    DISCOUNTS {
+        int discount_id PK
+        int source_discount_id
+        int product_id FK "nullable"
+        int resource_id FK "nullable"
+        decimal discount_percent
+    }
+    PRODUCTION_ORDERS {
+        int production_order_id PK
+        string order_number
+        date launch_date
+        string department
+    }
+    PRODUCTION_ORDER_ITEMS {
+        int production_order_item_id PK
+        int production_order_id FK
+        int product_id FK
+        decimal quantity
+        string unit
+    }
