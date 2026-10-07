@@ -3,11 +3,14 @@
 -- В product_specification находятся нормы расхода и материалов, и операций;
 -- prices содержит цену ресурса. Скидки и продажная цена товара в себестоимость
 -- производства не входят.
+-- Если у любой строки заказа нет BOM или у любого ресурса нет цены,
+-- итог не подменяется частичной суммой: total_manufacturing_cost будет NULL.
 
 WITH components AS (
     SELECT
         o.order_id,
         oi.order_item_id,
+        oi.product_id,
         oi.quantity AS ordered_quantity,
         ps.specification_id,
         ps.quantity_per_product,
@@ -25,21 +28,33 @@ WITH components AS (
       ON p.resource_id = r.resource_id
      AND p.product_id IS NULL
     WHERE o.order_id = :order_id
+),
+coverage AS (
+    SELECT
+        order_id,
+        COUNT(DISTINCT order_item_id) AS order_positions,
+        COUNT(DISTINCT CASE WHEN specification_id IS NOT NULL THEN order_item_id END)
+            AS positions_with_bom,
+        COUNT(specification_id) AS required_cost_positions,
+        COUNT(price_id) AS priced_positions,
+        SUM(ordered_quantity * quantity_per_product * unit_price) AS raw_total
+    FROM components
+    GROUP BY order_id
 )
 SELECT
     order_id,
     CASE
-        WHEN COUNT(specification_id) = 0
-          OR COUNT(price_id) <> COUNT(specification_id)
+        WHEN positions_with_bom <> order_positions
+          OR required_cost_positions = 0
+          OR priced_positions <> required_cost_positions
         THEN NULL
-        ELSE ROUND(SUM(ordered_quantity * quantity_per_product * unit_price), 2)
+        ELSE ROUND(raw_total, 2)
     END AS total_manufacturing_cost,
-    COUNT(specification_id) AS required_cost_positions,
-    COUNT(price_id) AS priced_positions
-FROM components
-GROUP BY order_id;
+    required_cost_positions,
+    priced_positions
+FROM coverage;
 
--- Детализация того же расчёта: норма × цена × количество продукции в заказе.
+-- Детализация того же расчёта: норма × цена × количество продукции.
 SELECT
     o.order_id,
     oi.order_item_id,
