@@ -399,7 +399,7 @@ class ExamRequestHandler(BaseHTTPRequestHandler):
         import random
         random.SystemRandom().shuffle(initial_order)
         with _state_lock:
-            _captcha_challenges[challenge_id] = time.time() + 5 * 60
+            _captcha_challenges[challenge_id] = time.time() + 15 * 60
         tiles = []
         for piece in initial_order:
             x, y = piece % 3, piece // 3
@@ -432,7 +432,7 @@ h1{{font-size:28px;margin:7px 0 4px}}.muted{{color:var(--muted);margin:0 0 22px}
 input[type=text],input[type=password]{{width:100%;border:1px solid var(--line);border-radius:11px;padding:12px 13px;font:inherit;outline:none}}
 input:focus{{border-color:var(--blue);box-shadow:0 0 0 3px #4058d61c}}.notice{{padding:11px 13px;border-radius:10px;margin:12px 0}}.error{{background:#fff0ee;color:#a1251b}}.success{{background:#e9f8ee;color:#166534}}
 .puzzle-wrap{{margin:10px 0 15px;padding:14px;background:#f5f7fc;border:1px solid var(--line);border-radius:14px}}
-.puzzle-instruction{{margin:0 0 11px;font-size:13px;color:var(--muted)}}.puzzle{{display:grid;grid-template-columns:repeat(3,76px);gap:4px;justify-content:center;touch-action:manipulation}}
+.puzzle-instruction{{margin:0 0 11px;font-size:13px;color:var(--muted)}}.puzzle{{display:grid;grid-template-columns:repeat(3,76px);gap:4px;justify-content:center;touch-action:manipulation}}.puzzle-status{{min-height:18px;margin:10px 0 0;text-align:center;font-size:13px;color:var(--muted)}}.puzzle-status.complete{{color:#166534;font-weight:700}}
 .puzzle-piece{{width:76px;height:76px;border:1px solid #8091b7;border-radius:6px;background-color:#edf4ff;background-image:url('/static/captcha_full.png');background-size:300% 300%;cursor:grab;padding:0;transition:transform .12s,border-color .12s}}
 .puzzle-piece:hover{{border:2px solid var(--blue)}}.puzzle-piece.selected{{outline:3px solid #4058d6;outline-offset:1px;transform:scale(.96)}}
 button.submit{{width:100%;margin-top:13px;border:0;border-radius:11px;padding:13px;background:var(--blue);color:white;font:inherit;font-weight:750;cursor:pointer}}
@@ -444,18 +444,51 @@ button.submit:hover{{background:#3248c3}}.footer{{margin-top:18px;padding-top:14
 <label for="login">Логин</label><input id="login" name="login" type="text" minlength="1" maxlength="32" required autocomplete="username" value="{safe_login}">
 <label for="password">Пароль</label><input id="password" name="password" type="password" required autocomplete="current-password">
 <div class="puzzle-wrap"><p class="puzzle-instruction">Нажмите на два фрагмента, чтобы поменять их местами, или перетащите фрагмент. Соберите исходную картинку.</p>
-<div class="puzzle" id="puzzle" aria-label="Интерактивная капча">{''.join(tiles)}</div></div>
+<div class="puzzle" id="puzzle" aria-label="Интерактивная капча">{''.join(tiles)}</div>
+<p class="puzzle-status" id="puzzle-status" role="status" aria-live="polite" tabindex="-1">Соберите изображение перед входом.</p></div>
 <input type="hidden" name="captcha_id" value="{challenge_id}">
 <input type="hidden" id="captcha_order" name="captcha_order" value="{initial_json}">
 <button class="submit" type="submit">Войти</button></form>
 <div class="footer">После трёх последовательных ошибок учётная запись блокируется. Обратитесь к администратору для снятия блокировки.</div>
 </main><script>
-(()=>{{const board=document.getElementById('puzzle'),out=document.getElementById('captcha_order');let selected=null,dragged=null;
-function save(){{out.value=JSON.stringify([...board.children].map(tile=>Number(tile.dataset.piece)))}}
-function swap(a,b){{if(!a||!b||a===b)return;const marker=document.createElement('span');board.insertBefore(marker,a);board.insertBefore(a,b);board.insertBefore(b,marker);marker.remove();a.classList.remove('selected');b.classList.remove('selected');selected=null;save()}}
-board.querySelectorAll('.puzzle-piece').forEach(tile=>{{tile.addEventListener('click',()=>{{if(!selected){{selected=tile;tile.classList.add('selected')}}else if(selected===tile){{tile.classList.remove('selected');selected=null}}else swap(selected,tile)}});
-tile.addEventListener('dragstart',e=>{{dragged=tile;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',tile.dataset.piece)}});
-tile.addEventListener('dragover',e=>e.preventDefault());tile.addEventListener('drop',e=>{{e.preventDefault();const source=[...board.children].find(x=>x.dataset.piece===e.dataTransfer.getData('text/plain'));swap(source,tile)}})}});save()}})();
+(()=>{{
+const board=document.getElementById('puzzle');
+const out=document.getElementById('captcha_order');
+const status=document.getElementById('puzzle-status');
+const form=board.closest('form');
+let selected=null;
+function save(){{
+ const order=[...board.querySelectorAll('.puzzle-piece')].map(tile=>Number(tile.dataset.piece));
+ out.value=JSON.stringify(order);
+ const correct=order.reduce((total,piece,index)=>total+(piece===index?1:0),0);
+ const solved=correct===9;
+ status.textContent=solved?'Все 9 фрагментов собраны правильно. Можно войти.':'Правильно стоят: '+correct+' из 9.';
+ status.classList.toggle('complete',solved);
+ return solved;
+}}
+function swap(a,b){{
+ if(!a||!b||a===b)return;
+ const tiles=[...board.querySelectorAll('.puzzle-piece')];
+ const aIndex=tiles.indexOf(a),bIndex=tiles.indexOf(b);
+ [tiles[aIndex],tiles[bIndex]]=[tiles[bIndex],tiles[aIndex]];
+ tiles.forEach(tile=>board.appendChild(tile));
+ a.classList.remove('selected');b.classList.remove('selected');selected=null;save();
+}}
+board.querySelectorAll('.puzzle-piece').forEach(tile=>{{
+ tile.addEventListener('click',()=>{{
+  if(!selected){{selected=tile;tile.classList.add('selected')}}
+  else if(selected===tile){{tile.classList.remove('selected');selected=null}}
+  else swap(selected,tile);
+ }});
+ tile.addEventListener('dragstart',e=>{{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',tile.dataset.piece)}});
+ tile.addEventListener('dragover',e=>e.preventDefault());
+ tile.addEventListener('drop',e=>{{e.preventDefault();const source=[...board.querySelectorAll('.puzzle-piece')].find(x=>x.dataset.piece===e.dataTransfer.getData('text/plain'));swap(source,tile)}});
+}});
+form.addEventListener('submit',event=>{{
+ if(!save()){{event.preventDefault();status.focus()}}
+}});
+save();
+}})();
 </script></body></html>"""
         self._send_html(body)
 

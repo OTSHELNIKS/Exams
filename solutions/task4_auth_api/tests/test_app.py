@@ -52,6 +52,39 @@ class ExamApplicationTests(unittest.TestCase):
         self.assertRegex(payload[0]["formatted_date"], r"^\d{2}\.\d{2}\.\d{4}$")
         self.assertIn(" - ", payload[0]["title_user"])
 
+    def test_login_page_has_captcha_progress_and_submit_guard(self):
+        status, headers, body = self.fetch("/login")
+        page = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        self.assertIn("id=\"puzzle-status\"", page)
+        self.assertIn("form.addEventListener('submit'", page)
+        self.assertIn("Правильно стоят:", page)
+        self.assertIn("Все 9 фрагментов собраны правильно.", page)
+
+    def test_wrong_captcha_counts_as_failed_attempt(self):
+        with urlopen(self.base + "/login", timeout=5) as response:
+            page = response.read().decode("utf-8")
+        challenge = re.search(r'name="captcha_id" value="([^"]+)"', page).group(1)
+        form = urlencode({
+            "login": "user",
+            "password": "User123!",
+            "captcha_id": challenge,
+            "captcha_order": json.dumps([1, 0, 2, 3, 4, 5, 6, 7, 8]),
+        }).encode("utf-8")
+        request = Request(self.base + "/login", data=form,
+                          headers={"Content-Type": "application/x-www-form-urlencoded"})
+        with urlopen(request, timeout=10) as response:
+            body = response.read().decode("utf-8")
+        self.assertIn("Капча собрана неверно", body)
+        connection = app.db_connect()
+        try:
+            row = connection.execute(
+                "SELECT is_blocked, failed_attempts FROM users WHERE login='user'"
+            ).fetchone()
+            self.assertEqual((row["is_blocked"], row["failed_attempts"]), (0, 1))
+        finally:
+            connection.close()
+
     def test_empty_notes_is_successful_empty_array(self):
         connection = app.db_connect()
         try:
