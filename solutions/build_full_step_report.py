@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-"""Создаёт подробный DOCX/PDF отчёт по всем заданиям с полными исходными листингами."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -105,8 +103,7 @@ TASKS = [
 ]),
 ]
 
-# Практическая часть: точные действия, команды, проверка и копируемые примеры.
-# Этот раздел нужен для того, чтобы глава отвечала не только «что сделать», но и «как сделать».
+
 HOW_TO = {
     1: {
         "steps": [
@@ -145,8 +142,8 @@ HOW_TO = {
             "Чтобы объяснить результат, выполните второй SELECT из того же файла: он выводит по каждой паре заказ–ресурс норму, цену и component_total. Для заказа №1 сверка идёт по восьми строкам расчёта из таблицы ниже.",
         ],
         "snippets": [
-            ("Запустить итоговый параметризованный запрос для заказа №1:", "from pathlib import Path\\nimport sqlite3\\n\\npath = Path('solutions/task3_query/order_cost.sql')\\ntext = path.read_text(encoding='utf-8')\\ntotal_sql = text.split('-- Детализация того же расчёта:', 1)[0]\\ndb = sqlite3.connect('solutions/task2_database/manufacturing.sqlite3')\\nprint(db.execute(total_sql, {'order_id': 1}).fetchone())\\n# Ожидается: (1, 11448.12, 8, 8)"),
-            ("Вывести построчную расшифровку по каждому ресурсу (самостоятельный запуск):", "from pathlib import Path\\nimport sqlite3\\ntext = Path('solutions/task3_query/order_cost.sql').read_text(encoding='utf-8')\\ndetail_sql = text.split('-- Детализация того же расчёта:', 1)[1]\\ndetail_sql = detail_sql[detail_sql.index('SELECT'):]\\nwith sqlite3.connect('solutions/task2_database/manufacturing.sqlite3') as db:\\n    for row in db.execute(detail_sql, {'order_id': 1}):\\n        print(row)\\n# В каждой строке: order_id, товар, ресурс, норма, цена и сумма компонента."),
+            ("Запустить итоговый параметризованный запрос для заказа №1:", "from pathlib import Path\\nimport sqlite3\\n\\npath = Path('solutions/task3_query/order_cost.sql')\\ntext = path.read_text(encoding='utf-8')\\ntotal_sql = text.split('FROM coverage;', 1)[0] + 'FROM coverage;'\\ndb = sqlite3.connect('solutions/task2_database/manufacturing.sqlite3')\\nprint(db.execute(total_sql, {'order_id': 1}).fetchone())"),
+            ("Вывести построчную расшифровку по каждому ресурсу (самостоятельный запуск):", "from pathlib import Path\\nimport sqlite3\\ntext = Path('solutions/task3_query/order_cost.sql').read_text(encoding='utf-8')\\ndetail_sql = text.split('FROM coverage;', 1)[1].strip()\\ndetail_sql = detail_sql[detail_sql.index('SELECT'):]\\nwith sqlite3.connect('solutions/task2_database/manufacturing.sqlite3') as db:\\n    for row in db.execute(detail_sql, {'order_id': 1}):\\n        print(row)"),
             ("Расчёт для одной строки (пример: евровинт):", "2 шт. × 0,012 на изделие × 432,083333 руб. = 10,37 руб.\\nИтог по восьми компонентам = 11 448,12 руб."),
         ],
         "result": "Для заказа покупателя №1 контрольная строка запроса: (order_id=1, total_manufacturing_cost=11448.12, required_cost_positions=8, priced_positions=8). В машинное поле ответа вводите 11448,12.",
@@ -160,8 +157,8 @@ HOW_TO = {
             "Для самопроверки выйдите из браузерного сценария и запустите unittest. Тесты запускают сервер на временном порту и отдельной временной БД, поэтому демо-базу не портят.",
         ],
         "snippets": [
-            ("Запуск и адрес страницы входа:", "python3 solutions/task4_auth_api/app.py\\n# открыть в браузере: http://127.0.0.1:8000/login\\n# тестовые пары: admin / Admin123!; user / User123!"),
-            ("Чтобы тестировать блокировку в отдельной БД и не портить демо-вход:", "rm -f /tmp/exam_auth_test.sqlite3\\nEXAM_DB_PATH=/tmp/exam_auth_test.sqlite3 APP_PORT=8001 python3 solutions/task4_auth_api/app.py\\n# открыть http://127.0.0.1:8001/login"),
+            ("Запуск и адрес страницы входа:", "python3 solutions/task4_auth_api/app.py"),
+            ("Чтобы тестировать блокировку в отдельной БД и не портить демо-вход:", "rm -f /tmp/exam_auth_test.sqlite3\\nEXAM_DB_PATH=/tmp/exam_auth_test.sqlite3 APP_PORT=8001 python3 solutions/task4_auth_api/app.py"),
             ("Проверить все сценарии задания 4–5:", "python3 -m unittest discover -s solutions/task4_auth_api/tests -v"),
         ],
         "result": "Успешный вход показывает «Вы успешно авторизовались». Пользователь видит свой рабочий стол; маршрут /admin/users для роли Пользователь закрыт ответом 403. Пароль в SQLite хранится как PBKDF2-HMAC-SHA256 с солью, cookie сессии помечена HttpOnly и SameSite.",
@@ -175,7 +172,7 @@ HOW_TO = {
         ],
         "snippets": [
             ("Проверить обычный JSON-ответ и обработку неверного параметра:", "curl -i 'http://127.0.0.1:8000/notes?limit=2'\\ncurl -i 'http://127.0.0.1:8000/notes?limit=abc'"),
-            ("Тестовый сервер для проверки ответа 500 (Linux/macOS):", "EXAM_TEST_MODE=1 EXAM_FORCE_DB_ERROR=1 APP_PORT=8001 \\\\nEXAM_DB_PATH=/tmp/exam_api_fault.sqlite3 \\\\npython3 solutions/task4_auth_api/app.py\\n# затем: curl -i 'http://127.0.0.1:8001/notes'"),
+            ("Тестовый сервер для проверки ответа 500 (Linux/macOS):", "EXAM_TEST_MODE=1 EXAM_FORCE_DB_ERROR=1 APP_PORT=8001 \\\\nEXAM_DB_PATH=/tmp/exam_api_fault.sqlite3 \\\\npython3 solutions/task4_auth_api/app.py"),
             ("Форма одного объекта, которую должен проверить клиент:", "{\\n  \"id\": 5,\\n  \"title_user\": \"Итоги - admin\",\\n  \"content\": \"Сохранить результаты тестирования.\",\\n  \"formatted_date\": \"05.10.2026\"\\n}"),
         ],
         "result": "Ожидайте: GET /notes — 200 и JSON-массив; limit=abc — 400 и {\"error\": ...}; пустая выборка — 200 и []; включённый тестовый сбой на 8001 — 500 и JSON с полем error; POST /notes — 405, Allow: GET.",
@@ -203,7 +200,7 @@ HOW_TO = {
             "Проще воспроизвести всё без ручной порчи числовых форматов командой clean_data.py. Откройте созданные clean_dataset_2026.xlsx и analysis_2026.xlsx, проверьте листы Данные, Месячная выручка, Итоги и Журнал очистки. Затем запустите добавленную локальную предварительную проверку: она сверяет каждый критерий, который можно вывести из приложенного ТЗ. Официальный Analytics_autotest в материалах отсутствует, поэтому локальная проверка не выдаёт и не имитирует его контрольный код.",
         ],
         "snippets": [
-            ("Формулы для ручного расчёта в русской версии Excel (если лист Данные уже очищен):", "I2: =E2*F2\\nB2: =СУММЕСЛИМН(Данные!$I$2:$I$31;Данные!$B$2:$B$31;\">=\"&A2;Данные!$B$2:$B$31;\"<\"&ДАТА(ГОД(A2);МЕСЯЦ(A2)+1;1))\\nB14: =СУММ(B2:B13)\\nC2: =B2/$B$14*100\\nD3: =B3-B2\\nE3: =D3/B2*100\\nF2: =СРЗНАЧ($B$2:$B$13)\\n# A2:A13 — даты 01.01.2026 ... 01.12.2026. Протяните формулы вниз; B14 — годовой итог."),
+            ("Формулы для ручного расчёта в русской версии Excel (если лист Данные уже очищен):", "I2: =E2*F2\\nB2: =СУММЕСЛИМН(Данные!$I$2:$I$31;Данные!$B$2:$B$31;\">=\"&A2;Данные!$B$2:$B$31;\"<\"&ДАТА(ГОД(A2);МЕСЯЦ(A2)+1;1))\\nB14: =СУММ(B2:B13)\\nC2: =B2/$B$14*100\\nD3: =B3-B2\\nE3: =D3/B2*100\\nF2: =СРЗНАЧ($B$2:$B$13)"),
             ("Автоматически очистить и построить две итоговые книги:", "python3 solutions/task7_analysis/clean_data.py"),
             ("Проверить все явные требования задания 7 локальным preflight-check (это не официальный тестер):", "python3 solutions/task7_analysis/preflight_check.py"),
         ],

@@ -1,4 +1,3 @@
--- Задание 2. Схема SQLite (3НФ). Все внешние ключи включаются в seed.py.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS customers (
@@ -19,8 +18,6 @@ CREATE TABLE IF NOT EXISTS products (
 );
 CREATE INDEX IF NOT EXISTS idx_products_source_id ON products(source_product_id);
 
--- В исходном файле «Материалы.json» есть как материалы, так и операции.
--- Операции хранятся в том же справочнике, различие задаёт resource_type.
 CREATE TABLE IF NOT EXISTS resources (
     resource_id        INTEGER PRIMARY KEY,
     source_resource_id INTEGER NOT NULL,
@@ -55,8 +52,6 @@ CREATE TABLE IF NOT EXISTS order_items (
     CHECK (unit_price_at_order IS NULL OR discount_per_unit <= unit_price_at_order)
 );
 
--- В Excel-приложениях есть заказ на производство. Эти таблицы входят в модель,
--- даже если JSON-файлы для них отдельно не приложены.
 CREATE TABLE IF NOT EXISTS production_orders (
     production_order_id INTEGER PRIMARY KEY,
     order_number        TEXT NOT NULL,
@@ -72,8 +67,6 @@ CREATE TABLE IF NOT EXISTS production_order_items (
     unit                     TEXT NOT NULL DEFAULT 'шт'
 );
 
--- Полиморфная ссылка из JSON разложена на два nullable FK.
--- CHECK гарантирует, что цена относится ровно к одному товару ИЛИ ресурсу.
 CREATE TABLE IF NOT EXISTS prices (
     price_id   INTEGER PRIMARY KEY,
     product_id INTEGER REFERENCES products(product_id),

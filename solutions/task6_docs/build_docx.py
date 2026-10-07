@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-"""Заполняет приложенный шаблон документации API."""
 from pathlib import Path
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor

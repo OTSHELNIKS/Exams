@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-"""Создаёт manufacturing.sqlite3 и загружает предоставленные JSON-данные.
-
-Запуск из любой папки:
-    python3 solutions/task2_database/seed.py
-Или укажите свои пути:
-    python3 seed.py --data-dir /path/to/source --db-path ./manufacturing.sqlite3
-"""
 from __future__ import annotations
 
 import argparse
@@ -40,7 +32,7 @@ def allocate_surrogate(used_ids: set[int], counter: list[int]) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Загрузка предоставленных JSON-данных в manufacturing.sqlite3.')
     parser.add_argument("--data-dir", type=Path, default=REPO_ROOT,
                         help="папка с исходными JSON (по умолчанию корень проекта)")
     parser.add_argument("--db-path", type=Path, default=HERE / "manufacturing.sqlite3",
@@ -68,7 +60,7 @@ def main() -> None:
     price_rows = data["Цены.json"]
     discount_rows = data["Скидки.json"]
 
-    # Проверяем внешние ссылки до загрузки.
+
     known_product_source_ids = {int(row["id"]) for row in products}
     referenced_product_ids = {int(row["product_id"]) for row in order_items}
     referenced_product_ids.update(int(row["product_id"]) for row in specification)
@@ -78,12 +70,7 @@ def main() -> None:
         )
     missing_product_ids = sorted(referenced_product_ids - known_product_source_ids)
 
-    # В источнике встречаются повторные ID:
-    #   products: 887; resources: 456; order items: 31 и 81; discounts: 15.
-    # Для родительских справочников используем исходный ID для первой записи,
-    # а последующим выдаём surrogate key и сохраняем source_*_id. Все внешние
-    # ссылки на повторный ID связываются с первой записью; неоднозначность ниже
-    # явно сообщается. Строки заказа и скидки получают собственные surrogate PK.
+
     duplicate_product_ids = sorted(
         source_id for source_id, count in Counter(int(row["id"]) for row in products).items()
         if count > 1
@@ -138,7 +125,7 @@ def main() -> None:
     try:
         connection.executescript(schema)
         with connection:
-            # Перезагрузка идемпотентна: зависимости очищаются от дочерних к родительским.
+
             for table in (
                 "prices", "discounts", "order_items", "production_order_items",
                 "customer_orders", "product_specification", "production_orders",

@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""Демо-модуль задания 4 и API задания 5 (только стандартная библиотека Python).
-
-Запуск: python3 app.py  ->  http://127.0.0.1:8000
-Демо-учётные записи: admin / Admin123! и user / User123!
-Пароли хранятся только в виде PBKDF2-хеша. Замените демо-пароли для реального использования.
-"""
 from __future__ import annotations
 
 import hashlib
@@ -34,7 +27,7 @@ SESSION_TTL_SECONDS = 8 * 60 * 60
 MAX_FORM_BYTES = 32_768
 CAPTCHA_SIZE = 9
 
-# Только для отдельного тестового процесса задания 5. В обычном режиме выключено.
+
 FORCE_DB_ERROR = (
     os.environ.get("EXAM_TEST_MODE") == "1"
     and os.environ.get("EXAM_FORCE_DB_ERROR") == "1"
@@ -90,7 +83,7 @@ def password_matches(password: str, salt_hex: str, expected_hash: str) -> bool:
 
 
 def initialize_database() -> None:
-    """Создаёт схему и только при первом запуске добавляет тестовые записи."""
+
     connection = db_connect()
     try:
         connection.executescript(SCHEMA)
@@ -139,7 +132,7 @@ def _fetch_user(login: str) -> sqlite3.Row | None:
 
 
 def _record_failed_attempt(login: str) -> bool:
-    """Увеличивает серию неудач; возвращает True, если запись заблокирована."""
+
     if not login:
         return False
     connection = db_connect()
@@ -209,7 +202,7 @@ class ExamRequestHandler(BaseHTTPRequestHandler):
     server_version = "ExamDemo/1.0"
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        # Не выводим введённые пользователем пароли в журнал.
+
         super().log_message(fmt, *args)
 
     def _common_headers(self) -> None:
@@ -265,7 +258,7 @@ class ExamRequestHandler(BaseHTTPRequestHandler):
             return None
         return _fetch_user_by_id(session["user_id"])
 
-    def do_GET(self) -> None:  # noqa: N802 - имя задано BaseHTTPRequestHandler
+    def do_GET(self) -> None:
         parsed = urlsplit(self.path)
         path = parsed.path
         if path in ("/notes", "/api/notes"):
@@ -311,7 +304,7 @@ class ExamRequestHandler(BaseHTTPRequestHandler):
             return
         self._send_html(_page("Не найдено", "Страница не найдена."), 404)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         path = urlsplit(self.path).path
         if path in ("/notes", "/api/notes"):
             self._send_json({"error": "Метод не поддерживается. Используйте GET."}, 405,
@@ -332,7 +325,7 @@ class ExamRequestHandler(BaseHTTPRequestHandler):
         self._send_html(_page("Не найдено", "Страница не найдена."), 404)
 
     def _get_notes(self, raw_query: str) -> None:
-        """GET /notes. Все ошибки данного маршрута всегда возвращаются как JSON."""
+
         query = parse_qs(raw_query, keep_blank_values=True)
         allowed = {"limit", "user_id"}
         unknown = sorted(set(query) - allowed)
@@ -391,7 +384,7 @@ class ExamRequestHandler(BaseHTTPRequestHandler):
                 })
             self._send_json(result, 200)
         except Exception as error:
-            # Деталь исключения остаётся в серверном журнале, клиент получает безопасное JSON-сообщение.
+
             print(f"Ошибка GET /notes: {type(error).__name__}: {error}", flush=True)
             self._send_json({"error": "Ошибка подключения к базе данных"}, 500)
         finally:
@@ -402,7 +395,7 @@ class ExamRequestHandler(BaseHTTPRequestHandler):
         _clean_expired_state()
         challenge_id = secrets.token_urlsafe(18)
         initial_order = list(range(CAPTCHA_SIZE))
-        # Случайно перемешиваем стартовое расположение; решение проверяется сервером.
+
         import random
         random.SystemRandom().shuffle(initial_order)
         with _state_lock:
@@ -508,7 +501,7 @@ tile.addEventListener('dragover',e=>e.preventDefault());tile.addEventListener('d
                 "expires": time.time() + SESSION_TTL_SECONDS,
             }
         cookie = f"sid={session_id}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL_SECONDS}"
-        # Успешная авторизация подтверждается точным текстом из задания.
+
         self._redirect("/dashboard?welcome=1", cookie)
 
     def _dashboard(self, user: sqlite3.Row, welcome: bool = False) -> None:

@@ -1,17 +1,3 @@
-#!/usr/bin/env python3
-"""Локальная предварительная проверка файлов задания 7.
-
-Это НЕ официальный Analytics_autotest и не выдаёт его контрольный код.
-Скрипт проверяет требования, которые явно перечислены в приложенном ТЗ:
-сохранность 30 строк, типы/нормализацию, расчёт выручки, помесячную сводку,
-итоги и наличие графика с серией среднего значения.
-
-Запуск из корня репозитория:
-    python3 solutions/task7_analysis/preflight_check.py
-
-В комплекте заданий можно запускать из этой папки без параметров, если рядом
-находится исходный dataset_2026.xlsx.
-"""
 from __future__ import annotations
 
 import argparse
@@ -71,7 +57,7 @@ def check(condition: bool, label: str, failures: list[str]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Локальная предварительная проверка файлов задания 7.')
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
     parser.add_argument("--clean", type=Path, default=DEFAULT_CLEAN)
     parser.add_argument("--analysis", type=Path, default=DEFAULT_ANALYSIS)
@@ -129,7 +115,7 @@ def main() -> int:
         line_revenues: list[Decimal] = []
         for row in clean_rows:
             tx_date, quantity, price = row[1], dec(row[4]), dec(row[5])
-            revenue = quantity * price  # type: ignore[operator]
+            revenue = quantity * price
             line_revenues.append(revenue)
             monthly[tx_date.month - 1] += revenue
         total = sum(monthly, Decimal("0"))
@@ -194,8 +180,7 @@ def main() -> int:
             log_sheet = analysis_wb["Журнал очистки"]
             check(log_sheet.max_row == 48, "Журнал содержит заголовок и все 47 исправлений", failures)
 
-        # Не корректируем данные без подтверждения первичного источника; лишь убеждаемся,
-        # что зафиксированный выброс не потерян при экспорте.
+
         outlier = next((row for row in clean_rows if str(row[0]) == "TXN-0001"), None)
         check(outlier is not None and dec(outlier[5]) == Decimal("897270"), "TXN-0001 сохранён как отмеченный выброс без выдуманной подстановки", failures)
     finally:

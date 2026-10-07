@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-"""Генерирует итоговый DOCX и PDF-отчёт по всем семи заданиям."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -171,7 +169,7 @@ def create_docx() -> None:
     header.runs[0].font.color.rgb = RGBColor.from_string(GRAY)
     add_footer_page_number(section.footer.paragraphs[0])
 
-    # Титульный лист.
+
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = Pt(95)

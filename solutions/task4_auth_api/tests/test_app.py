@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import app  # noqa: E402
+import app
 
 
 class ExamApplicationTests(unittest.TestCase):

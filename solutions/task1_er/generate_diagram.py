@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-"""Генератор PDF ER-диаграммы (нужен reportlab)."""
 from pathlib import Path
 from math import hypot
 
@@ -135,23 +133,23 @@ def main() -> None:
 
     boxes={entity["key"]:draw_card(c,entity) for entity in entities}
     b=boxes
-    # Основной контур клиентского заказа.
+
     connect(c,(b["customers"]["x"]+b["customers"]["w"],b["customers"]["cy"]+18),(b["customer_orders"]["x"],b["customer_orders"]["cy"]+18),"1 : N")
     connect(c,(b["customer_orders"]["x"]+b["customer_orders"]["w"],b["customer_orders"]["cy"]+18),(b["order_items"]["x"],b["order_items"]["cy"]+18),"1 : N")
     connect(c,(b["products"]["x"],b["products"]["cy"]-18),(b["order_items"]["x"]+b["order_items"]["w"],b["order_items"]["cy"]-18),"1 : N",label_offset=(0,-11))
-    # Состав изделия: связь M:N через таблицу спецификации.
+
     connect(c,(b["products"]["cx"],b["products"]["y"]),(b["product_specification"]["x"]+b["product_specification"]["w"],b["product_specification"]["y"]+b["product_specification"]["h"]),"1 : N")
     connect(c,(b["resources"]["cx"],b["resources"]["y"]),(b["product_specification"]["x"]+b["product_specification"]["w"]-24,b["product_specification"]["y"]+b["product_specification"]["h"]),"1 : N",label_offset=(0,-10))
-    # Цены и скидки опционально относятся либо к товару, либо к ресурсу.
+
     connect(c,(b["products"]["cx"],b["products"]["y"]),(b["prices"]["cx"],b["prices"]["y"]+b["prices"]["h"]),"1 : 0..N",True)
     connect(c,(b["resources"]["x"]+b["resources"]["w"]-22,b["resources"]["y"]),(b["prices"]["x"]+b["prices"]["w"],b["prices"]["y"]+b["prices"]["h"]-25),"1 : 0..N",True,(4,-6))
     connect(c,(b["products"]["x"]+b["products"]["w"],b["products"]["y"]+20),(b["discounts"]["x"],b["discounts"]["y"]+b["discounts"]["h"]-20),"1 : 0..N",True,(0,9))
     connect(c,(b["resources"]["cx"],b["resources"]["y"]),(b["discounts"]["cx"],b["discounts"]["y"]+b["discounts"]["h"]),"1 : 0..N",True,(0,-9))
-    # Производственный заказ.
+
     connect(c,(b["production_orders"]["x"]+b["production_orders"]["w"],b["production_orders"]["cy"]),(b["production_order_items"]["x"],b["production_order_items"]["cy"]),"1 : N")
     connect(c,(b["products"]["x"],b["products"]["y"]+25),(b["production_order_items"]["x"]+b["production_order_items"]["w"],b["production_order_items"]["y"]+b["production_order_items"]["h"]),"1 : N",label_offset=(0,-10))
 
-    # Легенда и правила ссылочной целостности.
+
     note_y=282
     c.setFillColor(NAVY); c.setFont("DejaVu-Bold",10)
     c.drawString(26,note_y,"Связи и ограничения")

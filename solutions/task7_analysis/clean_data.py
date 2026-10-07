@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""Очистка исходного dataset_2026.xlsx и создание двух итоговых книг.
-
-Требуется openpyxl (requirements.txt). Скрипт сохраняет все исходные строки,
-исправляет типы/написания и строит лист с месячной выручкой и линейным графиком.
-"""
 from __future__ import annotations
 
 import argparse
@@ -32,7 +26,7 @@ PRODUCT_NAMES = {
     "микроволновая печь midea": "Микроволновая печь Midea",
     "чайник kitfort": "Чайник Kitfort",
     "пылесос dyson": "Пылесос Dyson",
-    "пылесос dison": "Пылесос Dyson",  # очевидная опечатка, есть совпадающие записи Dyson
+    "пылесос dison": "Пылесос Dyson",
     "стиральная машина bosch": "Стиральная машина Bosch",
     "телевизор samsung": "Телевизор Samsung",
     "телевизор samsung 4k": "Телевизор Samsung 4K",
@@ -56,11 +50,11 @@ def parse_numeric(value: Any, field_name: str) -> Decimal:
             raise ValueError(f"Некорректное число {value!r} в поле {field_name}") from error
     else:
         text = str(value).replace("\u00a0", " ").strip()
-        # Удаляем валюту/единицы измерения, оставляя цифры, знак и разделитель.
+
         text = re.sub(r"[^0-9,.-]", "", text)
         if "," in text and "." in text:
-            # В исходном наборе десятичная запятая не соседствует с разделителем тысяч;
-            # при необходимости принимаем формат 1.234,56.
+
+
             text = text.replace(".", "").replace(",", ".")
         else:
             text = text.replace(",", ".")
@@ -127,7 +121,7 @@ def load_and_clean(source: Path) -> tuple[list[dict[str, Any]], list[dict[str, A
 
     raw_records: list[tuple[Any, ...]] = []
     for row in all_rows[1:]:
-        # Лишние полностью пустые колонки (в исходной книге их три) игнорируются.
+
         first_eight = tuple(row[:8])
         if all(value is None for value in first_eight):
             continue
@@ -179,8 +173,8 @@ def load_and_clean(source: Path) -> tuple[list[dict[str, Any]], list[dict[str, A
             if field == "date" and isinstance(previous, (datetime, date)):
                 unchanged = previous.date() == current.date() if isinstance(previous, datetime) else previous == current.date()
             elif field in ("quantity", "price"):
-                # Текст вида «3 шт.»/«294980 руб.» нужно отметить даже тогда,
-                # когда извлечённое число совпало с итоговым числом.
+
+
                 unchanged = isinstance(previous, (int, float, Decimal)) and not isinstance(previous, bool) \
                     and Decimal(str(previous)) == Decimal(str(current))
             else:
@@ -225,7 +219,7 @@ def add_excel_table(sheet, name: str, ref: str) -> None:
 def write_clean_workbook(output: Path, cleaned: list[dict[str, Any]]) -> None:
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "Sheet1"  # оставляем короткое стандартное имя листа для автопроверки
+    sheet.title = "Sheet1"
     sheet.append(HEADERS)
     for row in cleaned:
         sheet.append([row[field] for field in HEADERS])
@@ -382,7 +376,7 @@ def write_analysis_workbook(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Очистка транзакций 2026 года и формирование итоговых книг.')
     parser.add_argument("--input", type=Path, default=REPO_ROOT / "dataset_2026.xlsx")
     parser.add_argument("--clean-output", type=Path, default=HERE / "clean_dataset_2026.xlsx")
     parser.add_argument("--analysis-output", type=Path, default=HERE / "analysis_2026.xlsx")
