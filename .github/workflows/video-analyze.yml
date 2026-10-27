@@ -8,21 +8,28 @@ on:
 
 jobs:
   extract:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
+      - name: Install tooling
+        run: |
+          set -e
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          python -m pip install --quiet gdown
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+          gdown --version
+
       - name: Download video (public Drive copy)
         env:
           DRIVE_ID: 1VK_ZVojS8UCmb3Bd5T6gIt5Zo5V2ePjt
         run: |
           set -x
-          for u in \
-            "https://drive.usercontent.google.com/download?id=$DRIVE_ID&export=download&confirm=t" \
-            "https://drive.google.com/uc?export=download&id=$DRIVE_ID&confirm=t" ; do
-            curl -L --fail --retry 2 --connect-timeout 20 -o video.mp4 "$u" && break
-          done
+          gdown --id "$DRIVE_ID" -O video.mp4
           ls -lh video.mp4
-          file video.mp4
+          head -c 24 video.mp4 | xxd
+          test "$(stat -c%s video.mp4)" -gt 100000000
           ffprobe -v error -show_entries format=duration,size -of default=nw=1 video.mp4
 
       - name: Extract frames and contact sheets
@@ -36,7 +43,7 @@ jobs:
 
       - name: Transcribe audio (Russian)
         continue-on-error: true
-        timeout-minutes: 25
+        timeout-minutes: 30
         run: |
           python -m pip install --quiet faster-whisper
           cat > transcribe.py <<'PY'
@@ -46,13 +53,15 @@ jobs:
           with open("out/transcript.txt", "w", encoding="utf-8") as f:
               for s in segments:
                   f.write(f"[{s.start:7.1f} - {s.end:7.1f}] {s.text.strip()}\n")
-          print("done")
+          print("transcription done")
           PY
           python transcribe.py
 
       - name: Upload analysis artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: video-analysis
           path: out/
           retention-days: 3
+          if-no-files-found: warn
