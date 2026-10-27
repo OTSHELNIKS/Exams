@@ -1,0 +1,10 @@
+# local agent workspace / temporary artifacts
+.venv/
+google_drive/
+image-search/
+video_frames/
+video_analysis/
+assembled_preview.png
+*.mp4
+*.wav
+out/

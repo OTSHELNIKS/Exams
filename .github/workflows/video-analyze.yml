@@ -1,0 +1,58 @@
+name: video-analyze
+
+on:
+  push:
+    paths:
+      - '.github/workflows/video-analyze.yml'
+  workflow_dispatch:
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Download video (public Drive copy)
+        env:
+          DRIVE_ID: 1VK_ZVojS8UCmb3Bd5T6gIt5Zo5V2ePjt
+        run: |
+          set -x
+          for u in \
+            "https://drive.usercontent.google.com/download?id=$DRIVE_ID&export=download&confirm=t" \
+            "https://drive.google.com/uc?export=download&id=$DRIVE_ID&confirm=t" ; do
+            curl -L --fail --retry 2 --connect-timeout 20 -o video.mp4 "$u" && break
+          done
+          ls -lh video.mp4
+          file video.mp4
+          ffprobe -v error -show_entries format=duration,size -of default=nw=1 video.mp4
+
+      - name: Extract frames and contact sheets
+        run: |
+          mkdir -p out/frames out/sheets
+          ffmpeg -hide_banner -loglevel error -i video.mp4 -vf "fps=1/5" -q:v 3 out/frames/f_%03d.jpg
+          ffmpeg -hide_banner -loglevel error -i video.mp4 -vf "fps=1/5,scale=360:-2,tile=4x5" -q:v 3 out/sheets/sheet_%02d.jpg
+          ffmpeg -hide_banner -loglevel error -i video.mp4 -vn -ac 1 -ar 16000 -c:a pcm_s16le out/audio.wav
+          ls out/frames | wc -l
+          ls -lh out/sheets | head
+
+      - name: Transcribe audio (Russian)
+        continue-on-error: true
+        timeout-minutes: 25
+        run: |
+          python -m pip install --quiet faster-whisper
+          cat > transcribe.py <<'PY'
+          from faster_whisper import WhisperModel
+          m = WhisperModel("small", device="cpu", compute_type="int8")
+          segments, info = m.transcribe("out/audio.wav", language="ru", vad_filter=True, beam_size=5)
+          with open("out/transcript.txt", "w", encoding="utf-8") as f:
+              for s in segments:
+                  f.write(f"[{s.start:7.1f} - {s.end:7.1f}] {s.text.strip()}\n")
+          print("done")
+          PY
+          python transcribe.py
+
+      - name: Upload analysis artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-analysis
+          path: out/
+          retention-days: 3
