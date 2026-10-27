@@ -6,6 +6,9 @@ on:
       - '.github/workflows/video-analyze.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   extract:
     runs-on: ubuntu-24.04
@@ -16,7 +19,6 @@ jobs:
           set -e
           python -m pip install --quiet --disable-pip-version-check requests imageio-ffmpeg gdown
           echo "FFMPEG=$(python -c 'import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())')" >> "$GITHUB_ENV"
-          python -c 'import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())'
 
       - name: Download video (public Drive copy)
         env:
@@ -35,7 +37,7 @@ jobs:
           if "text/html" in ctype or r.status_code != 200:
               html = r.text
               print(html[:800])
-              m = re.search(r'name="uuid"\s+value="([^"]+)"', html) or re.search(r'name="uuid" value="([^"]+)"', html)
+              m = re.search(r'name="uuid"\s+value="([^"]+)"', html)
               params = {"id": fid, "export": "download", "confirm": "t"}
               if m:
                   params["uuid"] = m.group(1)
@@ -65,21 +67,15 @@ jobs:
           "$FFMPEG" -hide_banner -loglevel error -framerate 1 -i out/frames/f_%03d.jpg -vf "scale=360:-2,tile=4x5" -q:v 3 out/sheets/sheet_%02d.jpg
           "$FFMPEG" -hide_banner -loglevel error -i video.mp4 -vn -ac 1 -ar 16000 -c:a pcm_s16le out/audio.wav
           ls out/frames | wc -l
-          ls -lh out/sheets | head
-
-      - name: Upload frames artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: video-frames
-          path: out/
-          retention-days: 3
 
       - name: Transcribe audio (Russian)
         continue-on-error: true
         timeout-minutes: 25
         run: |
-          python -m pip install --quiet --disable-pip-version-check faster-whisper
-          cat > transcribe.py <<'PY'
+          set -o pipefail
+          {
+            python -m pip install faster-whisper
+            python - <<'PY'
           from faster_whisper import WhisperModel
           m = WhisperModel("small", device="cpu", compute_type="int8")
           segments, info = m.transcribe("out/audio.wav", language="ru", vad_filter=True, beam_size=1)
@@ -88,13 +84,22 @@ jobs:
                   f.write(f"[{s.start:7.1f} - {s.end:7.1f}] {s.text.strip()}\n")
           print("transcription done")
           PY
-          python transcribe.py
+          } 2>&1 | tee out/transcribe.log
 
-      - name: Upload transcript artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: video-transcript
-          path: out/transcript.txt
-          retention-days: 3
-          if-no-files-found: ignore
+      - name: Commit analysis bundle into repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          tar czf /tmp/analysis.tar.gz out/frames out/sheets $(ls out/transcript.txt out/transcribe.log 2>/dev/null) || tar czf /tmp/analysis.tar.gz out/frames out/sheets
+          ls -lh /tmp/analysis.tar.gz
+          git clone --branch arena/7c1dfdfb-exams --depth 1 "https://x-access-token:$GH_TOKEN@github.com/${{ github.repository }}.git" /tmp/repo
+          mkdir -p /tmp/repo/.agent_bundle
+          cp /tmp/analysis.tar.gz /tmp/repo/.agent_bundle/analysis.tar.gz
+          cd /tmp/repo
+          git config user.name "arena-agent"
+          git config user.email "agent@arena.ai"
+          git add .agent_bundle/analysis.tar.gz
+          git commit -m "temp: analysis bundle for client video" || echo "nothing to commit"
+          git pull --rebase origin arena/7c1dfdfb-exams
+          git push origin HEAD:arena/7c1dfdfb-exams
