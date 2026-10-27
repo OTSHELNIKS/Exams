@@ -74,11 +74,16 @@ jobs:
         run: |
           set -o pipefail
           {
-            python -m pip install "av==14.4.0" faster-whisper
+            python -m pip install faster-whisper
             python - <<'PY'
+          import wave, numpy as np
           from faster_whisper import WhisperModel
+          with wave.open("out/audio.wav", "rb") as w:
+              pcm = w.readframes(w.getnframes())
+          audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+          print("audio seconds:", len(audio) / 16000)
           m = WhisperModel("small", device="cpu", compute_type="int8")
-          segments, info = m.transcribe("out/audio.wav", language="ru", vad_filter=True, beam_size=1)
+          segments, info = m.transcribe(audio, language="ru", vad_filter=True, beam_size=1)
           with open("out/transcript.txt", "w", encoding="utf-8") as f:
               for s in segments:
                   f.write(f"[{s.start:7.1f} - {s.end:7.1f}] {s.text.strip()}\n")
