@@ -74,7 +74,7 @@ jobs:
         run: |
           set -o pipefail
           {
-            python -m pip install faster-whisper
+            python -m pip install "av==14.4.0" faster-whisper
             python - <<'PY'
           from faster_whisper import WhisperModel
           m = WhisperModel("small", device="cpu", compute_type="int8")
@@ -96,6 +96,8 @@ jobs:
           git clone --branch arena/7c1dfdfb-exams --depth 1 "https://x-access-token:$GH_TOKEN@github.com/${{ github.repository }}.git" /tmp/repo
           mkdir -p /tmp/repo/.agent_bundle
           cp /tmp/analysis.tar.gz /tmp/repo/.agent_bundle/analysis.tar.gz
+          if [ -f out/transcript.txt ]; then cp out/transcript.txt /tmp/repo/.agent_bundle/transcript.txt; fi
+          if [ -f out/transcribe.log ]; then cp out/transcribe.log /tmp/repo/.agent_bundle/transcribe.log; fi
           cd /tmp/repo
           git config user.name "arena-agent"
           git config user.email "agent@arena.ai"
