@@ -10,7 +10,7 @@ import {
   MatchScreen, LeaderboardScreen, AdminScreen, BannedScreen,
 } from './screens.jsx'
 import { DEFAULT_PROFILE } from './data.js'
-import { supabase, profileToRow, rowToProfile, syncScreenshotReviews, clearPendingReviews } from './supabase.js'
+import { supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews } from './supabase.js'
 
 const SCREENS = [
   { id: 'auth', label: 'Вход / привязка ID', short: 'Вход', icon: LogIn },
@@ -115,7 +115,8 @@ export default function App() {
     const { error } = await supabase.from('player_profiles').upsert(profileToRow(profile, gameId, session.user.id))
     setSaving(false)
     if (error) { setSaveError('Не удалось сохранить профиль: ' + error.message); return }
-    try { await syncScreenshotReviews(session.user.id, profileToRow(profile, gameId, session.user.id).screenshot_urls) } catch { /* review queue is best-effort */ }
+    const savedRow = profileToRow(profile, gameId, session.user.id)
+    try { await syncModerationReviews(session.user.id, { nick: savedRow.nick, avatarUrl: savedRow.avatar_url, screenshots: savedRow.screenshot_urls }) } catch { /* review queue is best-effort */ }
     go('home')
   }
 

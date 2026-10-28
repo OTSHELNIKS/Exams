@@ -118,26 +118,43 @@ export async function deleteTelegramLink(userId) {
   if (error) throw error
 }
 
-/** Mirror the profile's screenshot list into the moderation queue (best-effort). */
-export async function syncScreenshotReviews(userId, urls) {
-  const list = (urls || []).filter((u) => typeof u === 'string' && u.startsWith('http'))
-  const { data: pending, error: selErr } = await supabase.from('screenshot_reviews')
-    .select('id, url').eq('user_id', userId).eq('status', 'pending')
+/** Mirror nick, avatar and screenshots into the moderation queue (best-effort). */
+export async function syncModerationReviews(userId, { nick, avatarUrl, screenshots }) {
+  const want = []
+  const cleanNick = (nick || '').trim()
+  if (cleanNick) want.push({ kind: 'nick', url: null, text_value: cleanNick })
+  if (typeof avatarUrl === 'string' && avatarUrl.startsWith('http')) {
+    want.push({ kind: 'avatar', url: avatarUrl, text_value: null })
+  }
+  const shots = [...new Set((screenshots || []).filter((u) => typeof u === 'string' && u.startsWith('http')))]
+  shots.forEach((url) => want.push({ kind: 'screenshot', url, text_value: null }))
+  const key = (r) => r.kind + '|' + (r.kind === 'nick' ? r.text_value : r.url)
+  const { data: existing, error: selErr } = await supabase.from('moderation_reviews')
+    .select('id, kind, url, text_value, status').eq('user_id', userId)
   if (selErr) throw selErr
-  const stale = (pending || []).filter((r) => !list.includes(r.url)).map((r) => r.id)
+  const rows = existing || []
+  const wantKeys = new Set(want.map(key))
+  const stale = rows.filter((r) => r.status === 'pending' && !wantKeys.has(key(r))).map((r) => r.id)
   if (stale.length) {
-    const { error } = await supabase.from('screenshot_reviews').delete().in('id', stale)
+    const { error } = await supabase.from('moderation_reviews').delete().in('id', stale)
     if (error) throw error
   }
-  if (!list.length) return
-  const { error } = await supabase.from('screenshot_reviews')
-    .upsert(list.map((url) => ({ user_id: userId, url, status: 'pending' })),
-      { onConflict: 'user_id,url', ignoreDuplicates: true })
-  if (error) throw error
+  const byKey = new Map(rows.map((r) => [key(r), r]))
+  const fresh = want.filter((w) => !byKey.has(key(w)))
+  if (fresh.length) {
+    const { error } = await supabase.from('moderation_reviews')
+      .insert(fresh.map((w) => ({ user_id: userId, kind: w.kind, url: w.url, text_value: w.text_value, status: 'pending' })))
+    if (error) throw error
+  }
+  const resubmit = want.map(key).map((k) => byKey.get(k)).filter((r) => r && r.status === 'rejected').map((r) => r.id)
+  if (resubmit.length) {
+    const { error } = await supabase.from('moderation_reviews').update({ status: 'pending', reviewed_by: null, reviewed_at: null }).in('id', resubmit)
+    if (error) throw error
+  }
 }
 
 export async function clearPendingReviews(userId) {
-  const { error } = await supabase.from('screenshot_reviews')
+  const { error } = await supabase.from('moderation_reviews')
     .delete().eq('user_id', userId).eq('status', 'pending')
   if (error) throw error
 }

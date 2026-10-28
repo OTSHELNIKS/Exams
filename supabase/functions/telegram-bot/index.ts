@@ -142,7 +142,7 @@ async function authGetUser(jwt) {
 
 /* ---------------- bot logic ---------------- */
 const HELP_TEXT = '<b>NAME MLBB — команды</b>\n\n/profile — мой профиль и PTS\n/rating — топ-10 игроков\n/unlink — отвязать Telegram\n/help — это сообщение'
-const ADMIN_HELP = '\n\n<b>Модерация</b>\n/ban — заблокировать: <code>/ban НИК причина</code>\n/unban — разблокировать\n/users — последние пользователи\n/userinfo — карточка: <code>/userinfo НИК</code>\n/review — очередь скриншотов\n/pending — сколько на проверке'
+const ADMIN_HELP = '\n\n<b>Модерация</b>\n/ban — заблокировать: <code>/ban НИК причина</code>\n/unban — разблокировать\n/users — последние пользователи\n/userinfo — карточка: <code>/userinfo НИК</code>\n/review — очередь проверки (ники, фото, скриншоты)\n/pending — сколько на проверке'
 
 function linkPrompt() {
   return 'Я не знаю, кто ты, пока ты не покажешь код из приложения. Как привязать (1 минута):'
@@ -180,18 +180,48 @@ async function resolveTarget(words) {
   return { rows: [], idWords: words.length }
 }
 
+const KIND_TITLE = { screenshot: 'скриншот', nick: 'ник', avatar: 'фото профиля' }
+
+function reviewVerdict(rev, ok) {
+  if (rev.kind === 'nick') {
+    const nick = '\u00ab' + (rev.text_value || '') + '\u00bb'
+    return ok ? 'Твой ник ' + nick + ' одобрен \u2705' : 'Твой ник ' + nick + ' отклонён \u274c. Смени его в анкете приложения.'
+  }
+  if (rev.kind === 'avatar') {
+    return ok ? 'Твоё фото профиля одобрено \u2705' : 'Твоё фото профиля отклонено \u274c. Загрузи другое в анкете приложения.'
+  }
+  return ok ? 'Твой скриншот одобрен \u2705' : 'Твой скриншот отклонён \u274c. Загрузи другой в анкете приложения.'
+}
+
+function pendingSummary(rows) {
+  if (!rows || rows.length === 0) return '0'
+  const seen = {}
+  const kinds = []
+  rows.forEach((r) => {
+    const k = KIND_TITLE[r.kind] || r.kind
+    if (!seen[k]) { seen[k] = true; kinds.push(k) }
+  })
+  return rows.length + ' (' + kinds.join(', ') + ')'
+}
+
 async function sendReviewItem(adminChatId) {
-  const rows = await dbSelect('screenshot_reviews', { status: 'eq.pending', order: 'created_at.asc', limit: '1', select: '*' })
+  const rows = await dbSelect('moderation_reviews', { status: 'eq.pending', order: 'created_at.asc', limit: '1', select: '*' })
   const rev = rows[0]
-  if (!rev) { await send(adminChatId, 'Очередь пуста — все скриншоты рассмотрены.'); return }
+  if (!rev) { await send(adminChatId, 'Очередь пуста — всё рассмотрено.'); return }
   const profs = await dbSelect('player_profiles', { user_id: 'eq.' + rev.user_id, select: 'nick,game_id' })
   const p = profs[0] || {}
   const when = String(rev.created_at || '').slice(0, 16).replace('T', ' ')
-  const caption = '<b>Проверка скриншота</b>\n' + esc(p.nick || 'Без ника') + ' (' + esc(p.game_id || '—') + ')\nПрислан: ' + esc(when)
+  const who = esc(p.nick || 'Без ника') + ' (' + esc(p.game_id || '—') + ')'
   const keyboard = { inline_keyboard: [[
     { text: '✅ Одобрить', callback_data: 'rev:approve:' + rev.id },
     { text: '❌ Отклонить', callback_data: 'rev:reject:' + rev.id },
   ]] }
+  if (rev.kind === 'nick') {
+    await send(adminChatId, '<b>Проверка ника</b>\n' + who + '\nНик: <b>' + esc(rev.text_value || '') + '</b>\nПрислан: ' + esc(when), { reply_markup: keyboard })
+    return
+  }
+  const title = rev.kind === 'avatar' ? 'Проверка фото профиля' : 'Проверка скриншота'
+  const caption = '<b>' + title + '</b>\n' + who + '\nПрислан: ' + esc(when)
   const res = await tg('sendPhoto', { chat_id: adminChatId, photo: rev.url, caption, parse_mode: 'HTML', reply_markup: keyboard })
   if (!res || res.ok === false) {
     await send(adminChatId, caption + '\n\nФото не загрузилось: ' + rev.url, { reply_markup: keyboard })
@@ -232,27 +262,27 @@ async function handleCallback(q) {
     await tg('answerCallbackQuery', { callback_query_id: q.id, text: 'Только для администраторов.' })
     return
   }
-  const rows = await dbSelect('screenshot_reviews', { id: 'eq.' + id, select: '*' })
+  const rows = await dbSelect('moderation_reviews', { id: 'eq.' + id, select: '*' })
   const rev = rows[0]
   if (!rev || rev.status !== 'pending') {
     await tg('answerCallbackQuery', { callback_query_id: q.id, text: 'Уже рассмотрено.' })
     return
   }
   const ok = action === 'approve'
-  await dbUpdate('screenshot_reviews', { id: 'eq.' + id },
+  await dbUpdate('moderation_reviews', { id: 'eq.' + id },
     { status: ok ? 'approved' : 'rejected', reviewed_by: adm.link.user_id, reviewed_at: new Date().toISOString() })
   await tg('answerCallbackQuery', { callback_query_id: q.id, text: ok ? 'Одобрено ✅' : 'Отклонено ❌' })
   const profs = await dbSelect('player_profiles', { user_id: 'eq.' + rev.user_id, select: 'nick,game_id' })
   const who = profs[0] ? esc(profs[0].nick || 'Без ника') + ' (' + esc(profs[0].game_id || '—') + ')' : 'пользователь'
-  const stamp = (ok ? '✅ Одобрено' : '❌ Отклонено') + ' — ' + who
+  const stamp = (ok ? '✅ Одобрено' : '❌ Отклонено') + ': ' + (KIND_TITLE[rev.kind] || 'проверка') + ' — ' + who
   if (msg.photo) {
     await tg('editMessageCaption', { chat_id: msg.chat.id, message_id: msg.message_id, caption: stamp, parse_mode: 'HTML' })
   } else {
-    await tg('editMessageText', { chat_id: msg.chat.id, message_id: msg.message_id, text: stamp + '\n' + rev.url, parse_mode: 'HTML', disable_web_page_preview: true })
+    await tg('editMessageText', { chat_id: msg.chat.id, message_id: msg.message_id, text: stamp + '\n' + (rev.kind === 'nick' ? '«' + (rev.text_value || '') + '»' : rev.url), parse_mode: 'HTML', disable_web_page_preview: true })
   }
   const chat = await linkedChatOf(rev.user_id)
   if (chat && chat !== msg.chat.id) {
-    await send(chat, ok ? 'Твой скриншот одобрен ✅' : 'Твой скриншот отклонён ❌. Загрузи другой в анкете приложения.')
+    await send(chat, reviewVerdict(rev, ok))
   }
   await sendReviewItem(msg.chat.id)
 }
@@ -314,9 +344,15 @@ async function handleUpdate(update) {
     if (!adm.admin) { await send(chatId, 'Эта команда только для администраторов.'); return }
     if (cmd === '/review') { await sendReviewItem(chatId); return }
     if (cmd === '/pending') {
-      const rows = await dbSelect('screenshot_reviews', { status: 'eq.pending', select: 'id', limit: '100' })
+      const rows = await dbSelect('moderation_reviews', { status: 'eq.pending', select: 'kind', limit: '100' })
       if (rows.length === 0) { await send(chatId, 'На проверке пусто.'); return }
-      await send(chatId, 'На проверке: <b>' + rows.length + '</b>' + (rows.length === 100 ? '+' : '') + '. Команда /review — смотреть по одному.')
+      const n = { nick: 0, avatar: 0, screenshot: 0 }
+      rows.forEach((r) => { if (n[r.kind] !== undefined) n[r.kind] += 1 })
+      const bits = []
+      if (n.nick) bits.push('ники: ' + n.nick)
+      if (n.avatar) bits.push('фото: ' + n.avatar)
+      if (n.screenshot) bits.push('скриншоты: ' + n.screenshot)
+      await send(chatId, 'На проверке: <b>' + rows.length + '</b>' + (rows.length === 100 ? '+' : '') + ' (' + bits.join(', ') + '). Команда /review — смотреть по одному.')
       return
     }
     if (cmd === '/users') {
@@ -347,7 +383,7 @@ async function handleUpdate(update) {
       const full = (await dbSelect('player_profiles', { user_id: 'eq.' + target.user_id, select: '*' }))[0]
       if (!full) { await send(chatId, 'Профиль не найден.'); return }
       const linkRows = await dbSelect('telegram_links', { user_id: 'eq.' + target.user_id, select: 'tg_username' })
-      const pend = await dbSelect('screenshot_reviews', { user_id: 'eq.' + target.user_id, status: 'eq.pending', select: 'id', limit: '100' })
+      const pend = await dbSelect('moderation_reviews', { user_id: 'eq.' + target.user_id, status: 'eq.pending', select: 'kind', limit: '100' })
       const lines = [
         '<b>' + esc(full.nick || 'Без ника') + '</b>' + (full.is_banned ? ' ⛔ ЗАБЛОКИРОВАН' : ''),
         'Game ID: <code>' + esc(full.game_id || '—') + '</code>',
@@ -356,7 +392,7 @@ async function handleUpdate(update) {
       if (full.rank) lines.push('Ранг: ' + esc(full.rank))
       if (full.is_banned && full.ban_reason) lines.push('Причина бана: ' + esc(full.ban_reason))
       lines.push('Telegram: ' + (linkRows[0] ? '@' + esc(linkRows[0].tg_username || '—') : 'не привязан'))
-      lines.push('Скриншотов: ' + (full.screenshot_urls || []).length + ', на проверке: ' + pend.length)
+      lines.push('Скриншотов: ' + (full.screenshot_urls || []).length + ', на проверке: ' + pendingSummary(pend))
       await send(chatId, lines.join('\n'))
       return
     }
@@ -419,7 +455,7 @@ async function handleSetup(url) {
     { command: 'unban', description: 'Разблокировать (админ)' },
     { command: 'users', description: 'Пользователи (админ)' },
     { command: 'userinfo', description: 'Карточка игрока (админ)' },
-    { command: 'review', description: 'Проверка скриншотов (админ)' },
+    { command: 'review', description: 'Проверка анкет (админ)' },
     { command: 'pending', description: 'Сколько на проверке (админ)' },
     { command: 'unlink', description: 'Отвязать Telegram' },
     { command: 'help', description: 'Помощь' },
