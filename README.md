@@ -1,7 +1,7 @@
 # NAME — интерактивный прототип по видео-макету заказчика
 
 **Публичное демо (полностью рабочее, с бэкендом Supabase):**
-https://raw.githack.com/OTSHELNIKS/Exams/0473e7edf72b8640fe19db7ee1037fd4c1f0eed0/demo/index.html
+https://raw.githack.com/OTSHELNIKS/Exams/75e9e694ca711135185890ebd70e1112d95e4ada/demo/index.html
 — однофайловая сборка из [`demo/index.html`](./demo/index.html) (артефакт сборки,
 обновляется вручную). После регистрации по почте подтвердите email по письму
 и вернитесь по ссылке, чтобы войти.
