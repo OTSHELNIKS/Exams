@@ -695,3 +695,11 @@ a { color: inherit; }
 .tg-auth__link { text-decoration: none; }
 
 .tg-error { color: #ff9d8a; font-size: 12.5px; line-height: 1.45; }
+
+.banned { display: flex; align-items: center; justify-content: center; }
+.banned__card { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 32px 24px; max-width: 340px; }
+.banned__card h1 { font-size: 20px; margin: 0; }
+.banned__icon { display: flex; align-items: center; justify-content: center; width: 60px; height: 60px; border-radius: 50%; background: rgba(255, 80, 80, .12); color: #ff8a7a; }
+.banned__nick { font-weight: 700; margin: 0; }
+.banned__reason { color: var(--dim); font-size: 13px; line-height: 1.5; margin: 0; }
+.banned__card > .btn { width: 100%; }

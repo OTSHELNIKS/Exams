@@ -3,7 +3,7 @@ import {
   Gamepad2, Send, ChevronLeft, Camera, Settings, Clock3, Lock, Plus, Copy, Mic,
   MicOff, Headphones, LogOut, Crown, RotateCcw, Check, ShieldCheck, Zap, Bot,
   Trophy, Sparkles, ArrowRight, X, UserRound, Upload, Coins, Server, Image as ImageIcon,
-  RefreshCw, Search,
+  RefreshCw, Search, Ban,
 } from 'lucide-react'
 import {
   Logo, BrandMark, Chip, Label, PrimaryButton, BackHeader, Avatar, VerificationCard,
@@ -474,6 +474,27 @@ export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin 
         </button>
       </div>
       {toast && <div className="toast toast--fixed">{toast}</div>}
+    </div>
+  )
+}
+
+/* ============================================================== BANNED ==== */
+export function BannedScreen({ nick, reason, onSignOut }) {
+  return (
+    <div className="screen banned">
+      <div className="banned__card">
+        <span className="banned__icon"><Ban size={30} /></span>
+        <h1>Аккаунт заблокирован</h1>
+        {nick ? <p className="banned__nick">{nick}</p> : null}
+        {reason ? (
+          <p className="banned__reason">Причина: {reason}</p>
+        ) : (
+          <p className="social-hint">По вопросам разблокировки обратись к администратору.</p>
+        )}
+        <button type="button" className="btn btn--ghost" onClick={onSignOut}>
+          <LogOut size={16} /> Выйти из аккаунта
+        </button>
+      </div>
     </div>
   )
 }

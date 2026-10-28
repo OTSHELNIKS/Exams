@@ -7,10 +7,10 @@ import { AppFrame, Logo } from './ui.jsx'
 import { Landing } from './landing.jsx'
 import {
   AuthScreen, WizardScreen, HomeScreen, ProfileScreen, DraftScreen,
-  MatchScreen, LeaderboardScreen, AdminScreen,
+  MatchScreen, LeaderboardScreen, AdminScreen, BannedScreen,
 } from './screens.jsx'
 import { DEFAULT_PROFILE } from './data.js'
-import { supabase, profileToRow, rowToProfile } from './supabase.js'
+import { supabase, profileToRow, rowToProfile, syncScreenshotReviews, clearPendingReviews } from './supabase.js'
 
 const SCREENS = [
   { id: 'auth', label: 'Вход / привязка ID', short: 'Вход', icon: LogIn },
@@ -115,6 +115,7 @@ export default function App() {
     const { error } = await supabase.from('player_profiles').upsert(profileToRow(profile, gameId, session.user.id))
     setSaving(false)
     if (error) { setSaveError('Не удалось сохранить профиль: ' + error.message); return }
+    try { await syncScreenshotReviews(session.user.id, profileToRow(profile, gameId, session.user.id).screenshot_urls) } catch { /* review queue is best-effort */ }
     go('home')
   }
 
@@ -127,6 +128,7 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEY + ':gameId')
     } catch { /* noop */ }
     if (!session || !supabase) return true
+    try { await clearPendingReviews(session.user.id) } catch { /* noop */ }
     setSaving(true); setSaveError('')
     const { error } = await supabase.from('player_profiles').upsert(profileToRow(fresh, '', session.user.id))
     setSaving(false)
@@ -167,6 +169,18 @@ export default function App() {
       default:
         return null
     }
+  }
+
+  if (session && !sessionLoading && profile.isBanned) {
+    return (
+      <div className="app-shell">
+        <main className="app-main">
+          <AppFrame>
+            <BannedScreen nick={profile.nick} reason={profile.banReason} onSignOut={() => supabase && supabase.auth.signOut()} />
+          </AppFrame>
+        </main>
+      </div>
+    )
   }
 
   if (mode === 'landing') {

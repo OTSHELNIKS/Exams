@@ -22,7 +22,7 @@ export function rowToProfile(row, defaults) {
     roles: row.roles, regions: row.regions, bio: row.bio, heroes: row.heroes,
     heroClasses: row.hero_classes, socials: row.socials || [], extraSlots: row.extra_slots || 0,
     avatarUrl: row.avatar_url || '', screenshots: row.screenshot_urls || [],
-    avatar: null }
+    isBanned: !!row.is_banned, banReason: row.ban_reason || '', avatar: null }
 }
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -115,6 +115,30 @@ export async function getTelegramLink(userId) {
 
 export async function deleteTelegramLink(userId) {
   const { error } = await withTimeout(supabase.from('telegram_links').delete().eq('user_id', userId))
+  if (error) throw error
+}
+
+/** Mirror the profile's screenshot list into the moderation queue (best-effort). */
+export async function syncScreenshotReviews(userId, urls) {
+  const list = (urls || []).filter((u) => typeof u === 'string' && u.startsWith('http'))
+  const { data: pending, error: selErr } = await supabase.from('screenshot_reviews')
+    .select('id, url').eq('user_id', userId).eq('status', 'pending')
+  if (selErr) throw selErr
+  const stale = (pending || []).filter((r) => !list.includes(r.url)).map((r) => r.id)
+  if (stale.length) {
+    const { error } = await supabase.from('screenshot_reviews').delete().in('id', stale)
+    if (error) throw error
+  }
+  if (!list.length) return
+  const { error } = await supabase.from('screenshot_reviews')
+    .upsert(list.map((url) => ({ user_id: userId, url, status: 'pending' })),
+      { onConflict: 'user_id,url', ignoreDuplicates: true })
+  if (error) throw error
+}
+
+export async function clearPendingReviews(userId) {
+  const { error } = await supabase.from('screenshot_reviews')
+    .delete().eq('user_id', userId).eq('status', 'pending')
   if (error) throw error
 }
 
