@@ -1,0 +1,22 @@
+# local agent workspace / temporary artifacts
+.venv/
+google_drive/
+image-search/
+video_frames/
+video_analysis/
+.agent_bundle/
+.screenshots/
+assembled_preview.png
+*.mp4
+*.wav
+out/
+
+# node app
+app/node_modules/
+app/dist/
+app/.vite/
+
+# local configuration / credentials
+.env
+.env.*
+!.env.example
