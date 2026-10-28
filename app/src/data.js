@@ -18,55 +18,7 @@ export const HEROES = [
   'Layla', 'Chou', 'Gord', 'Kagura', 'Lancelot', 'Lesley', 'Ling', 'Wanwan',
 ]
 
-export const CAPTAINS = {
-  A: { id: 'SP', nick: 's1mple_pro', mmr: 2890, color: '#ff6a1a' },
-  B: { id: 'MG', nick: 'mONESY_god', mmr: 2940, color: '#f0334f' },
-}
-
-export const DRAFT_POOL = [
-  { id: 'NC', nick: 'NightStalker_CIS', elo: 2740, role: 'Мид', winrate: 64, kda: 4.8 },
-  { id: 'VX', nick: 'Valkyrie_X', elo: 2715, role: 'Лес', winrate: 67, kda: 5.6 },
-  { id: 'BO', nick: 'BlinkDagger_00', elo: 2680, role: 'Роум', winrate: 61, kda: 4.1 },
-  { id: 'IM', nick: 'IceFrog_M', elo: 2640, role: 'Боец', winrate: 59, kda: 3.9 },
-  { id: 'C9', nick: 'CyberNova', elo: 2630, role: 'Мид', winrate: 63, kda: 4.7 },
-  { id: 'RR', nick: 'RektMachi...', elo: 2595, role: 'Боец', winrate: 60, kda: 3.7 },
-  { id: 'BS', nick: 'BlackShark_08', elo: 2580, role: 'Танк', winrate: 58, kda: 3.5 },
-  { id: 'CN', nick: 'CyberNinja', elo: 2560, role: 'Стрелок', winrate: 62, kda: 4.2 },
-]
-
 export const DRAFT_FILTERS = ['ВСЕ', 'МИД', 'ЛЕС', 'РОУМ', 'БОЕЦ', 'СТРЕЛОК', 'ТАНК']
-
-export const MATCH_TEAM = [
-  { id: 'G', nick: 'Geass', role: 'Лесник' },
-  { id: 'K', nick: 'Kairo', role: 'Маг' },
-  { id: 'H', nick: 'Holt', role: 'Танк' },
-  { id: 'V', nick: 'Vexx', role: 'Стрелок' },
-  { id: 'N', nick: 'Nyra', role: 'Поддержка' },
-]
-
-export const LEADERBOARDS = {
-  Сезон: [
-    { nick: 'Geass', elo: 3120, prize: '20 000 ₽ / мес', pro: true },
-    { nick: 'Zenith', elo: 3045, prize: '12 000 ₽ / мес', pro: true },
-    { nick: 'Kairo', elo: 2990, prize: '7 000 ₽ / мес', pro: true },
-    { nick: 'Vexx', elo: 2930 }, { nick: 'Holt', elo: 2885 }, { nick: 'Nyra', elo: 2840 },
-    { nick: 'Drako', elo: 2810 }, { nick: 'Lumen', elo: 2775 }, { nick: 'Sora', elo: 2740 },
-    { nick: 'Riven', elo: 2715 }, { nick: 'Nova', elo: 2690 }, { nick: 'Blaze', elo: 2665 },
-  ],
-  Месяц: [
-    { nick: 'Zenith', elo: 3180, prize: '20 000 ₽ / мес', pro: true },
-    { nick: 'Geass', elo: 3105, prize: '12 000 ₽ / мес', pro: true },
-    { nick: 'Sora', elo: 3010, prize: '7 000 ₽ / мес', pro: true },
-    { nick: 'Kairo', elo: 2975 }, { nick: 'Nova', elo: 2910 }, { nick: 'Vexx', elo: 2870 },
-    { nick: 'Blaze', elo: 2835 }, { nick: 'Holt', elo: 2800 }, { nick: 'Riven', elo: 2760 },
-    { nick: 'Lumen', elo: 2720 },
-  ],
-  Друзья: [
-    { nick: 'Geass', elo: 3120, prize: '20 000 ₽ / мес', pro: true, me: true },
-    { nick: 'Holt', elo: 2885 }, { nick: 'Vexx', elo: 2930 }, { nick: 'Drako', elo: 2810 },
-    { nick: 'Nova', elo: 2690 }, { nick: 'Lumen', elo: 2775 },
-  ],
-}
 
 export const FEATURES = [
   {

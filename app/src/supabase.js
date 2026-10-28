@@ -22,6 +22,7 @@ export function rowToProfile(row, defaults) {
     roles: row.roles, regions: row.regions, bio: row.bio, heroes: row.heroes,
     heroClasses: row.hero_classes, socials: row.socials || [], extraSlots: row.extra_slots || 0,
     avatarUrl: row.avatar_url || '', screenshots: row.screenshot_urls || [],
+    elo: row.pts === null || row.pts === undefined ? null : row.pts,
     isBanned: !!row.is_banned, banReason: row.ban_reason || '', avatar: null }
 }
 

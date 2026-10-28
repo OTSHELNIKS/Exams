@@ -703,3 +703,4 @@ a { color: inherit; }
 .banned__nick { font-weight: 700; margin: 0; }
 .banned__reason { color: var(--dim); font-size: 13px; line-height: 1.5; margin: 0; }
 .banned__card > .btn { width: 100%; }
+.rank-row__avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }

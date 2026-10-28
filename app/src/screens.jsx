@@ -10,8 +10,7 @@ import {
   StatBadge, Steps, GameIdIcon, CrownIcon, SuccessCheck, CloseIcon,
 } from './ui.jsx'
 import {
-  RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, CAPTAINS, DRAFT_POOL, DRAFT_FILTERS,
-  MATCH_TEAM, LEADERBOARDS,
+  RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, DRAFT_FILTERS,
 } from './data.js'
 import {
   uploadAvatar, uploadScreenshot, deleteScreenshot, validateImage,
@@ -667,19 +666,26 @@ export function ProfileScreen({ profile, actions, gameId, onBack, onEdit, supaba
 }
 
 /* =============================================================== DRAFT ==== */
+const DRAFT_ROLE_MAP = { 'МИД': ['Маг'], 'ЛЕС': ['Лесник'], 'РОУМ': ['Поддержка'], 'БОЕЦ': ['Боец'], 'СТРЕЛОК': ['Стрелок'], 'ТАНК': ['Танк'] }
+function matchDraftRole(p, f) {
+  if (f === 'ВСЕ') return true
+  return (p.roles || []).some((r) => (DRAFT_ROLE_MAP[f] || []).includes(r))
+}
+
 function PlayerPeek({ player, onClose, onPick }) {
   if (!player) return null
+  const roles = (player.roles || []).join(', ')
   return (
     <div className="modal" onClick={onClose}>
       <div className="modal__card" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="modal__close" onClick={onClose}><CloseIcon /></button>
-        <div className="modal__avatar">{player.id}</div>
+        <div className="modal__avatar">{(player.nick?.[0] || '?').toUpperCase()}</div>
         <h3>{player.nick}</h3>
-        <p className="modal__role">{player.role} · {player.elo} ELO</p>
+        <p className="modal__role">{roles || 'Роли не указаны'} · {player.pts ?? 0} PTS</p>
         <div className="modal__stats">
-          <div><b>{player.winrate}%</b><span>Винрейт</span></div>
-          <div><b>{player.kda}</b><span>KDA</span></div>
-          <div><b>{player.elo}</b><span>MMR</span></div>
+          <div><b>{player.pts ?? 0}</b><span>PTS</span></div>
+          <div><b>{player.rank || '—'}</b><span>Ранг</span></div>
+          <div><b>{(player.roles || []).length || '—'}</b><span>Роли</span></div>
         </div>
         <PrimaryButton glow={false} onClick={() => { onPick(); onClose() }}>ВЫБРАТЬ В КОМАНДУ</PrimaryButton>
       </div>
@@ -687,7 +693,7 @@ function PlayerPeek({ player, onClose, onPick }) {
   )
 }
 
-export function DraftScreen({ onReady, onBack }) {
+export function DraftScreen({ supabase, userId, onReady, onBack }) {
   const [teamA, setTeamA] = useState([])
   const [teamB, setTeamB] = useState([])
   const [turn, setTurn] = useState('A')
@@ -696,10 +702,33 @@ export function DraftScreen({ onReady, onBack }) {
   const [peek, setPeek] = useState(null)
   const [coin, setCoin] = useState(null)
   const [toast, setToast] = useState('')
+  const [players, setPlayers] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
-  const pickedIds = useMemo(() => [...teamA, ...teamB].map((p) => p.id), [teamA, teamB])
-  const pool = DRAFT_POOL.filter((p) => !pickedIds.includes(p.id))
-  const full = teamA.length === 4 && teamB.length === 4
+  const loadPlayers = async () => {
+    if (!supabase) { setLoading(false); setLoadError('Нет подключения к серверу.'); return }
+    setLoading(true); setLoadError('')
+    try {
+      const { data, error } = await supabase.from('leaderboard').select('*').order('pts', { ascending: false }).limit(100)
+      if (error) throw error
+      setPlayers(data || [])
+    } catch (e) {
+      setLoadError('Не удалось загрузить игроков: ' + (e.message || e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadPlayers() }, [])
+
+  const ranked = useMemo(() => [...(players || [])].sort((a, b) => (b.pts || 0) - (a.pts || 0)), [players])
+  const captains = ranked.slice(0, 2)
+  const pickedIds = useMemo(() => [...teamA, ...teamB].map((p) => p.user_id), [teamA, teamB])
+  const pool = ranked.slice(2).filter((p) => !pickedIds.includes(p.user_id))
+  const total = ranked.length
+  const short = total < 3
+  const full = !short && pool.length === 0 && (teamA.length + teamB.length) > 0
 
   useEffect(() => {
     const side = Math.random() > 0.5 ? 'A' : 'B'
@@ -730,7 +759,7 @@ export function DraftScreen({ onReady, onBack }) {
   }
 
   const autoPick = () => {
-    const candidates = pool.filter((p) => filter === 'ВСЕ' || p.role.toUpperCase().includes(filter))
+    const candidates = pool.filter((p) => matchDraftRole(p, filter))
     const p = (candidates.length ? candidates : pool)[0]
     if (p) { pick(p); setToast('Таймер вышел — игрок выбран автоматически') }
   }
@@ -746,22 +775,57 @@ export function DraftScreen({ onReady, onBack }) {
     setCoin(side); setTurn(side)
   }
 
-  const visible = pool.filter((p) => filter === 'ВСЕ' || p.role.toUpperCase().includes(filter))
-  const TeamCard = ({ side, players }) => {
-    const cap = CAPTAINS[side]
+  const visible = pool.filter((p) => matchDraftRole(p, filter))
+  const TeamCard = ({ side, roster }) => {
+    const cap = side === 'A' ? captains[0] : captains[1]
+    if (!cap) return null
     return (
       <div className={`team-card team-card--${side.toLowerCase()} ${turn === side && !full ? 'is-active' : ''}`}>
-        <div className="team-card__head"><span>TEAM {side}</span><b>{cap.mmr} MMR</b></div>
+        <div className="team-card__head"><span>TEAM {side}</span><b>{cap.pts ?? 0} PTS</b></div>
         <div className="team-card__captain">
-          <span className="team-card__avatar" style={{ borderColor: cap.color }}>{cap.id}</span>
-          <div><strong><CrownIcon /> {cap.nick}</strong><small>Капитан</small></div>
+          <span className="team-card__avatar" style={{ borderColor: side === 'A' ? '#ff6a1a' : '#f0334f' }}>{(cap.nick?.[0] || '?').toUpperCase()}</span>
+          <div><strong><CrownIcon /> {cap.nick}{cap.user_id === userId ? ' (вы)' : ''}</strong><small>Капитан</small></div>
         </div>
         <div className="team-card__slots">
           {Array.from({ length: 4 }, (_, i) => (
-            <span key={i} className={players[i] ? 'is-filled' : ''}>
-              {players[i] ? players[i].id : <Plus size={16} />}
+            <span key={i} className={roster[i] ? 'is-filled' : ''}>
+              {roster[i] ? (roster[i].nick?.[0] || '?').toUpperCase() : <Plus size={16} />}
             </span>
           ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="screen draft">
+        <div className="empty-block"><p>Загрузка игроков…</p></div>
+      </div>
+    )
+  }
+  if (loadError) {
+    return (
+      <div className="screen draft">
+        <div className="empty-block">
+          <p>{loadError}</p>
+          <button type="button" className="btn btn--ghost" onClick={loadPlayers}>Повторить</button>
+        </div>
+      </div>
+    )
+  }
+  if (short) {
+    return (
+      <div className="screen draft">
+        <div className="draft__head">
+          <div>
+            <h1>CAPTAIN'S DRAFT</h1>
+            <p>Формат 5v5 • Выбор игроков в ростер</p>
+          </div>
+        </div>
+        <div className="empty-block">
+          <p>Для драфта нужно минимум 3 игрока, сейчас зарегистрирован{total === 1 ? '' : 'о'}: {total}. Пригласи друзей — как только они заполнят анкеты, появятся здесь.</p>
+          <button type="button" className="btn btn--ghost" onClick={onBack}>На главную</button>
         </div>
       </div>
     )
@@ -785,9 +849,9 @@ export function DraftScreen({ onReady, onBack }) {
       </div>
 
       <div className="draft__teams">
-        <TeamCard side="A" players={teamA} />
+        <TeamCard side="A" roster={teamA} />
         <div className="draft__vs">VS</div>
-        <TeamCard side="B" players={teamB} />
+        <TeamCard side="B" roster={teamB} />
       </div>
 
       <div className="chips chips--scroll">
@@ -800,12 +864,12 @@ export function DraftScreen({ onReady, onBack }) {
 
       <div className="pool">
         {visible.map((p) => (
-          <div key={p.id} className="pool-row">
+          <div key={p.user_id} className="pool-row">
             <button type="button" className="pool-row__info" onClick={() => setPeek(p)}>
-              <span className="pool-row__avatar">{p.id}</span>
+              <span className="pool-row__avatar">{(p.nick?.[0] || '?').toUpperCase()}</span>
               <span className="pool-row__text">
-                <strong>{p.nick} <em>{p.elo}</em></strong>
-                <small>{p.role} · <i>{p.winrate}%</i> · {p.kda} KDA</small>
+                <strong>{p.nick}{p.user_id === userId ? ' (вы)' : ''} <em>{p.pts ?? 0}</em></strong>
+                <small>{(p.roles || []).join(', ') || 'Без ролей'}{p.rank ? ` · ${p.rank}` : ''}</small>
               </span>
             </button>
             <button type="button" className="pick-btn" disabled={full} onClick={() => pick(p)}>
@@ -818,7 +882,7 @@ export function DraftScreen({ onReady, onBack }) {
 
       <div className="draft__bottom">
         {full
-          ? <PrimaryButton onClick={onReady}>МАТЧ ГОТОВ — ОТКРЫТЬ ЛОББИ</PrimaryButton>
+          ? <PrimaryButton onClick={() => onReady({ teamA: [captains[0], ...teamA].filter(Boolean), teamB: [captains[1], ...teamB].filter(Boolean) })}>МАТЧ ГОТОВ — ОТКРЫТЬ ЛОББИ</PrimaryButton>
           : <button type="button" className="btn btn--ghost" onClick={onBack}>Отменить поиск</button>}
       </div>
 
@@ -829,15 +893,20 @@ export function DraftScreen({ onReady, onBack }) {
 }
 
 /* =============================================================== MATCH ==== */
-export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase }) {
+export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase, teams, userId }) {
   const [copied, setCopied] = useState(false)
   const [micOn, setMicOn] = useState(true)
   const [muted, setMuted] = useState({})
-  const [speaking, setSpeaking] = useState(['G', 'H'])
+  const [speaking, setSpeaking] = useState([])
   const [sending, setSending] = useState(false)
   const [needLink, setNeedLink] = useState(false)
   const [toast, setToast] = useState('')
-  const lobbyId = '8435943'
+  const teamA = (teams && teams.teamA) || []
+  const teamB = (teams && teams.teamB) || []
+  const inB = userId ? teamB.some((m) => m && m.user_id === userId) : false
+  const myLabel = inB ? 'Team B' : 'Team A'
+  const members = (inB ? teamB : teamA).filter((m) => m && m.nick)
+  const lobbyId = useMemo(() => String(Math.floor(1000000 + Math.random() * 9000000)), [])
 
   useEffect(() => {
     if (!toast) return
@@ -862,7 +931,7 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase }) {
 
   useEffect(() => {
     const t = setInterval(() => {
-      setSpeaking(Object.keys({ ...muted }).length ? ['G', 'H'] : ['G', 'K', 'H'])
+      setSpeaking(members.filter((m) => !muted[m.user_id]).slice(0, 2).map((m) => m.user_id))
     }, 2600)
     return () => clearInterval(t)
   }, [muted])
@@ -871,6 +940,17 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase }) {
     navigator.clipboard?.writeText(lobbyId).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 1800)
+  }
+
+  if (members.length === 0) {
+    return (
+      <div className="screen match">
+        <div className="empty-block">
+          <p>Команды ещё не собраны. Вернись в драфт и выбери игроков.</p>
+          <button type="button" className="btn btn--ghost" onClick={onBack}>К драфту</button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -899,20 +979,20 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase }) {
 
       <div className="voice-card">
         <div className="voice-card__head">
-          <span><Headphones size={17} /> Голосовой чат · Team A</span>
-          <b>5/5</b>
+          <span><Headphones size={17} /> Голосовой чат · {myLabel}</span>
+          <b>{members.length}/{members.length}</b>
         </div>
-        {MATCH_TEAM.map((m) => (
-          <div key={m.id} className="voice-row">
-            <span className={`voice-row__avatar ${speaking.includes(m.id) ? 'is-speaking' : ''}`}>{m.id}</span>
-            <div><strong>{m.nick}</strong><small>{m.role}</small></div>
+        {members.map((m) => (
+          <div key={m.user_id} className="voice-row">
+            <span className={`voice-row__avatar ${speaking.includes(m.user_id) ? 'is-speaking' : ''}`}>{(m.nick?.[0] || '?').toUpperCase()}</span>
+            <div><strong>{m.nick}{m.user_id === userId ? ' (вы)' : ''}</strong><small>{(m.roles || []).join(', ') || m.rank || 'Игрок'}</small></div>
             <button
               type="button"
-              className={`voice-row__mic ${muted[m.id] ? 'is-muted' : ''}`}
-              onClick={() => setMuted((x) => ({ ...x, [m.id]: !x[m.id] }))}
-              title={muted[m.id] ? 'Включить' : 'Заглушить'}
+              className={`voice-row__mic ${muted[m.user_id] ? 'is-muted' : ''}`}
+              onClick={() => setMuted((x) => ({ ...x, [m.user_id]: !x[m.user_id] }))}
+              title={muted[m.user_id] ? 'Включить' : 'Заглушить'}
             >
-              {muted[m.id] ? <MicOff size={18} /> : <Mic size={18} />}
+              {muted[m.user_id] ? <MicOff size={18} /> : <Mic size={18} />}
             </button>
           </div>
         ))}
@@ -936,10 +1016,34 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase }) {
 }
 
 /* ========================================================= LEADERBOARD ==== */
-export function LeaderboardScreen() {
-  const [tab, setTab] = useState('Сезон')
+const LEAGUE_PRIZES = ['20 000 ₽ / мес', '15 000 ₽ / мес', '10 000 ₽ / мес']
+
+export function LeaderboardScreen({ supabase, userId }) {
   const [league, setLeague] = useState('Обычная лига')
-  const rows = LEADERBOARDS[tab]
+  const [players, setPlayers] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const load = async () => {
+    if (!supabase) { setLoading(false); setError('Нет подключения к серверу.'); return }
+    setLoading(true); setError('')
+    try {
+      const { data, error } = await supabase.from('leaderboard').select('*').order('pts', { ascending: false }).limit(100)
+      if (error) throw error
+      setPlayers(data || [])
+    } catch (e) {
+      setError('Не удалось загрузить рейтинг: ' + (e.message || e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const list = players || []
+  const lowCount = list.filter((p) => (p.pts || 0) < 4000).length
+  const proCount = list.length - lowCount
+  const rows = league === 'Про лига' ? list.filter((p) => (p.pts || 0) >= 4000) : list.filter((p) => (p.pts || 0) < 4000)
 
   return (
     <div className="screen leaderboard">
@@ -948,31 +1052,33 @@ export function LeaderboardScreen() {
         <Trophy size={22} color="#ff5722" />
       </div>
 
-      <div className="tabs">
-        {Object.keys(LEADERBOARDS).map((t) => (
-          <button key={t} type="button" className={tab === t ? 'is-active' : ''} onClick={() => setTab(t)}>{t}</button>
-        ))}
-      </div>
       <p className="leaderboard__note">Призы топ-3 выплачиваются ежемесячно</p>
 
       <div className="league-switch">
-        <button type="button" className={league === 'Обычная лига' ? 'is-active' : ''} onClick={() => setLeague('Обычная лига')}>Обычная лига · до 4000</button>
-        <button type="button" className={league === 'Про лига' ? 'is-active' : ''} onClick={() => setLeague('Про лига')}>Про лига · 4000+</button>
+        <button type="button" className={league === 'Обычная лига' ? 'is-active' : ''} onClick={() => setLeague('Обычная лига')}>Обычная лига · до 4000 ({lowCount})</button>
+        <button type="button" className={league === 'Про лига' ? 'is-active' : ''} onClick={() => setLeague('Про лига')}>Про лига · 4000+ ({proCount})</button>
       </div>
 
       <div className="rank-list">
-        {(league === 'Про лига'
-          ? rows.slice(0, 5).map((r) => ({ ...r, elo: r.elo + 900 }))
-          : rows
-        ).map((r, i) => (
-          <div key={`${r.nick}-${i}`} className={`rank-row ${i === 0 ? 'rank-row--first' : ''} ${r.me ? 'rank-row--me' : ''}`}>
+        {loading && <div className="empty">Загрузка рейтинга…</div>}
+        {!loading && error && (
+          <div className="empty-block">
+            <p>{error}</p>
+            <button type="button" className="btn btn--ghost" onClick={load}>Повторить</button>
+          </div>
+        )}
+        {!loading && !error && rows.length === 0 && (
+          <div className="empty">{league === 'Про лига' ? 'В про-лиге пока никого нет — набери 4000 PTS.' : 'Игроков пока нет — стань первым!'}</div>
+        )}
+        {rows.map((r, i) => (
+          <div key={r.user_id} className={`rank-row ${i === 0 ? 'rank-row--first' : ''} ${r.user_id === userId ? 'rank-row--me' : ''}`}>
             <span className="rank-row__num">#{i + 1}</span>
-            <span className="rank-row__avatar">{r.nick[0]}</span>
+            <span className="rank-row__avatar">{r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}</span>
             <div className="rank-row__info">
-              <strong>{r.nick}{r.pro && <CrownIcon />}</strong>
-              {r.prize && <span className="prize">{r.prize}</span>}
+              <strong>{r.nick}{r.user_id === userId ? ' (вы)' : ''}</strong>
+              {i < 3 && <span className="prize">{LEAGUE_PRIZES[i]}</span>}
             </div>
-            <div className="rank-row__elo"><b>{r.elo}</b><span>ELO</span></div>
+            <div className="rank-row__elo"><b>{r.pts ?? 0}</b><span>PTS</span></div>
           </div>
         ))}
       </div>

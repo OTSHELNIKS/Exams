@@ -137,6 +137,8 @@ export default function App() {
     return true
   }
 
+  const [draftTeams, setDraftTeams] = useState(null)
+
   const actions = {
     goDraft: () => go('draft'),
     goLeaderboard: () => go('leaderboard'),
@@ -160,11 +162,11 @@ export default function App() {
       case 'profile':
         return <ProfileScreen profile={profile} actions={actions} gameId={gameId} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
-        return <DraftScreen onReady={() => go('match')} onBack={() => go('home')} />
+        return <DraftScreen supabase={supabase} userId={session?.user?.id || null} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
       case 'match':
-        return <MatchScreen onBack={() => go('draft')} onLeaderboard={() => go('leaderboard')} onProfile={() => go('profile')} supabase={supabase} />
+        return <MatchScreen onBack={() => go('draft')} onLeaderboard={() => go('leaderboard')} onProfile={() => go('profile')} supabase={supabase} teams={draftTeams} userId={session?.user?.id || null} />
       case 'leaderboard':
-        return <LeaderboardScreen />
+        return <LeaderboardScreen supabase={supabase} userId={session?.user?.id || null} />
       case 'admin':
         return <AdminScreen supabase={supabase} isAdmin={isAdmin} onBack={() => go('home')} />
       default:
