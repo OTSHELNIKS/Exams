@@ -1,5 +1,6 @@
 // NAME MLBB — Telegram bot (webhook).
-// Deployed as edge function `telegram-bot`.
+// Edge function `telegram-bot`. Dependency-free: plain JS + fetch only,
+// so there is nothing that can fail at worker boot (no remote imports).
 //
 // Routes:
 //   POST /                       Telegram update (needs X-Telegram-Bot-Api-Secret-Token)
@@ -9,34 +10,37 @@
 //
 // Required function secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
 // TELEGRAM_SETUP_SECRET. Optional: APP_PUBLIC_URL (link shown in bot messages).
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.44.0'
 
-const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? ''
-const WEBHOOK_SECRET = Deno.env.get('TELEGRAM_WEBHOOK_SECRET') ?? ''
-const SETUP_SECRET = Deno.env.get('TELEGRAM_SETUP_SECRET') ?? ''
-const APP_URL = Deno.env.get('APP_PUBLIC_URL') ?? ''
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
-const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-
-const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
-const TG = `https://api.telegram.org/bot${BOT_TOKEN}`
+const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') || ''
+const WEBHOOK_SECRET = Deno.env.get('TELEGRAM_WEBHOOK_SECRET') || ''
+const SETUP_SECRET = Deno.env.get('TELEGRAM_SETUP_SECRET') || ''
+const APP_URL = Deno.env.get('APP_PUBLIC_URL') || ''
+const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').replace(/\/+$/, '')
+const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+const TG = 'https://api.telegram.org/bot' + BOT_TOKEN
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, content-type',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
-const json = (obj: unknown, status = 200) =>
-  new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...CORS } })
 
-async function tg(method: string, payload: Record<string, unknown>): Promise<any> {
+function json(obj, status) {
+  return new Response(JSON.stringify(obj), {
+    status: status || 200,
+    headers: Object.assign({ 'Content-Type': 'application/json' }, CORS),
+  })
+}
+
+async function tg(method, payload) {
   try {
-    const r = await fetch(`${TG}/${method}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const r = await fetch(TG + '/' + method, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     const j = await r.json().catch(() => ({}))
-    if (!r.ok || j?.ok === false) console.error('tg api error', method, JSON.stringify(j).slice(0, 400))
+    if (!r.ok || j.ok === false) console.error('tg api error', method, JSON.stringify(j).slice(0, 400))
     return j
   } catch (e) {
     console.error('tg fetch failed', method, String(e))
@@ -44,123 +48,192 @@ async function tg(method: string, payload: Record<string, unknown>): Promise<any
   }
 }
 
-const send = (chat_id: number, text: string, extra: Record<string, unknown> = {}) =>
-  tg('sendMessage', { chat_id, text, parse_mode: 'HTML', disable_web_page_preview: true, ...extra })
-
-const esc = (s: string) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-const HELP_TEXT = `<b>NAME MLBB — команды</b>\n\n/profile — мой профиль и PTS\n/rating — топ-10 игроков\n/unlink — отвязать Telegram\n/help — это сообщение`
-
-function linkPrompt(): string {
-  return `Сначала привяжи аккаунт: открой профиль в приложении${APP_URL ? ` (${APP_URL})` : ''}, нажми «Привязать Telegram» и отправь мне 6-значный код.`
+function send(chat_id, text, extra) {
+  return tg('sendMessage', Object.assign({
+    chat_id: chat_id, text: text, parse_mode: 'HTML', disable_web_page_preview: true,
+  }, extra || {}))
 }
 
-async function linkByCode(chatId: number, tgUsername: string, rawCode: string): Promise<string> {
-  const code = rawCode.trim()
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/* ---------------- tiny PostgREST + Auth client (service role) ---------------- */
+function svcHeaders(extra) {
+  return Object.assign(
+    { apikey: SERVICE_KEY, Authorization: 'Bearer ' + SERVICE_KEY, 'Content-Type': 'application/json' },
+    extra || {},
+  )
+}
+
+async function dbSelect(table, params) {
+  try {
+    const q = new URLSearchParams(params || {}).toString()
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + (q ? '?' + q : ''), { headers: svcHeaders() })
+    if (!r.ok) { console.error('db select failed', table, r.status); return [] }
+    const j = await r.json().catch(() => [])
+    return Array.isArray(j) ? j : []
+  } catch (e) {
+    console.error('db select threw', table, String(e))
+    return []
+  }
+}
+
+async function dbDelete(table, params) {
+  try {
+    const q = new URLSearchParams(params || {}).toString()
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + (q ? '?' + q : ''), {
+      method: 'DELETE', headers: svcHeaders(),
+    })
+    if (!r.ok) console.error('db delete failed', table, r.status)
+    return r.ok
+  } catch (e) {
+    console.error('db delete threw', table, String(e))
+    return false
+  }
+}
+
+async function dbUpsert(table, row, onConflict) {
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?on_conflict=' + encodeURIComponent(onConflict), {
+      method: 'POST',
+      headers: svcHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify(row),
+    })
+    if (!r.ok) console.error('db upsert failed', table, r.status)
+    return r.ok
+  } catch (e) {
+    console.error('db upsert threw', table, String(e))
+    return false
+  }
+}
+
+async function authGetUser(jwt) {
+  try {
+    const r = await fetch(SUPABASE_URL + '/auth/v1/user', {
+      headers: { apikey: SERVICE_KEY, Authorization: 'Bearer ' + jwt },
+    })
+    if (!r.ok) return null
+    return await r.json().catch(() => null)
+  } catch (e) {
+    console.error('auth getUser threw', String(e))
+    return null
+  }
+}
+
+/* ---------------- bot logic ---------------- */
+const HELP_TEXT = '<b>NAME MLBB — команды</b>\n\n/profile — мой профиль и PTS\n/rating — топ-10 игроков\n/unlink — отвязать Telegram\n/help — это сообщение'
+
+function linkPrompt() {
+  return 'Сначала привяжи аккаунт: открой профиль в приложении' + (APP_URL ? ' (' + APP_URL + ')' : '') + ', нажми «Привязать Telegram» и отправь мне 6-значный код.'
+}
+
+async function linkByCode(chatId, tgUsername, rawCode) {
+  const code = String(rawCode || '').trim()
   if (!/^[0-9]{6}$/.test(code)) return 'Код — это 6 цифр из приложения. Проверь и отправь ещё раз.'
-  const { data: row } = await sb.from('telegram_link_codes').select('*').eq('code', code).maybeSingle()
+  const rows = await dbSelect('telegram_link_codes', { code: 'eq.' + code, select: '*' })
+  const row = rows[0]
   if (!row) return 'Такой код не найден. Получи свежий код в профиле приложения.'
   if (new Date(row.expires_at).getTime() < Date.now()) {
-    await sb.from('telegram_link_codes').delete().eq('code', code)
+    await dbDelete('telegram_link_codes', { code: 'eq.' + code })
     return 'Код истёк (живёт 10 минут). Получи новый в профиле.'
   }
   // One chat = one account: drop previous bindings of this chat, then link.
-  await sb.from('telegram_links').delete().eq('tg_chat_id', chatId)
-  const { error } = await sb.from('telegram_links').upsert(
-    { user_id: row.user_id, tg_chat_id: chatId, tg_username: tgUsername },
-    { onConflict: 'user_id' },
-  )
-  if (error) {
-    console.error('link upsert failed', error.message)
-    return 'Не получилось привязать. Попробуй позже.'
-  }
-  await sb.from('telegram_link_codes').delete().eq('code', code)
-  const { data: profile } = await sb.from('player_profiles').select('nick').eq('user_id', row.user_id).maybeSingle()
-  const nick = profile?.nick ? ` «${esc(profile.nick)}»` : ''
-  return `Готово! Telegram привязан к профилю${nick}. Теперь сюда будут приходить уведомления о матчах.\n\n${HELP_TEXT}`
+  await dbDelete('telegram_links', { tg_chat_id: 'eq.' + chatId })
+  const ok = await dbUpsert('telegram_links',
+    { user_id: row.user_id, tg_chat_id: chatId, tg_username: tgUsername || '' }, 'user_id')
+  if (!ok) return 'Не получилось привязать. Попробуй позже.'
+  await dbDelete('telegram_link_codes', { code: 'eq.' + code })
+  const profs = await dbSelect('player_profiles', { user_id: 'eq.' + row.user_id, select: 'nick' })
+  const nick = profs[0] && profs[0].nick ? ' «' + esc(profs[0].nick) + '»' : ''
+  return 'Готово! Telegram привязан к профилю' + nick + '. Теперь сюда будут приходить уведомления о матчах.\n\n' + HELP_TEXT
 }
 
-async function handleUpdate(update: any): Promise<void> {
-  const msg = update?.message
-  if (!msg || msg.chat?.type !== 'private' || typeof msg.text !== 'string') return
-  const chatId: number = msg.chat.id
-  const tgUsername: string = msg.from?.username ?? ''
-  const text: string = msg.text.trim()
-  const [cmd, arg] = text.split(/\s+/, 2)
+async function handleUpdate(update) {
+  const msg = update && update.message
+  if (!msg || (msg.chat && msg.chat.type !== 'private') || typeof msg.text !== 'string') return
+  const chatId = msg.chat.id
+  const tgUsername = (msg.from && msg.from.username) || ''
+  const text = msg.text.trim()
+  const parts = text.split(/\s+/)
+  const cmd = parts[0]
+  const arg = parts[1]
 
   if (cmd === '/start') {
     if (arg) { await send(chatId, await linkByCode(chatId, tgUsername, arg)); return }
-    const { data: link } = await sb.from('telegram_links').select('*').eq('tg_chat_id', chatId).maybeSingle()
-    if (link) {
-      const { data: profile } = await sb.from('player_profiles').select('nick').eq('user_id', link.user_id).maybeSingle()
-      await send(chatId, `С возвращением${profile?.nick ? `, ${esc(profile.nick)}` : ''}! Аккаунт уже привязан.\n\n${HELP_TEXT}`)
+    const links = await dbSelect('telegram_links', { tg_chat_id: 'eq.' + chatId, select: '*' })
+    if (links[0]) {
+      const profs = await dbSelect('player_profiles', { user_id: 'eq.' + links[0].user_id, select: 'nick' })
+      const nick = profs[0] && profs[0].nick ? ', ' + esc(profs[0].nick) : ''
+      await send(chatId, 'С возвращением' + nick + '! Аккаунт уже привязан.\n\n' + HELP_TEXT)
     } else {
-      await send(chatId, `Привет! Я бот <b>NAME MLBB</b> — пришлю ID лобби и уведомления о матчах.\n\n${linkPrompt()}`)
+      await send(chatId, 'Привет! Я бот <b>NAME MLBB</b> — пришлю ID лобби и уведомления о матчах.\n\n' + linkPrompt())
     }
     return
   }
   if (/^[0-9]{6}$/.test(cmd) && !arg) { await send(chatId, await linkByCode(chatId, tgUsername, cmd)); return }
 
   if (cmd === '/profile') {
-    const { data: link } = await sb.from('telegram_links').select('*').eq('tg_chat_id', chatId).maybeSingle()
-    if (!link) { await send(chatId, linkPrompt()); return }
-    const { data: p } = await sb.from('player_profiles').select('*').eq('user_id', link.user_id).maybeSingle()
+    const links = await dbSelect('telegram_links', { tg_chat_id: 'eq.' + chatId, select: '*' })
+    if (!links[0]) { await send(chatId, linkPrompt()); return }
+    const profs = await dbSelect('player_profiles', { user_id: 'eq.' + links[0].user_id, select: '*' })
+    const p = profs[0]
     if (!p || !p.nick) { await send(chatId, 'Профиль пока пуст. Заполни анкету в приложении.'); return }
     const lines = [
-      `<b>${esc(p.nick)}</b>`,
-      `PTS: <b>${p.pts ?? 0}</b>`,
-      p.rank ? `Ранг: ${esc(p.rank)}` : null,
-      (p.roles?.length ? `Роли: ${esc(p.roles.join(', '))}` : null),
-      p.game_id ? `Game ID: <code>${esc(p.game_id)}</code>` : null,
-    ].filter(Boolean)
-    await send(chatId, (lines as string[]).join('\n'))
+      '<b>' + esc(p.nick) + '</b>',
+      'PTS: <b>' + (p.pts === null || p.pts === undefined ? 0 : p.pts) + '</b>',
+    ]
+    if (p.rank) lines.push('Ранг: ' + esc(p.rank))
+    if (p.roles && p.roles.length) lines.push('Роли: ' + esc(p.roles.join(', ')))
+    if (p.game_id) lines.push('Game ID: <code>' + esc(p.game_id) + '</code>')
+    await send(chatId, lines.join('\n'))
     return
   }
 
   if (cmd === '/rating') {
-    const { data } = await sb.from('player_profiles').select('nick, game_id, pts').order('pts', { ascending: false }).limit(10)
+    const data = await dbSelect('player_profiles', { select: 'nick,game_id,pts', order: 'pts.desc', limit: '10' })
     if (!data || data.length === 0) { await send(chatId, 'Рейтинг пока пуст — стань первым!'); return }
     const medals = ['🥇', '🥈', '🥉']
-    const lines = data.map((r: any, i: number) =>
-      `${medals[i] ?? `${i + 1}.`} ${esc(r.nick || 'Без ника')} — <b>${r.pts ?? 0}</b> PTS`)
-    await send(chatId, `<b>Топ-10 NAME MLBB</b>\n\n${lines.join('\n')}\n\nПока все стартуют с 1000 PTS. Начисление за матчи включим следующим шагом.`)
+    const lines = data.map((r, i) => (medals[i] || ((i + 1) + '.')) + ' ' + esc(r.nick || 'Без ника') + ' — <b>' + (r.pts || 0) + '</b> PTS')
+    await send(chatId, '<b>Топ-10 NAME MLBB</b>\n\n' + lines.join('\n') + '\n\nПока все стартуют с 1000 PTS. Начисление за матчи включим следующим шагом.')
     return
   }
 
   if (cmd === '/unlink') {
-    await sb.from('telegram_links').delete().eq('tg_chat_id', chatId)
+    await dbDelete('telegram_links', { tg_chat_id: 'eq.' + chatId })
     await send(chatId, 'Готово, Telegram отвязан. Уведомления приходить не будут.')
     return
   }
 
   if (cmd === '/help') { await send(chatId, HELP_TEXT); return }
 
-  await send(chatId, `Не понял команду. Вот что я умею:\n\n${HELP_TEXT}`)
+  await send(chatId, 'Не понял команду. Вот что я умею:\n\n' + HELP_TEXT)
 }
 
-async function handleNotify(req: Request): Promise<Response> {
+async function handleNotify(req) {
   const m = (req.headers.get('authorization') || '').match(/^Bearer (.+)$/)
   if (!m) return json({ ok: false, error: 'no_auth' }, 401)
-  const { data: { user }, error } = await sb.auth.getUser(m[1])
-  if (error || !user) return json({ ok: false, error: 'bad_token' }, 401)
-  let body: any = {}
-  try { body = await req.json() } catch { /* noop */ }
-  if (body?.kind !== 'lobby' || !/^[0-9]{4,12}$/.test(String(body?.lobbyId ?? ''))) {
+  const user = await authGetUser(m[1])
+  if (!user || !user.id) return json({ ok: false, error: 'bad_token' }, 401)
+  let body = {}
+  try { body = await req.json() } catch (e) { body = {} }
+  if (!body || body.kind !== 'lobby' || !/^[0-9]{4,12}$/.test(String(body.lobbyId === undefined ? '' : body.lobbyId))) {
     return json({ ok: false, error: 'bad_request' }, 400)
   }
-  const { data: link } = await sb.from('telegram_links').select('*').eq('user_id', user.id).maybeSingle()
-  if (!link) return json({ ok: false, error: 'not_linked' }, 404)
-  await send(link.tg_chat_id, `🎮 <b>Лобби готово!</b>\n\nID лобби: <code>${esc(String(body.lobbyId))}</code>\n\nСкопируй ID и заходи в игру. Удачи!`)
+  const links = await dbSelect('telegram_links', { user_id: 'eq.' + user.id, select: '*' })
+  if (!links[0]) return json({ ok: false, error: 'not_linked' }, 404)
+  await send(links[0].tg_chat_id, '🎮 <b>Лобби готово!</b>\n\nID лобби: <code>' + esc(String(body.lobbyId)) + '</code>\n\nСкопируй ID и заходи в игру. Удачи!')
   return json({ ok: true })
 }
 
-async function handleSetup(url: URL): Promise<Response> {
+async function handleSetup(url) {
   if (!SETUP_SECRET || url.searchParams.get('setup') !== SETUP_SECRET) {
     return json({ ok: false, error: 'forbidden' }, 403)
   }
   if (!BOT_TOKEN) return json({ ok: false, error: 'no_bot_token' }, 500)
   if (!WEBHOOK_SECRET) return json({ ok: false, error: 'no_webhook_secret' }, 500)
-  const fnUrl = `${SUPABASE_URL}/functions/v1/telegram-bot`
+  const fnUrl = SUPABASE_URL + '/functions/v1/telegram-bot'
   const me = await tg('getMe', {})
   const hook = await tg('setWebhook', { url: fnUrl, secret_token: WEBHOOK_SECRET, drop_pending_updates: true })
   const cmds = await tg('setMyCommands', { commands: [
@@ -169,11 +242,11 @@ async function handleSetup(url: URL): Promise<Response> {
     { command: 'rating', description: 'Топ-10 игроков' },
     { command: 'unlink', description: 'Отвязать Telegram' },
     { command: 'help', description: 'Помощь' },
-  ]})
-  return json({ ok: true, bot: me?.result?.username ?? null, webhook: fnUrl, setWebhook: hook?.ok === true, setCommands: cmds?.ok === true })
+  ] })
+  return json({ ok: true, bot: (me && me.result && me.result.username) || null, webhook: fnUrl, setWebhook: !!(hook && hook.ok), setCommands: !!(cmds && cmds.ok) })
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req) => {
   const url = new URL(req.url)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method === 'GET' && url.searchParams.get('health') !== null) {
