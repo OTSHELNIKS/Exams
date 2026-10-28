@@ -481,10 +481,18 @@ export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin 
 /* ------------------------------------------------------- telegram link */
 const TG_POLL_MS = 4000
 
+function tgErrText(e) {
+  if (e && e.message === 'timeout') return 'Сервер не ответил за 20 секунд — проверь интернет и нажми ещё раз.'
+  if (e && e.message) return 'Не получилось: ' + e.message
+  return 'Не получилось. Попробуй ещё раз.'
+}
+
 function TelegramLinkCard({ supabase, userId }) {
   const [link, setLink] = useState(undefined) // undefined=loading, null=none, obj=linked
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [err, setErr] = useState('')
   const [toast, setToast] = useState('')
 
   useEffect(() => {
@@ -494,10 +502,19 @@ function TelegramLinkCard({ supabase, userId }) {
   }, [toast])
 
   const refresh = async () => {
-    if (!supabase || !userId) return
+    if (!supabase || !userId) return null
     try {
-      setLink(await getTelegramLink(userId))
-    } catch { setLink(null) }
+      const row = await getTelegramLink(userId)
+      setLink(row)
+      return row
+    } catch { setLink(null); return null }
+  }
+
+  const checkSent = async () => {
+    setChecking(true); setErr('')
+    const row = await refresh()
+    setChecking(false)
+    if (!row) setErr('Привязка пока не найдена — убедись, что нажал START у бота, и что коду меньше 10 минут.')
   }
 
   useEffect(() => {
@@ -527,24 +544,24 @@ function TelegramLinkCard({ supabase, userId }) {
   }
 
   const makeCode = async () => {
-    setBusy(true)
+    setBusy(true); setErr('')
     try {
       setCode(await createTelegramLinkCode(userId))
     } catch (e) {
-      setToast('Не получилось: ' + (e.message || 'ошибка'))
+      setErr(tgErrText(e))
     } finally {
       setBusy(false)
     }
   }
 
   const unlink = async () => {
-    setBusy(true)
+    setBusy(true); setErr('')
     try {
       await deleteTelegramLink(userId)
       setLink(null); setCode('')
       setToast('Telegram отвязан')
     } catch (e) {
-      setToast('Не получилось: ' + (e.message || 'ошибка'))
+      setErr(tgErrText(e))
     } finally {
       setBusy(false)
     }
@@ -560,14 +577,14 @@ function TelegramLinkCard({ supabase, userId }) {
             <BrandMark type="telegram" />
             <div><strong>@{link.tg_username || '—'}</strong><small>Уведомления включены</small></div>
           </div>
-          <button type="button" className="btn btn--small" disabled={busy} onClick={unlink}>Отвязать</button>
+          <button type="button" className="btn btn--small" disabled={busy} onClick={unlink}>{busy ? 'Отвязка…' : 'Отвязать'}</button>
         </div>
       )}
       {link === null && !code && (
         <>
           <p className="social-hint">Бот пришлёт ID лобби и уведомления о матчах.</p>
           <button type="button" className="btn btn--ghost" disabled={busy} onClick={makeCode}>
-            <Send size={16} /> Привязать Telegram
+            <Send size={16} /> {busy ? 'Создаём код…' : 'Привязать Telegram'}
           </button>
         </>
       )}
@@ -578,9 +595,10 @@ function TelegramLinkCard({ supabase, userId }) {
           <a className="btn btn--primary btn--glow tg-open" href={`https://t.me/${TELEGRAM_BOT_USERNAME}?start=${code}`} target="_blank" rel="noreferrer">
             <Send size={16} /> Открыть бота
           </a>
-          <button type="button" className="link-btn" onClick={refresh}>Я уже отправил — обновить</button>
+          <button type="button" className="link-btn" disabled={checking} onClick={checkSent}>{checking ? 'Проверяем…' : 'Я уже отправил — обновить'}</button>
         </>
       )}
+      {err && <p className="tg-error">{err}</p>}
       {toast && <div className="toast toast--fixed">{toast}</div>}
     </div>
   )
@@ -814,6 +832,7 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase }) {
     } catch (e) {
       if (e.message === 'no_session') setToast('Войди по почте, чтобы отправлять в Telegram')
       else if (e.message === 'not_linked') { setNeedLink(true); setToast('Сначала привяжи Telegram в профиле') }
+      else if (e.message === 'timeout') setToast('Сервер не ответил за 20 секунд — проверь интернет')
       else setToast('Не получилось отправить')
     } finally {
       setSending(false)

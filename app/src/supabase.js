@@ -80,6 +80,17 @@ export async function deleteScreenshot(publicUrl, userId) {
 export const TELEGRAM_BOT_USERNAME = 'name_mlbb_bot'
 const LINK_CODE_TTL_MS = 10 * 60 * 1000
 
+const TG_TIMEOUT_MS = 20000
+
+/** Reject a hanging request so the UI never freezes silently. */
+function withTimeout(promise, ms = TG_TIMEOUT_MS) {
+  let timer = null
+  const gate = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('timeout')), ms)
+  })
+  return Promise.race([promise, gate]).finally(() => clearTimeout(timer))
+}
+
 export function functionsUrl(path) {
   return `${url}/functions/v1/${path}`
 }
@@ -87,23 +98,23 @@ export function functionsUrl(path) {
 /** Issue a fresh 6-digit Telegram link code (valid 10 minutes). */
 export async function createTelegramLinkCode(userId) {
   const code = String(Math.floor(100000 + Math.random() * 900000))
-  await supabase.from('telegram_link_codes').delete().eq('user_id', userId)
-  const { error } = await supabase.from('telegram_link_codes').insert({
+  await withTimeout(supabase.from('telegram_link_codes').delete().eq('user_id', userId))
+  const { error } = await withTimeout(supabase.from('telegram_link_codes').insert({
     code, user_id: userId,
     expires_at: new Date(Date.now() + LINK_CODE_TTL_MS).toISOString(),
-  })
+  }))
   if (error) throw error
   return code
 }
 
 export async function getTelegramLink(userId) {
-  const { data, error } = await supabase.from('telegram_links').select('*').eq('user_id', userId).maybeSingle()
+  const { data, error } = await withTimeout(supabase.from('telegram_links').select('*').eq('user_id', userId).maybeSingle())
   if (error) throw error
   return data
 }
 
 export async function deleteTelegramLink(userId) {
-  const { error } = await supabase.from('telegram_links').delete().eq('user_id', userId)
+  const { error } = await withTimeout(supabase.from('telegram_links').delete().eq('user_id', userId))
   if (error) throw error
 }
 
@@ -111,11 +122,11 @@ export async function deleteTelegramLink(userId) {
 export async function notifyLobbyToTelegram(lobbyId) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('no_session')
-  const r = await fetch(functionsUrl('telegram-bot?action=notify'), {
+  const r = await withTimeout(fetch(functionsUrl('telegram-bot?action=notify'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
     body: JSON.stringify({ kind: 'lobby', lobbyId }),
-  })
+  }))
   const j = await r.json().catch(() => ({}))
   if (!r.ok || j.ok === false) throw new Error(j.error || 'notify_failed')
   return true
