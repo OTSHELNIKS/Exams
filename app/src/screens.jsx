@@ -421,7 +421,7 @@ export function SocialRow({ profile, onAddSocial }) {
   )
 }
 
-export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin }) {
+export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -456,7 +456,7 @@ export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin 
         {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
       </div>
 
-      {profile.nick ? <VerificationCard /> : null}
+      {profile.nick ? <VerificationCard supabase={supabase} userId={userId} /> : null}
 
       <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот добавлен'); }} onEdit={onEdit} />
 
@@ -655,7 +655,7 @@ export function ProfileScreen({ profile, actions, gameId, onBack, onEdit, supaba
         {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
       </div>
 
-      {profile.nick ? <VerificationCard /> : null}
+      {profile.nick ? <VerificationCard supabase={supabase} userId={userId} /> : null}
       <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот добавлен'); }} onEdit={onEdit} />
       <SocialRow profile={profile} onAddSocial={actions.addSocial} />
       <TelegramLinkCard supabase={supabase} userId={userId} />

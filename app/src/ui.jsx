@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   ChevronLeft, Gamepad2, Send, Camera, Plus,
   ShieldCheck, Check, X, Copy, Mic, MicOff, RotateCcw, Crown, Users, Trophy,
@@ -113,16 +113,62 @@ export function StatBadge({ children, tone = 'orange' }) {
   return <span className={`stat-badge stat-badge--${tone}`}>{children}</span>
 }
 
-export function VerificationCard() {
-  return (
-    <div className="verify-card">
-      <div className="verify-card__icon"><RotateCcw size={22} /></div>
-      <div>
-        <strong>Профиль проверяется модератором</strong>
-        <p>Верификация завершится в ближайшее время</p>
+const REVIEW_KIND_NAMES = { nick: 'ник', avatar: 'фото', screenshot: 'скриншоты' }
+
+/** Real moderation status of the current user's profile, from moderation_reviews. */
+export function VerificationCard({ supabase, userId }) {
+  const [reviews, setReviews] = useState(null)
+  useEffect(() => {
+    let alive = true
+    const load = async () => {
+      if (!supabase || !userId) { if (alive) setReviews([]); return }
+      const { data, error } = await supabase.from('moderation_reviews').select('kind,status').eq('user_id', userId)
+      if (alive) setReviews(error ? [] : (data || []))
+    }
+    load()
+    return () => { alive = false }
+  }, [supabase, userId])
+
+  if (!reviews || reviews.length === 0) return null
+  const kinds = (rows) => [...new Set(rows.map((r) => REVIEW_KIND_NAMES[r.kind] || r.kind))].join(', ')
+  const pending = reviews.filter((r) => r.status === 'pending')
+  const rejected = reviews.filter((r) => r.status === 'rejected')
+  const approved = reviews.filter((r) => r.status === 'approved')
+
+  if (pending.length > 0) {
+    return (
+      <div className="verify-card">
+        <div className="verify-card__icon"><RotateCcw size={22} /></div>
+        <div>
+          <strong>На проверке у модератора: {kinds(pending)}</strong>
+          <p>Решение придёт в Telegram, если он привязан в профиле</p>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
+  if (rejected.length > 0) {
+    return (
+      <div className="verify-card verify-card--bad">
+        <div className="verify-card__icon"><X size={22} /></div>
+        <div>
+          <strong>Модератор отклонил: {kinds(rejected)}</strong>
+          <p>Исправь в анкете и сохрани — вернём на перепроверку</p>
+        </div>
+      </div>
+    )
+  }
+  if (approved.length > 0) {
+    return (
+      <div className="verify-card verify-card--ok">
+        <div className="verify-card__icon"><Check size={22} /></div>
+        <div>
+          <strong>Модерация пройдена</strong>
+          <p>Одобрено: {kinds(approved)}</p>
+        </div>
+      </div>
+    )
+  }
+  return null
 }
 
 export function GameIdIcon() {
