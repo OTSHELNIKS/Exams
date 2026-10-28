@@ -6,16 +6,13 @@ import {
 } from 'lucide-react'
 import {
   Logo, BrandMark, Chip, Label, PrimaryButton, BackHeader, Avatar, VerificationCard,
-  StatBadge, Steps, GameIdIcon, CrownIcon, SuccessCheck, CloseIcon,
+  StatBadge, Steps, GameIdIcon, CrownIcon, SuccessCheck, CloseIcon, DemoTag,
 } from './ui.jsx'
 import {
   RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, CAPTAINS, DRAFT_POOL, DRAFT_FILTERS,
   MATCH_TEAM, LEADERBOARDS,
 } from './data.js'
 import { uploadAvatar, uploadScreenshot, deleteScreenshot, validateImage } from './supabase.js'
-import avatarImg from './assets/avatar.png'
-import heroArtImg from './assets/hero-art.jpg'
-import scoreboardImg from './assets/scoreboard.jpg'
 
 /* ================================================================ AUTH ==== */
 export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, session, onSignOut }) {
@@ -111,7 +108,7 @@ export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, se
 }
 
 /* ============================================================== WIZARD ==== */
-export function WizardScreen({ profile, setProfile, onDone, onBack, saveError, saving, supabase, userId }) {
+export function WizardScreen({ profile, setProfile, onDone, onBack, saveError, saving, supabase, userId, onReset }) {
   const [step, setStep] = useState(1)
   const [toast, setToast] = useState('')
   const [uploading, setUploading] = useState('')
@@ -295,7 +292,7 @@ export function WizardScreen({ profile, setProfile, onDone, onBack, saveError, s
             {HEROES.map((h) => <Chip key={h} active={profile.heroes.includes(h)} onClick={() => toggle('heroes', h, 6)}>{h}</Chip>)}
           </div>
 
-          <Label>ГЕРОИ (МАКС. 6)</Label>
+          <Label>КЛАССЫ ГЕРОЕВ (МАКС. 6)</Label>
           <div className="chips">
             {HERO_CLASSES.map((h) => <Chip key={h} active={profile.heroClasses.includes(h)} onClick={() => toggle('heroClasses', h, 6)}>{h}</Chip>)}
           </div>
@@ -333,6 +330,14 @@ export function WizardScreen({ profile, setProfile, onDone, onBack, saveError, s
         <PrimaryButton onClick={next} disabled={saving}>
           {saving ? 'СОХРАНЕНИЕ…' : step === 3 ? 'СОХРАНИТЬ ПРОФИЛЬ' : 'ДАЛЕЕ'}
         </PrimaryButton>
+        <button
+          type="button"
+          className="link-btn wizard__reset"
+          disabled={saving}
+          onClick={async () => { const ok = await onReset(); if (ok) { setStep(1); setToast('Анкета очищена — заполни заново'); } }}
+        >
+          Очистить анкету
+        </button>
       </div>
     </div>
   )
@@ -352,32 +357,33 @@ export function AdBanner({ compact }) {
   )
 }
 
-export function StatsGrid({ profile, onAddSlot }) {
-  const demoTiles = [
-    { key: 'win', img: scoreboardImg, caption: 'Винрейт 68%' },
-    { key: 'kda', caption: 'KDA 6.4' },
-    { key: 'mvp', img: heroArtImg, caption: 'MVP 142' },
-    { key: 'rank', caption: profile.rank || 'Mythical Glory' },
-  ]
+export function StatsGrid({ profile, onAddSlot, onEdit }) {
   const real = (profile.screenshots || []).slice(0, 4)
-  const tiles = real.length
-    ? [...real.map((src, i) => ({ key: `shot-${i}`, img: src, caption: `Скриншот ${i + 1}` })),
-       ...demoTiles.slice(real.length)]
-    : demoTiles
+  const extras = profile.extraSlots || 0
+  const hasAny = real.length > 0 || extras > 0
   return (
     <>
-      <div className="section-head"><span>СКРИНШОТЫ СТАТИСТИКИ</span><b>{real.length ? `${real.length}/4 твои` : '4/4'}</b></div>
-      <div className="stats-grid">
-        {tiles.map((t) => (
-          <div key={t.key} className={`stat-tile ${t.img ? 'stat-tile--img' : ''}`}>
-            {t.img && <img src={t.img} alt="" />}
-            <span>{t.caption}</span>
-          </div>
-        ))}
-        {Array.from({ length: profile.extraSlots || 0 }, (_, i) => (
-          <div key={`extra-${i}`} className="stat-tile stat-tile--extra"><Plus size={20} /><span>Доп. слот</span></div>
-        ))}
-      </div>
+      <div className="section-head"><span>СКРИНШОТЫ СТАТИСТИКИ</span><b>{real.length}/4</b></div>
+      {!hasAny ? (
+        <div className="empty-block">
+          <p>Скриншотов пока нет. Загрузи статистику из MLBB в анкете — другие игроки увидят её здесь.</p>
+          <button type="button" className="btn btn--ghost" onClick={onEdit}>
+            Открыть анкету <ArrowRight size={15} />
+          </button>
+        </div>
+      ) : (
+        <div className="stats-grid">
+          {real.map((src, i) => (
+            <div key={`shot-${i}`} className="stat-tile stat-tile--img">
+              <img src={src} alt="" />
+              <span>Скриншот {i + 1}</span>
+            </div>
+          ))}
+          {Array.from({ length: extras }, (_, i) => (
+            <div key={`extra-${i}`} className="stat-tile stat-tile--extra"><Plus size={20} /><span>Доп. слот</span></div>
+          ))}
+        </div>
+      )}
       <button type="button" className="slot-btn" onClick={onAddSlot}>
         <Lock size={16} /> Доп. слот (150 ₽)
       </button>
@@ -385,23 +391,10 @@ export function StatsGrid({ profile, onAddSlot }) {
   )
 }
 
-export function SocialRow({ profile, onAddSocial }) {
-  return (
-    <div className="social-row">
-      <button type="button" className="social-circle"><BrandMark type="telegram" /></button>
-      <button type="button" className="social-circle"><BrandMark type="vk" /></button>
-      <button type="button" className="social-circle"><BrandMark type="google" /></button>
-      {Array.from({ length: profile.extraSocials || 0 }, (_, i) => (
-        <button key={i} type="button" className="social-circle social-circle--added"><Check size={18} /></button>
-      ))}
-      <button type="button" className="social-circle social-circle--add" onClick={onAddSocial} title="Привязать соцсеть — 30 ₽">
-        <Plus size={18} />
-      </button>
-    </div>
-  )
-}
+const SOCIAL_ORDER = ['telegram', 'vk', 'google']
+const SOCIAL_NAMES = { telegram: 'Telegram', vk: 'VK', google: 'Google' }
 
-export function HomeScreen({ profile, actions }) {
+export function SocialRow({ profile, onAddSocial }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -409,34 +402,72 @@ export function HomeScreen({ profile, actions }) {
     return () => clearTimeout(t)
   }, [toast])
 
+  const bound = profile.socials || []
+  return (
+    <div className="social-block">
+      <div className="section-head"><span>СОЦСЕТИ</span><b>{bound.length}/3</b></div>
+      {bound.length === 0 && (
+        <p className="social-hint">Ничего не привязано. Нажми +, чтобы добавить (демо: 30 ₽).</p>
+      )}
+      <div className="social-row">
+        {bound.map((x) => (
+          <button key={x} type="button" className="social-circle" title={SOCIAL_NAMES[x]} onClick={() => setToast(`Демо: ${SOCIAL_NAMES[x]} привязана`)}>
+            <BrandMark type={x} />
+          </button>
+        ))}
+        {bound.length < SOCIAL_ORDER.length && (
+          <button type="button" className="social-circle social-circle--add" onClick={() => { onAddSocial(); setToast('Соцсеть привязана — 30 ₽ (демо)'); }} title="Привязать соцсеть — 30 ₽">
+            <Plus size={18} />
+          </button>
+        )}
+      </div>
+      {toast && <div className="toast toast--fixed">{toast}</div>}
+    </div>
+  )
+}
+
+export function HomeScreen({ profile, actions, gameId, onEdit }) {
+  const [toast, setToast] = useState('')
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(''), 2200)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  const hasBadges = profile.elo != null || (profile.roles || []).length > 0
+
   return (
     <div className="screen home">
-      <div className="home__header">
-        <div className="home__wing"><span>✦</span></div>
-        <div className="home__id">2000 ID</div>
-        <span className="home__news">News</span>
-      </div>
+      {gameId ? (
+        <div className="home__header">
+          <span className="home__id">Game ID • {gameId}</span>
+        </div>
+      ) : null}
 
       <div className="home__hero">
-        <Avatar src={profile.avatarUrl || profile.avatar || avatarImg} initials={profile.nick?.[0] || 'H'} size={104} />
-        <h1>{profile.nick || 'Haze'}</h1>
-        <div className="home__badges">
-          <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>
-          <StatBadge tone="dark"><UserRound size={14} /> {profile.roles[0] || 'Лесник'}</StatBadge>
-        </div>
-        <p className="home__bio">{profile.bio}</p>
+        <Avatar src={profile.avatarUrl || profile.avatar || null} initials={(profile.nick?.[0] || '?').toUpperCase()} level={profile.level} size={104} />
+        <h1>{profile.nick || 'Новый игрок'}</h1>
+        {hasBadges && (
+          <div className="home__badges">
+            {profile.elo != null && <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>}
+            {(profile.roles || []).length > 0 && <StatBadge tone="dark"><UserRound size={14} /> {profile.roles[0]}</StatBadge>}
+          </div>
+        )}
+        {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
       </div>
 
-      <VerificationCard />
+      {profile.nick ? <VerificationCard /> : null}
 
-      <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот куплен за 150 ₽') }} />
+      <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот куплен за 150 ₽ (демо)'); }} onEdit={onEdit} />
 
       <AdBanner compact />
 
-      <SocialRow profile={profile} onAddSocial={() => { actions.addSocial(); setToast('Соцсеть привязана — 30 ₽') }} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} />
 
       <div className="home__actions">
-        <PrimaryButton icon={Gamepad2} onClick={actions.goDraft}>НАЙТИ МАТЧ</PrimaryButton>
+        {profile.nick
+          ? <PrimaryButton icon={Gamepad2} onClick={actions.goDraft}>НАЙТИ МАТЧ</PrimaryButton>
+          : <PrimaryButton icon={UserRound} onClick={onEdit}>ЗАПОЛНИТЬ ПРОФИЛЬ</PrimaryButton>}
         <button type="button" className="btn btn--ghost" onClick={actions.goLeaderboard}>
           <Trophy size={17} /> ТАБЛИЦА ЛИДЕРОВ
         </button>
@@ -447,7 +478,16 @@ export function HomeScreen({ profile, actions }) {
 }
 
 /* ============================================================= PROFILE ==== */
-export function ProfileScreen({ profile, onBack, onEdit }) {
+export function ProfileScreen({ profile, actions, gameId, onBack, onEdit }) {
+  const [toast, setToast] = useState('')
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(''), 2200)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  const hasBadges = profile.elo != null || (profile.roles || []).length > 0
+
   return (
     <div className="screen profile">
       <div className="profile__head">
@@ -456,18 +496,22 @@ export function ProfileScreen({ profile, onBack, onEdit }) {
       </div>
 
       <div className="profile__center">
-        <Avatar src={profile.avatarUrl || profile.avatar || avatarImg} initials={profile.nick?.[0] || 'H'} size={128} />
-        <h1>{profile.nick || 'Haze'}</h1>
-        <div className="home__badges">
-          <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>
-          <StatBadge tone="dark"><UserRound size={14} /> {profile.roles[0] || 'Лесник'}</StatBadge>
-        </div>
-        <p className="home__bio">{profile.bio}</p>
+        <Avatar src={profile.avatarUrl || profile.avatar || null} initials={(profile.nick?.[0] || '?').toUpperCase()} level={profile.level} size={128} />
+        <h1>{profile.nick || 'Новый игрок'}</h1>
+        {gameId ? <p className="profile__gameid">Game ID • {gameId}</p> : null}
+        {hasBadges && (
+          <div className="home__badges">
+            {profile.elo != null && <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>}
+            {(profile.roles || []).length > 0 && <StatBadge tone="dark"><UserRound size={14} /> {profile.roles[0]}</StatBadge>}
+          </div>
+        )}
+        {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
       </div>
 
-      <VerificationCard />
-      <StatsGrid profile={profile} onAddSlot={onEdit} />
-      <SocialRow profile={profile} onAddSocial={onEdit} />
+      {profile.nick ? <VerificationCard /> : null}
+      <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот куплен за 150 ₽ (демо)'); }} onEdit={onEdit} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} />
+      {toast && <div className="toast toast--fixed">{toast}</div>}
       <button type="button" className="btn btn--ghost profile__back" onClick={onBack}>На главную</button>
     </div>
   )
@@ -579,7 +623,7 @@ export function DraftScreen({ onReady, onBack }) {
       <div className="draft__head">
         <div>
           <h1>CAPTAIN'S DRAFT</h1>
-          <p>Формат 5v5 • Выбор игроков в ростер</p>
+          <p>Формат 5v5 • Выбор игроков в ростер <DemoTag /></p>
         </div>
         <div className="draft__timer"><Clock3 size={16} /> 00:{String(timer).padStart(2, '0')}</div>
         <button type="button" className="icon-btn" onClick={reset} title="Сбросить драфт"><RotateCcw size={18} /></button>
@@ -658,7 +702,7 @@ export function MatchScreen({ onBack, onLeaderboard }) {
 
   return (
     <div className="screen match">
-      <span className="match__badge"><i /> Матч найден</span>
+      <div className="match__badges"><span className="match__badge"><i /> Матч найден</span> <DemoTag text="демо-симуляция" /></div>
       <h1 className="match__title">Матч готов</h1>
       <p className="match__sub"><Bot size={16} /> Бот создал лобби в игре</p>
 
@@ -726,7 +770,7 @@ export function LeaderboardScreen() {
           <button key={t} type="button" className={tab === t ? 'is-active' : ''} onClick={() => setTab(t)}>{t}</button>
         ))}
       </div>
-      <p className="leaderboard__note">Призы топ-3 выплачиваются ежемесячно</p>
+      <p className="leaderboard__note">Призы топ-3 выплачиваются ежемесячно · <DemoTag /></p>
 
       <div className="league-switch">
         <button type="button" className={league === 'Обычная лига' ? 'is-active' : ''} onClick={() => setLeague('Обычная лига')}>Обычная лига · до 4000</button>

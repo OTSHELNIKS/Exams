@@ -1,6 +1,6 @@
 import React from 'react'
 import {
-  Wifi, BatteryFull, Signal, ChevronLeft, Gamepad2, Send, Camera, Plus,
+  ChevronLeft, Gamepad2, Send, Camera, Plus,
   ShieldCheck, Check, X, Copy, Mic, MicOff, RotateCcw, Crown, Users, Trophy,
 } from 'lucide-react'
 
@@ -23,32 +23,22 @@ export function BrandMark({ type }) {
   return null
 }
 
-/* ------------------------------------------------------------- status bar */
-export function StatusBar({ time = '21:37' }) {
+/* ------------------------------------------------------------- app frame */
+/* Нейтральная колонка приложения без фальшивой шторки телефона:
+   на реальном устройстве статус-бар рисует сама ОС, а раскладка
+   адаптируется под ширину экрана через CSS (см. .appframe). */
+export function AppFrame({ children, className = '' }) {
   return (
-    <div className="statusbar">
-      <span className="statusbar__time">{time}</span>
-      <div className="statusbar__island" />
-      <div className="statusbar__icons">
-        <Signal size={15} strokeWidth={2.6} />
-        <Wifi size={15} strokeWidth={2.6} />
-        <BatteryFull size={19} strokeWidth={2.2} />
+    <div className={`appframe ${className}`}>
+      <div className="appframe__screen">
+        <div className="appframe__content">{children}</div>
       </div>
     </div>
   )
 }
 
-/* ------------------------------------------------------------ phone frame */
-export function PhoneFrame({ children, className = '' }) {
-  return (
-    <div className={`phone ${className}`}>
-      <div className="phone__screen">
-        <StatusBar />
-        <div className="phone__content">{children}</div>
-        <div className="phone__home" />
-      </div>
-    </div>
-  )
+export function DemoTag({ text = 'демо-данные' }) {
+  return <span className="demo-tag">{text}</span>
 }
 
 /* ----------------------------------------------------------------- pieces */
@@ -112,13 +102,13 @@ export function Steps({ current = 1, total = 3 }) {
   )
 }
 
-export function Avatar({ src, initials = 'H', size = 96, ring = true }) {
+export function Avatar({ src, initials = '?', size = 96, ring = true, level = null }) {
   return (
     <div className={`avatar ${ring ? 'avatar--ring' : ''}`} style={{ width: size, height: size }}>
       {src
         ? <img src={src} alt="avatar" />
         : <span className="avatar__initials">{initials}</span>}
-      <span className="avatar__level">LVL<br /><b>87</b></span>
+      {level != null && <span className="avatar__level">LVL<br /><b>{level}</b></span>}
     </div>
   )
 }

@@ -3,7 +3,7 @@ import {
   ArrowRight, Swords, Server, Bot, Mic, ShieldCheck, Trophy, Download,
   Smartphone, ChevronRight, Sparkles, Coins, Play,
 } from 'lucide-react'
-import { Logo, PhoneFrame, BrandMark, PrimaryButton, StatBadge } from './ui.jsx'
+import { Logo, AppFrame, BrandMark, PrimaryButton, StatBadge } from './ui.jsx'
 import { AuthScreen } from './screens.jsx'
 import { FEATURES, STEPS } from './data.js'
 
@@ -59,9 +59,9 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId }) {
 
         <div className="hero-site__phone">
           <div className="hero-site__glow" />
-          <PhoneFrame className="phone--hero">
+          <AppFrame className="appframe--hero">
             <AuthScreen gameId={gameId} setGameId={setGameId} onLogin={onLogin || onOpen} />
-          </PhoneFrame>
+          </AppFrame>
           <button type="button" className="hero-site__hint" onClick={onOpenScreen}>
             <ChevronRight size={15} /> Все 7 экранов макета — в интерактивном режиме
           </button>

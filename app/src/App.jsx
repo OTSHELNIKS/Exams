@@ -3,7 +3,7 @@ import {
   Home, UserRound, Swords, Gamepad2, Trophy, Globe, ChevronLeft, Sparkles,
   ClipboardList, LogIn,
 } from 'lucide-react'
-import { PhoneFrame, Logo } from './ui.jsx'
+import { AppFrame, Logo } from './ui.jsx'
 import { Landing } from './landing.jsx'
 import {
   AuthScreen, WizardScreen, HomeScreen, ProfileScreen, DraftScreen,
@@ -22,7 +22,8 @@ const SCREENS = [
   { id: 'leaderboard', label: 'Таблица лидеров', short: 'Рейтинг', icon: Trophy },
 ]
 
-const STORAGE_KEY = 'name-mlbb-profile'
+const STORAGE_KEY = 'name-mlbb-profile:v2'
+const LEGACY_STORAGE_KEY = 'name-mlbb-profile'
 
 export default function App() {
   const [mode, setMode] = useState('landing')
@@ -34,9 +35,11 @@ export default function App() {
   const [saveError, setSaveError] = useState('')
   const [profile, setProfile] = useState(() => {
     try {
+      localStorage.removeItem(LEGACY_STORAGE_KEY)
+      localStorage.removeItem(LEGACY_STORAGE_KEY + ':gameId')
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
-      return saved ? { ...DEFAULT_PROFILE, ...saved } : DEFAULT_PROFILE
-    } catch { return DEFAULT_PROFILE }
+      return saved ? { ...DEFAULT_PROFILE, ...saved } : { ...DEFAULT_PROFILE }
+    } catch { return { ...DEFAULT_PROFILE } }
   })
 
   useEffect(() => {
@@ -98,11 +101,32 @@ export default function App() {
     go('home')
   }
 
+  const resetProfile = async () => {
+    if (sessionLoading || saving) return false
+    const fresh = { ...DEFAULT_PROFILE }
+    setProfile(fresh); setGameId('')
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+      localStorage.removeItem(STORAGE_KEY + ':gameId')
+    } catch { /* noop */ }
+    if (!session || !supabase) return true
+    setSaving(true); setSaveError('')
+    const { error } = await supabase.from('player_profiles').upsert(profileToRow(fresh, '', session.user.id))
+    setSaving(false)
+    if (error) { setSaveError('Не удалось очистить профиль: ' + error.message); return false }
+    return true
+  }
+
   const actions = {
     goDraft: () => go('draft'),
     goLeaderboard: () => go('leaderboard'),
     addSlot: () => setProfile((p) => ({ ...p, extraSlots: Math.min(3, (p.extraSlots || 0) + 1) })),
-    addSocial: () => setProfile((p) => ({ ...p, extraSocials: Math.min(3, (p.extraSocials || 0) + 1) })),
+    addSocial: () => setProfile((p) => {
+      const order = ['telegram', 'vk', 'google']
+      const next = order.find((x) => !(p.socials || []).includes(x))
+      if (!next) return p
+      return { ...p, socials: [...(p.socials || []), next] }
+    }),
   }
 
   const renderScreen = () => {
@@ -110,11 +134,11 @@ export default function App() {
       case 'auth':
         return <AuthScreen gameId={gameId} setGameId={setGameId} onLogin={() => go('wizard')} onPreview={() => go('home')} supabase={supabase} session={session} onSignOut={() => supabase.auth.signOut()} />
       case 'wizard':
-        return <WizardScreen profile={profile} setProfile={setProfile} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} />
+        return <WizardScreen profile={profile} setProfile={setProfile} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
-        return <HomeScreen profile={profile} actions={actions} />
+        return <HomeScreen profile={profile} actions={actions} gameId={gameId} onEdit={() => go('wizard')} />
       case 'profile':
-        return <ProfileScreen profile={profile} onBack={() => go('home')} onEdit={() => go('wizard')} />
+        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} onBack={() => go('home')} onEdit={() => go('wizard')} />
       case 'draft':
         return <DraftScreen onReady={() => go('match')} onBack={() => go('home')} />
       case 'match':
@@ -173,7 +197,7 @@ export default function App() {
           <span className="app-main__badge">7 экранов</span>
         </div>
 
-        <PhoneFrame>{renderScreen()}</PhoneFrame>
+        <AppFrame>{renderScreen()}</AppFrame>
 
         <nav className="bottom-nav">
           {SCREENS.filter((s) => ['home', 'profile', 'draft', 'match', 'leaderboard'].includes(s.id)).map((s) => {
