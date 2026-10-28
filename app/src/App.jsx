@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import {
   Home, UserRound, Swords, Gamepad2, Trophy, Globe, ChevronLeft, Sparkles,
-  ClipboardList, LogIn,
+  ClipboardList, LogIn, ShieldCheck,
 } from 'lucide-react'
 import { AppFrame, Logo } from './ui.jsx'
 import { Landing } from './landing.jsx'
 import {
   AuthScreen, WizardScreen, HomeScreen, ProfileScreen, DraftScreen,
-  MatchScreen, LeaderboardScreen,
+  MatchScreen, LeaderboardScreen, AdminScreen,
 } from './screens.jsx'
 import { DEFAULT_PROFILE } from './data.js'
 import { supabase, profileToRow, rowToProfile } from './supabase.js'
@@ -20,6 +20,7 @@ const SCREENS = [
   { id: 'draft', label: "Captain's Draft", short: 'Драфт', icon: Swords },
   { id: 'match', label: 'Матч готов', short: 'Матч', icon: Gamepad2 },
   { id: 'leaderboard', label: 'Таблица лидеров', short: 'Рейтинг', icon: Trophy },
+  { id: 'admin', label: 'Админка', short: 'Админ', icon: ShieldCheck, admin: true },
 ]
 
 const STORAGE_KEY = 'name-mlbb-profile:v2'
@@ -33,6 +34,7 @@ export default function App() {
   const [sessionLoading, setSessionLoading] = useState(Boolean(supabase))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
   const [profile, setProfile] = useState(() => {
     try {
       localStorage.removeItem(LEGACY_STORAGE_KEY)
@@ -75,8 +77,11 @@ export default function App() {
           if (error) { setSaveError('Не удалось загрузить профиль: ' + error.message); setSessionLoading(true); return }
           setProfile(data ? rowToProfile(data, DEFAULT_PROFILE) : { ...DEFAULT_PROFILE })
           setGameId(data?.game_id || '')
+          const { data: adminRow } = await supabase.from('admins').select('user_id').eq('user_id', next.user.id).maybeSingle()
+          if (!active || current !== generation) return
+          setIsAdmin(!!adminRow)
         } else if (previousUserId) {
-          setProfile({ ...DEFAULT_PROFILE }); setGameId('')
+          setProfile({ ...DEFAULT_PROFILE }); setGameId(''); setIsAdmin(false)
         }
         setSaveError(''); setSessionLoading(false)
       }, 0)
@@ -136,7 +141,7 @@ export default function App() {
       case 'wizard':
         return <WizardScreen profile={profile} setProfile={setProfile} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
-        return <HomeScreen profile={profile} actions={actions} gameId={gameId} onEdit={() => go('wizard')} />
+        return <HomeScreen profile={profile} actions={actions} gameId={gameId} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} />
       case 'profile':
         return <ProfileScreen profile={profile} actions={actions} gameId={gameId} onBack={() => go('home')} onEdit={() => go('wizard')} />
       case 'draft':
@@ -145,6 +150,8 @@ export default function App() {
         return <MatchScreen onBack={() => go('draft')} onLeaderboard={() => go('leaderboard')} />
       case 'leaderboard':
         return <LeaderboardScreen />
+      case 'admin':
+        return <AdminScreen supabase={supabase} isAdmin={isAdmin} onBack={() => go('home')} />
       default:
         return null
     }
@@ -163,6 +170,7 @@ export default function App() {
   }
 
   const current = SCREENS.find((s) => s.id === screen)
+  const visibleScreens = SCREENS.filter((s) => !s.admin || isAdmin)
 
   return (
     <div className="app-shell">
@@ -171,7 +179,7 @@ export default function App() {
         <p className="rail__note"><Sparkles size={13} /> Интерактивный прототип по макету заказчика</p>
         <span className="rail__label">ЭКРАНЫ МАКЕТА</span>
         <nav className="rail__nav">
-          {SCREENS.map((s, i) => {
+          {visibleScreens.map((s, i) => {
             const Icon = s.icon
             return (
               <button key={s.id} type="button" className={screen === s.id ? 'is-active' : ''} onClick={() => go(s.id)}>
@@ -194,7 +202,7 @@ export default function App() {
             <strong>{current?.label}</strong>
             <small>NAME · прототип мобильного приложения</small>
           </div>
-          <span className="app-main__badge">7 экранов</span>
+          <span className="app-main__badge">{visibleScreens.length} экранов</span>
         </div>
 
         <AppFrame>{renderScreen()}</AppFrame>
@@ -208,6 +216,11 @@ export default function App() {
               </button>
             )
           })}
+          {isAdmin && (
+            <button key="admin" type="button" className={screen === 'admin' ? 'is-active' : ''} onClick={() => go('admin')}>
+              <ShieldCheck size={20} /><span>Админ</span>
+            </button>
+          )}
           <button type="button" onClick={() => setMode('landing')}><Globe size={20} /><span>Сайт</span></button>
         </nav>
 

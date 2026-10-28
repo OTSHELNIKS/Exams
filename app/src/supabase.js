@@ -10,6 +10,8 @@ export function profileToRow(profile, gameId, userId) {
     age: String(profile.age || ''), gender: profile.gender || '', rank: profile.rank || '',
     roles: profile.roles || [], regions: profile.regions || [], bio: profile.bio || '',
     heroes: profile.heroes || [], hero_classes: profile.heroClasses || [],
+    socials: (profile.socials || []).filter((x) => ['telegram', 'vk', 'google'].includes(x)).slice(0, 3),
+    extra_slots: Math.max(0, Math.min(3, profile.extraSlots || 0)),
     avatar_url: profile.avatarUrl || '',
     screenshot_urls: (profile.screenshots || []).filter((u) => typeof u === 'string' && u.startsWith('http')),
     updated_at: new Date().toISOString(),
@@ -18,7 +20,8 @@ export function profileToRow(profile, gameId, userId) {
 export function rowToProfile(row, defaults) {
   return { ...defaults, nick: row.nick, age: row.age, gender: row.gender, rank: row.rank,
     roles: row.roles, regions: row.regions, bio: row.bio, heroes: row.heroes,
-    heroClasses: row.hero_classes, avatarUrl: row.avatar_url || '', screenshots: row.screenshot_urls || [],
+    heroClasses: row.hero_classes, socials: row.socials || [], extraSlots: row.extra_slots || 0,
+    avatarUrl: row.avatar_url || '', screenshots: row.screenshot_urls || [],
     avatar: null }
 }
 

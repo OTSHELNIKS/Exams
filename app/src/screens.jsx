@@ -3,6 +3,7 @@ import {
   Gamepad2, Send, ChevronLeft, Camera, Settings, Clock3, Lock, Plus, Copy, Mic,
   MicOff, Headphones, LogOut, Crown, RotateCcw, Check, ShieldCheck, Zap, Bot,
   Trophy, Sparkles, ArrowRight, X, UserRound, Upload, Coins, Server, Image as ImageIcon,
+  RefreshCw, Search,
 } from 'lucide-react'
 import {
   Logo, BrandMark, Chip, Label, PrimaryButton, BackHeader, Avatar, VerificationCard,
@@ -426,7 +427,7 @@ export function SocialRow({ profile, onAddSocial }) {
   )
 }
 
-export function HomeScreen({ profile, actions, gameId, onEdit }) {
+export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -438,9 +439,14 @@ export function HomeScreen({ profile, actions, gameId, onEdit }) {
 
   return (
     <div className="screen home">
-      {gameId ? (
+      {(gameId || isAdmin) ? (
         <div className="home__header">
-          <span className="home__id">Game ID • {gameId}</span>
+          {gameId ? <span className="home__id">Game ID • {gameId}</span> : null}
+          {isAdmin ? (
+            <button type="button" className="home__admin" onClick={onAdmin}>
+              <CrownIcon /> ADMIN
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -798,6 +804,144 @@ export function LeaderboardScreen() {
         <Coins size={17} /> 1 место — 20 000 ₽ · 2 место — 15 000 ₽ · 3 место — 10 000 ₽
       </div>
       <AdBanner compact />
+    </div>
+  )
+}
+
+/* ================================================================ ADMIN ==== */
+function fmtDate(iso) {
+  try {
+    return new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  } catch { return '—' }
+}
+
+function AdminDetail({ row, onClose }) {
+  if (!row) return null
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="modal__card modal__card--tall" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal__close" onClick={onClose}><CloseIcon /></button>
+        <div className="modal__avatar">
+          {row.avatar_url
+            ? <img src={row.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+            : (row.nick?.[0] || '?').toUpperCase()}
+        </div>
+        <h3>{row.nick || 'Без ника'}</h3>
+        <p className="modal__role">Game ID • {row.game_id || '—'}</p>
+        <div className="admin-detail">
+          {[
+            ['Ранг', row.rank],
+            ['Роли', (row.roles || []).join(', ')],
+            ['Серверы', (row.regions || []).join(', ')],
+            ['Герои', (row.heroes || []).join(', ')],
+            ['Классы', (row.hero_classes || []).join(', ')],
+            ['Соцсети', (row.socials || []).join(', ')],
+            ['Возраст', row.age],
+            ['Пол', row.gender],
+            ['Обновлён', fmtDate(row.updated_at)],
+          ].map(([label, value]) => (
+            <div key={label} className="admin-detail__line"><span>{label}</span><b>{value || '—'}</b></div>
+          ))}
+          {row.bio ? <p className="admin-detail__bio">{row.bio}</p> : null}
+          {(row.screenshot_urls || []).length > 0 && (
+            <div className="shots-grid">
+              {(row.screenshot_urls || []).map((src, i) => (
+                <div key={i} className="shot-thumb"><img src={src} alt={`Скриншот ${i + 1}`} /></div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function AdminScreen({ supabase, isAdmin, onBack }) {
+  const [rows, setRows] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+  const [selected, setSelected] = useState(null)
+
+  const load = async () => {
+    if (!supabase || !isAdmin) return
+    setLoading(true); setError('')
+    const { data, error } = await supabase.from('player_profiles').select('*').order('updated_at', { ascending: false }).limit(100)
+    setLoading(false)
+    if (error) { setError('Не удалось загрузить: ' + error.message); return }
+    setRows(data || [])
+  }
+
+  useEffect(() => {
+    if (isAdmin && rows === null && !loading) load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin])
+
+  if (!supabase || !isAdmin) {
+    return (
+      <div className="screen admin">
+        <BackHeader title="Админка" onBack={onBack} />
+        <div className="empty-block">
+          <p>{!supabase ? 'Нет подключения к серверу.' : 'Нет доступа. Этот раздел только для администраторов.'}</p>
+          <button type="button" className="btn btn--ghost" onClick={onBack}>На главную</button>
+        </div>
+      </div>
+    )
+  }
+
+  const q = query.trim().toLowerCase()
+  const filtered = (rows || []).filter((r) =>
+    !q || (r.nick || '').toLowerCase().includes(q) || (r.game_id || '').toLowerCase().includes(q))
+  const withNick = (rows || []).filter((r) => r.nick).length
+  const withShots = (rows || []).filter((r) => (r.screenshot_urls || []).length > 0).length
+  const withAvatar = (rows || []).filter((r) => r.avatar_url).length
+
+  return (
+    <div className="screen admin">
+      <BackHeader
+        title="Админка"
+        onBack={onBack}
+        right={<button type="button" className="icon-btn" onClick={load} title="Обновить"><RefreshCw size={18} /></button>}
+      />
+      <p className="screen-subtitle">Все пользователи и их контент</p>
+
+      <div className="admin-stats">
+        <div className="admin-stat"><b>{rows ? rows.length : '…'}</b><span>Всего</span></div>
+        <div className="admin-stat"><b>{rows ? withNick : '…'}</b><span>С ником</span></div>
+        <div className="admin-stat"><b>{rows ? withAvatar : '…'}</b><span>С фото</span></div>
+        <div className="admin-stat"><b>{rows ? withShots : '…'}</b><span>Со скриншотами</span></div>
+      </div>
+
+      <div className="admin-search">
+        <Search size={17} />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск по нику или Game ID" />
+      </div>
+
+      {loading && <p className="field-hint">Загрузка…</p>}
+      {error && <p role="alert" className="field-hint">{error}</p>}
+      {rows && rows.length === 0 && !loading && (
+        <div className="empty-block"><p>Пользователей пока нет. Как только кто-то заполнит анкету — появится здесь.</p></div>
+      )}
+      {rows && rows.length > 0 && filtered.length === 0 && (
+        <div className="empty-block"><p>Ничего не найдено.</p></div>
+      )}
+
+      <div className="admin-list">
+        {filtered.map((r) => (
+          <button key={r.user_id} type="button" className="admin-row" onClick={() => setSelected(r)}>
+            <span className="admin-row__avatar">
+              {r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}
+            </span>
+            <span className="admin-row__info">
+              <strong>{r.nick || 'Без ника'}</strong>
+              <small>{r.game_id ? `Game ID • ${r.game_id}` : 'Game ID не привязан'}{r.rank ? ` · ${r.rank}` : ''}</small>
+            </span>
+            <span className="admin-row__meta">{fmtDate(r.updated_at)}</span>
+          </button>
+        ))}
+      </div>
+
+      {selected && <AdminDetail row={selected} onClose={() => setSelected(null)} />}
     </div>
   )
 }
