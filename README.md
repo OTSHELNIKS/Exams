@@ -194,6 +194,11 @@ https://name-mlbb.netlify.app
 `https://YOUR_REF.supabase.co/functions/v1/telegram-bot?setup=SETUP_SECRET`
 — это пропишет webhook и команды бота.
 
+## Тестирование
+
+Автотесты логики бота (21 кейс, без сети): `node tests/bot.test.mjs`.
+Полный чек-лист, кейсы по базе/фронту и ручные сценарии — в `tests/TESTING.md`.
+
 ## Дальше (roadmap)
 
 - [ ] Публичные профили: чтение чужих анкет и скриншотов по нику/Game ID.
