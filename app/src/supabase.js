@@ -76,3 +76,47 @@ export async function deleteScreenshot(publicUrl, userId) {
     await supabase.storage.from('screenshots').remove([path])
   } catch { /* noop: URL row update is the source of truth */ }
 }
+
+export const TELEGRAM_BOT_USERNAME = 'name_mlbb_bot'
+const LINK_CODE_TTL_MS = 10 * 60 * 1000
+
+export function functionsUrl(path) {
+  return `${url}/functions/v1/${path}`
+}
+
+/** Issue a fresh 6-digit Telegram link code (valid 10 minutes). */
+export async function createTelegramLinkCode(userId) {
+  const code = String(Math.floor(100000 + Math.random() * 900000))
+  await supabase.from('telegram_link_codes').delete().eq('user_id', userId)
+  const { error } = await supabase.from('telegram_link_codes').insert({
+    code, user_id: userId,
+    expires_at: new Date(Date.now() + LINK_CODE_TTL_MS).toISOString(),
+  })
+  if (error) throw error
+  return code
+}
+
+export async function getTelegramLink(userId) {
+  const { data, error } = await supabase.from('telegram_links').select('*').eq('user_id', userId).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function deleteTelegramLink(userId) {
+  const { error } = await supabase.from('telegram_links').delete().eq('user_id', userId)
+  if (error) throw error
+}
+
+/** Ask the bot to DM the lobby ID to the current user's linked Telegram. */
+export async function notifyLobbyToTelegram(lobbyId) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('no_session')
+  const r = await fetch(functionsUrl('telegram-bot?action=notify'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+    body: JSON.stringify({ kind: 'lobby', lobbyId }),
+  })
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok || j.ok === false) throw new Error(j.error || 'notify_failed')
+  return true
+}

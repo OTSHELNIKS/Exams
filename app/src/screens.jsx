@@ -13,7 +13,11 @@ import {
   RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, CAPTAINS, DRAFT_POOL, DRAFT_FILTERS,
   MATCH_TEAM, LEADERBOARDS,
 } from './data.js'
-import { uploadAvatar, uploadScreenshot, deleteScreenshot, validateImage } from './supabase.js'
+import {
+  uploadAvatar, uploadScreenshot, deleteScreenshot, validateImage,
+  TELEGRAM_BOT_USERNAME, createTelegramLinkCode, getTelegramLink,
+  deleteTelegramLink, notifyLobbyToTelegram,
+} from './supabase.js'
 
 /* ================================================================ AUTH ==== */
 export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, session, onSignOut }) {
@@ -483,8 +487,116 @@ export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin 
   )
 }
 
+/* ------------------------------------------------------- telegram link */
+const TG_POLL_MS = 4000
+
+function TelegramLinkCard({ supabase, userId }) {
+  const [link, setLink] = useState(undefined) // undefined=loading, null=none, obj=linked
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [toast, setToast] = useState('')
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(''), 2600)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  const refresh = async () => {
+    if (!supabase || !userId) return
+    try {
+      setLink(await getTelegramLink(userId))
+    } catch { setLink(null) }
+  }
+
+  useEffect(() => {
+    setLink(undefined); setCode('')
+    refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
+
+  useEffect(() => {
+    if (!code || link) return
+    const t = setInterval(async () => {
+      try {
+        const row = await getTelegramLink(userId)
+        if (row) { setLink(row); setCode(''); setToast('Telegram привязан!') }
+      } catch { /* noop */ }
+    }, TG_POLL_MS)
+    return () => clearInterval(t)
+  }, [code, link, userId, supabase])
+
+  if (!supabase || !userId) {
+    return (
+      <div className="tg-card">
+        <div className="section-head"><span>TELEGRAM-БОТ</span></div>
+        <p className="social-hint">Войди по почте, чтобы привязать Telegram и получать ID лобби.</p>
+      </div>
+    )
+  }
+
+  const makeCode = async () => {
+    setBusy(true)
+    try {
+      setCode(await createTelegramLinkCode(userId))
+    } catch (e) {
+      setToast('Не получилось: ' + (e.message || 'ошибка'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const unlink = async () => {
+    setBusy(true)
+    try {
+      await deleteTelegramLink(userId)
+      setLink(null); setCode('')
+      setToast('Telegram отвязан')
+    } catch (e) {
+      setToast('Не получилось: ' + (e.message || 'ошибка'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="tg-card">
+      <div className="section-head"><span>TELEGRAM-БОТ</span><b>{link ? 'привязан' : 'не привязан'}</b></div>
+      {link === undefined && <p className="social-hint">Проверяем привязку…</p>}
+      {link && (
+        <div className="tg-row">
+          <div className="tg-status">
+            <BrandMark type="telegram" />
+            <div><strong>@{link.tg_username || '—'}</strong><small>Уведомления включены</small></div>
+          </div>
+          <button type="button" className="btn btn--small" disabled={busy} onClick={unlink}>Отвязать</button>
+        </div>
+      )}
+      {link === null && !code && (
+        <>
+          <p className="social-hint">Бот пришлёт ID лобби и уведомления о матчах.</p>
+          <button type="button" className="btn btn--ghost" disabled={busy} onClick={makeCode}>
+            <Send size={16} /> Привязать Telegram
+          </button>
+        </>
+      )}
+      {link === null && code && (
+        <>
+          <p className="social-hint">Отправь этот код боту — действителен 10 минут:</p>
+          <div className="tg-code">{code.split('').join(' ')}</div>
+          <a className="btn btn--primary btn--glow tg-open" href={`https://t.me/${TELEGRAM_BOT_USERNAME}?start=${code}`} target="_blank" rel="noreferrer">
+            <Send size={16} /> Открыть бота
+          </a>
+          <button type="button" className="link-btn" onClick={refresh}>Я уже отправил — обновить</button>
+        </>
+      )}
+      {toast && <div className="toast toast--fixed">{toast}</div>}
+    </div>
+  )
+}
+
 /* ============================================================= PROFILE ==== */
-export function ProfileScreen({ profile, actions, gameId, onBack, onEdit }) {
+export function ProfileScreen({ profile, actions, gameId, onBack, onEdit, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -517,6 +629,7 @@ export function ProfileScreen({ profile, actions, gameId, onBack, onEdit }) {
       {profile.nick ? <VerificationCard /> : null}
       <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот куплен за 150 ₽ (демо)'); }} onEdit={onEdit} />
       <SocialRow profile={profile} onAddSocial={actions.addSocial} />
+      <TelegramLinkCard supabase={supabase} userId={userId} />
       {toast && <div className="toast toast--fixed">{toast}</div>}
       <button type="button" className="btn btn--ghost profile__back" onClick={onBack}>На главную</button>
     </div>
@@ -686,12 +799,35 @@ export function DraftScreen({ onReady, onBack }) {
 }
 
 /* =============================================================== MATCH ==== */
-export function MatchScreen({ onBack, onLeaderboard }) {
+export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase }) {
   const [copied, setCopied] = useState(false)
   const [micOn, setMicOn] = useState(true)
   const [muted, setMuted] = useState({})
   const [speaking, setSpeaking] = useState(['G', 'H'])
+  const [sending, setSending] = useState(false)
+  const [needLink, setNeedLink] = useState(false)
+  const [toast, setToast] = useState('')
   const lobbyId = '8435943'
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(''), 2600)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  const sendToTg = async () => {
+    setSending(true); setNeedLink(false)
+    try {
+      await notifyLobbyToTelegram(lobbyId)
+      setToast('ID лобби отправлен в Telegram')
+    } catch (e) {
+      if (e.message === 'no_session') setToast('Войди по почте, чтобы отправлять в Telegram')
+      else if (e.message === 'not_linked') { setNeedLink(true); setToast('Сначала привяжи Telegram в профиле') }
+      else setToast('Не получилось отправить')
+    } finally {
+      setSending(false)
+    }
+  }
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -720,6 +856,15 @@ export function MatchScreen({ onBack, onLeaderboard }) {
           {copied ? 'Скопировано!' : 'Скопировать'}
         </button>
       </div>
+
+      {supabase && (
+        <button type="button" className="btn btn--ghost" disabled={sending} onClick={sendToTg}>
+          <Send size={16} /> {sending ? 'Отправка…' : 'ID лобби в Telegram'}
+        </button>
+      )}
+      {needLink && (
+        <button type="button" className="link-btn" onClick={onProfile}>Привязать Telegram в профиле <ArrowRight size={15} /></button>
+      )}
 
       <div className="voice-card">
         <div className="voice-card__head">
@@ -754,6 +899,7 @@ export function MatchScreen({ onBack, onLeaderboard }) {
       </div>
       <p className="match__hint">Бот сам посчитает статистику и начислит PTS.</p>
       <button type="button" className="link-btn" onClick={onLeaderboard}>Смотреть таблицу лидеров <ArrowRight size={15} /></button>
+      {toast && <div className="toast toast--fixed">{toast}</div>}
     </div>
   )
 }

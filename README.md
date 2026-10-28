@@ -141,6 +141,29 @@ on conflict do nothing;
 
 После этого перезайдите в приложение — появится доступ в админку.
 
+## Telegram-бот
+
+Бот `@name_mlbb_bot` — webhook на Edge Function `telegram-bot` (код в
+[`supabase/functions/telegram-bot/`](./supabase/functions/telegram-bot/)).
+Умеет: привязку аккаунта по 6-значному коду из профиля, команды `/profile`,
+`/rating`, `/unlink`, `/help` и отправку ID лобби в личку из экрана матча.
+
+Привязка: Профиль → «Привязать Telegram» → код → кнопка «Открыть бота»
+(или вручную `t.me/name_mlbb_bot?start=КОД`). Приложение само заметит
+привязку. Отвязка — там же или командой `/unlink` в боте.
+
+Безопасность: токен бота и секреты живут только в server-side secrets
+Supabase (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`,
+`TELEGRAM_SETUP_SECRET`, `APP_PUBLIC_URL`) — в репозитории и фронте их нет.
+Telegram-запросы проверяются по секретному заголовку webhook, вызовы
+уведомлений из приложения — по JWT пользователя и только себе.
+Колонка `pts` закрыта от записи клиентским кодом (REVOKE).
+
+Развёртывание с нуля: примените миграции, задеплойте функцию с
+`verify_jwt=false`, задайте 4 секрета и один раз откройте в браузере
+`https://YOUR_REF.supabase.co/functions/v1/telegram-bot?setup=SETUP_SECRET`
+— это пропишет webhook и команды бота.
+
 ## Дальше (roadmap)
 
 - [ ] Публичные профили: чтение чужих анкет и скриншотов по нику/Game ID.
@@ -149,3 +172,4 @@ on conflict do nothing;
 - [ ] Realtime-лобби драфта: общий пул и ходы капитанов через Supabase Realtime.
 - [ ] OAuth-вход (Telegram / VK / Google) вместо демо-кнопок.
 - [ ] Модерация в админке: блокировка пользователей, снятие скриншотов.
+- [ ] Бот v2: приём скриншотов на проверку, уведомления о драфте и PTS, админ-алерты.

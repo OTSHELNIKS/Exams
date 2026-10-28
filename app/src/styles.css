@@ -685,3 +685,13 @@ a { color: inherit; }
 .admin-detail__line b { font-weight: 600; text-align: right; overflow-wrap: anywhere; min-width: 0; }
 .admin-detail__bio { color: var(--muted); line-height: 1.6; margin: 2px 0 0; }
 .admin-detail .shots-grid { margin: 4px 0 0; }
+
+/* ------------------------------------------------------------ telegram */
+.tg-card { margin: 20px 0 8px; display: flex; flex-direction: column; gap: 10px; }
+.tg-card > .btn { width: 100%; }
+.tg-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; }
+.tg-status { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tg-status strong { display: block; font-size: 14px; }
+.tg-status small { color: var(--dim); font-size: 11px; }
+.tg-code { font-family: var(--display); font-size: 30px; font-weight: 900; letter-spacing: 2px; text-align: center; background: var(--surface); border: 1px dashed rgba(255,75,18,.45); border-radius: 16px; padding: 14px; }
+.tg-open { text-decoration: none; }

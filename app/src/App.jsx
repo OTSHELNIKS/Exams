@@ -143,11 +143,11 @@ export default function App() {
       case 'home':
         return <HomeScreen profile={profile} actions={actions} gameId={gameId} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} />
       case 'profile':
-        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} onBack={() => go('home')} onEdit={() => go('wizard')} />
+        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
         return <DraftScreen onReady={() => go('match')} onBack={() => go('home')} />
       case 'match':
-        return <MatchScreen onBack={() => go('draft')} onLeaderboard={() => go('leaderboard')} />
+        return <MatchScreen onBack={() => go('draft')} onLeaderboard={() => go('leaderboard')} onProfile={() => go('profile')} supabase={supabase} />
       case 'leaderboard':
         return <LeaderboardScreen />
       case 'admin':
