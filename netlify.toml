@@ -10,6 +10,9 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # Vite embeds these public Supabase client settings in browser assets.
+  # Never add service_role, secret keys, or other server credentials here.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_PUBLISHABLE_KEY"
 
 # SPA: все пути отдавать через index.html
 [[redirects]]
