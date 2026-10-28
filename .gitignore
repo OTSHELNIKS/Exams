@@ -20,3 +20,4 @@ app/.vite/
 .env
 .env.*
 !.env.example
+app/dist-singlefile/

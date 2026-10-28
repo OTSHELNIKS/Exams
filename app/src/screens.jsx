@@ -12,6 +12,10 @@ import {
   RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, CAPTAINS, DRAFT_POOL, DRAFT_FILTERS,
   MATCH_TEAM, LEADERBOARDS,
 } from './data.js'
+import { uploadAvatar, uploadScreenshot, deleteScreenshot, validateImage } from './supabase.js'
+import avatarImg from './assets/avatar.png'
+import heroArtImg from './assets/hero-art.jpg'
+import scoreboardImg from './assets/scoreboard.jpg'
 
 /* ================================================================ AUTH ==== */
 export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, session, onSignOut }) {
@@ -349,15 +353,20 @@ export function AdBanner({ compact }) {
 }
 
 export function StatsGrid({ profile, onAddSlot }) {
-  const tiles = [
-    { key: 'win', img: '/assets/scoreboard.jpg', caption: 'Винрейт 68%' },
+  const demoTiles = [
+    { key: 'win', img: scoreboardImg, caption: 'Винрейт 68%' },
     { key: 'kda', caption: 'KDA 6.4' },
-    { key: 'mvp', img: '/assets/hero-art.jpg', caption: 'MVP 142' },
+    { key: 'mvp', img: heroArtImg, caption: 'MVP 142' },
     { key: 'rank', caption: profile.rank || 'Mythical Glory' },
   ]
+  const real = (profile.screenshots || []).slice(0, 4)
+  const tiles = real.length
+    ? [...real.map((src, i) => ({ key: `shot-${i}`, img: src, caption: `Скриншот ${i + 1}` })),
+       ...demoTiles.slice(real.length)]
+    : demoTiles
   return (
     <>
-      <div className="section-head"><span>СКРИНШОТЫ СТАТИСТИКИ</span><b>4/4</b></div>
+      <div className="section-head"><span>СКРИНШОТЫ СТАТИСТИКИ</span><b>{real.length ? `${real.length}/4 твои` : '4/4'}</b></div>
       <div className="stats-grid">
         {tiles.map((t) => (
           <div key={t.key} className={`stat-tile ${t.img ? 'stat-tile--img' : ''}`}>
@@ -409,7 +418,7 @@ export function HomeScreen({ profile, actions }) {
       </div>
 
       <div className="home__hero">
-        <Avatar src={profile.avatarUrl || profile.avatar || '/assets/avatar.png'} initials={profile.nick?.[0] || 'H'} size={104} />
+        <Avatar src={profile.avatarUrl || profile.avatar || avatarImg} initials={profile.nick?.[0] || 'H'} size={104} />
         <h1>{profile.nick || 'Haze'}</h1>
         <div className="home__badges">
           <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>
@@ -447,7 +456,7 @@ export function ProfileScreen({ profile, onBack, onEdit }) {
       </div>
 
       <div className="profile__center">
-        <Avatar src={profile.avatarUrl || profile.avatar || '/assets/avatar.png'} initials={profile.nick?.[0] || 'H'} size={128} />
+        <Avatar src={profile.avatarUrl || profile.avatar || avatarImg} initials={profile.nick?.[0] || 'H'} size={128} />
         <h1>{profile.nick || 'Haze'}</h1>
         <div className="home__badges">
           <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>

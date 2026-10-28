@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:singlefile": "vite build --config vite.singlefile.config.js"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.5",
@@ -18,6 +19,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "vite-plugin-singlefile": "^2.3.4"
   }
 }
