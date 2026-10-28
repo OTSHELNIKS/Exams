@@ -1,0 +1,18 @@
+# NAME MLBB — деплой на Netlify напрямую из GitHub (автообновление при пуше).
+# Подключение: Netlify -> Add new site -> Import an existing project -> GitHub ->
+# выбрать репозиторий (настройки подхватятся из этого файла автоматически).
+# Затем Site settings -> Environment variables добавить:
+#   VITE_SUPABASE_URL
+#   VITE_SUPABASE_PUBLISHABLE_KEY   (только publishable ключ, НЕ service_role!)
+[build]
+  command = "npm --prefix app ci && npm --prefix app run build"
+  publish = "app/dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# SPA: все пути отдавать через index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
