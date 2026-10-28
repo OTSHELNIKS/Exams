@@ -1,5 +1,15 @@
 # NAME — интерактивный прототип по видео-макету заказчика
 
+**Публичное демо (полностью рабочее, с бэкендом Supabase):**
+https://raw.githack.com/OTSHELNIKS/Exams/e9085d72ed4f36bab7dddb94a100fb40f9ba78c6/demo/index.html
+— однофайловая сборка из [`demo/index.html`](./demo/index.html) (артефакт сборки,
+обновляется вручную). После регистрации по почте подтвердите email по письму
+и вернитесь по ссылке, чтобы войти.
+Для постоянного адреса включите GitHub Pages: инструкция в
+[`.github/workflows/deploy-pages.yml`](./.github/workflows/deploy-pages.yml)
+(Settings → Pages → Source: GitHub Actions + 2 секрета), дальше каждый пуш
+будет сам публиковать демо на `https://otshelniks.github.io/Exams/`.
+
 Реализация проекта по презентации заказчика:
 [папка с видео на Google Диске](https://drive.google.com/drive/folders/1NkWbVfC0ya0yPKKve7BPyAK1mQ0dG8x1)
 (`VID_20261027_190901_779.mp4`, 7 минут).
