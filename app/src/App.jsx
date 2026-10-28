@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   Home, UserRound, Swords, Gamepad2, Trophy, Globe, ChevronLeft, Sparkles,
   ClipboardList, LogIn, ShieldCheck,
@@ -74,7 +74,7 @@ export default function App() {
         if (next) {
           const { data, error } = await supabase.from('player_profiles').select('*').eq('user_id', next.user.id).maybeSingle()
           if (!active || current !== generation) return
-          if (error) { setSaveError('Не удалось загрузить профиль: ' + error.message); setSessionLoading(true); return }
+          if (error) { setSaveError('Не удалось загрузить профиль: ' + error.message); setSessionLoading(false); return }
           setProfile(data ? rowToProfile(data, DEFAULT_PROFILE) : { ...DEFAULT_PROFILE })
           setGameId(data?.game_id || '')
           const { data: adminRow } = await supabase.from('admins').select('user_id').eq('user_id', next.user.id).maybeSingle()
@@ -95,6 +95,18 @@ export default function App() {
 
   const go = (id) => setScreen(id)
   const openApp = (id = 'auth') => { setScreen(id); setMode('app') }
+
+  const profileFilled = Boolean(profile.nick && profile.nick.trim())
+  const autoEntered = useRef(false)
+
+  // Return visits: skip landing once per load — home for filled profiles, wizard for new ones.
+  useEffect(() => {
+    if (!supabase || sessionLoading || !session || autoEntered.current) return
+    if (mode !== 'landing') return
+    autoEntered.current = true
+    openApp(profileFilled ? 'home' : 'wizard')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, sessionLoading, session, mode, profileFilled])
 
   const saveProfile = async () => {
     if (sessionLoading || saving) return
@@ -137,7 +149,7 @@ export default function App() {
   const renderScreen = () => {
     switch (screen) {
       case 'auth':
-        return <AuthScreen gameId={gameId} setGameId={setGameId} onLogin={() => go('wizard')} onPreview={() => go('home')} supabase={supabase} session={session} onSignOut={() => supabase.auth.signOut()} />
+        return <AuthScreen gameId={gameId} setGameId={setGameId} onLogin={() => go(profileFilled ? 'home' : 'wizard')} onPreview={() => go('home')} supabase={supabase} session={session} authReady={!sessionLoading} onSignOut={() => supabase.auth.signOut()} />
       case 'wizard':
         return <WizardScreen profile={profile} setProfile={setProfile} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
@@ -161,7 +173,7 @@ export default function App() {
     return (
       <Landing
         onOpen={() => openApp('auth')}
-        onLogin={() => openApp('wizard')}
+        onLogin={() => openApp(profileFilled ? 'home' : 'wizard')}
         onOpenScreen={() => openApp('home')}
         gameId={gameId}
         setGameId={setGameId}
@@ -176,8 +188,8 @@ export default function App() {
     <div className="app-shell">
       <aside className="rail">
         <Logo />
-        <p className="rail__note"><Sparkles size={13} /> Интерактивный прототип по макету заказчика</p>
-        <span className="rail__label">ЭКРАНЫ МАКЕТА</span>
+        <p className="rail__note"><Sparkles size={13} /> Соревновательный матчмейкинг MLBB</p>
+        <span className="rail__label">РАЗДЕЛЫ</span>
         <nav className="rail__nav">
           {visibleScreens.map((s, i) => {
             const Icon = s.icon
@@ -200,7 +212,7 @@ export default function App() {
           <button type="button" className="icon-btn" onClick={() => setMode('landing')}><ChevronLeft size={20} /></button>
           <div>
             <strong>{current?.label}</strong>
-            <small>NAME · прототип мобильного приложения</small>
+            <small>NAME · мобильное приложение</small>
           </div>
           <span className="app-main__badge">{visibleScreens.length} экранов</span>
         </div>

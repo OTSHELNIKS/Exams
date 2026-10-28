@@ -63,7 +63,7 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId }) {
             <AuthScreen gameId={gameId} setGameId={setGameId} onLogin={onLogin || onOpen} />
           </AppFrame>
           <button type="button" className="hero-site__hint" onClick={onOpenScreen}>
-            <ChevronRight size={15} /> Все 7 экранов макета — в интерактивном режиме
+            <ChevronRight size={15} /> Все 7 экранов приложения — в интерактивном режиме
           </button>
         </div>
       </section>

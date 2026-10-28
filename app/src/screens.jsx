@@ -20,7 +20,7 @@ import {
 } from './supabase.js'
 
 /* ================================================================ AUTH ==== */
-export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, session, onSignOut }) {
+export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, session, onSignOut, authReady }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -67,7 +67,7 @@ export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, se
       {supabase && (session ? (
         <div className="account-box">
           <p>Вы вошли: {session.user.email}</p>
-          <button type="button" className="social social--primary" onClick={onLogin}>Открыть профиль</button>
+          <button type="button" className="social social--primary" disabled={authReady === false} onClick={onLogin}>{authReady === false ? 'Загрузка профиля…' : 'Открыть профиль'}</button>
           <button type="button" className="social" onClick={onSignOut}>Выйти из аккаунта</button>
         </div>
       ) : (
