@@ -31,8 +31,9 @@ export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, se
     }
     setBusy(true); setAuthError(''); setNotice('')
     try {
+      const redirectTo = window.location.protocol.startsWith('http') ? window.location.origin : undefined
       const result = register
-        ? await supabase.auth.signUp({ email, password })
+        ? await supabase.auth.signUp({ email, password, options: redirectTo ? { emailRedirectTo: redirectTo } : {} })
         : await supabase.auth.signInWithPassword({ email, password })
       if (result.error) throw result.error
       if (register && !result.data.session) setNotice('Проверьте почту и подтвердите регистрацию, затем войдите.')
