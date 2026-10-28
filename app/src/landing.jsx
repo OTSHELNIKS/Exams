@@ -23,13 +23,13 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId }) {
           <button type="button" onClick={() => scroll('ads')}>Партнёрам</button>
         </nav>
         <button type="button" className="site-head__cta" onClick={onOpen}>
-          Открыть демо <ArrowRight size={16} />
+          Открыть приложение <ArrowRight size={16} />
         </button>
       </header>
 
       <section className="hero-site">
         <div className="hero-site__copy">
-          <span className="eyebrow"><Sparkles size={14} /> Демо-прототип по макету заказчика</span>
+          <span className="eyebrow"><Sparkles size={14} /> Платформа открыта для игроков</span>
           <h1>
             <span>Играй.</span>
             <span>Побеждай.</span>
@@ -129,14 +129,14 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId }) {
             </p>
           </div>
           <button type="button" className="btn btn--outline" onClick={onOpenScreen}>
-            Увидеть баннер в демо <ArrowRight size={17} />
+            Увидеть баннер в приложении <ArrowRight size={17} />
           </button>
         </div>
       </section>
 
       <footer className="site-foot">
         <Logo />
-        <p>NAME · Соревновательный матчмейкинг MLBB.<br />Интерактивный прототип, реализованный по видео-макету заказчика.</p>
+        <p>NAME · Соревновательный матчмейкинг MLBB.</p>
         <button type="button" className="site-head__cta" onClick={onOpen}><Download size={16} /> Открыть приложение</button>
       </footer>
     </div>

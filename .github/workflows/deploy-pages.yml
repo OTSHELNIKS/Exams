@@ -1,11 +1,11 @@
-# Публичное демо NAME на GitHub Pages (https://otshelniks.github.io/Exams/).
+# Публикация NAME на GitHub Pages (https://otshelniks.github.io/Exams/).
 # Одноразовая настройка (вручную, нужны права админа репозитория):
 #   1. Settings -> Pages -> Source: "GitHub Actions".
 #   2. Settings -> Secrets and variables -> Actions -> New repository secret:
 #      - SUPABASE_URL (например https://xxxx.supabase.co)
-#      - SUPABASE_PUBLISHABLE_KEY (только публичный ключ, НЕ service_role/secret!)
-# Дальше каждый пуш в эту ветку сам пересобирает и публикует демо.
-name: Deploy demo to GitHub Pages
+#      - SUPABASE_PUBLISHABLE_KEY (только publishable ключ, НЕ service_role/secret!)
+# Дальше каждый пуш в эту ветку сам пересобирает и публикует сайт.
+name: Deploy to GitHub Pages
 
 on:
   workflow_dispatch:
@@ -44,7 +44,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-      - name: Build single-file demo
+      - name: Build single-file app
         run: npm run build:singlefile
         working-directory: app
       - uses: actions/upload-pages-artifact@v3

@@ -37,10 +37,6 @@ export function AppFrame({ children, className = '' }) {
   )
 }
 
-export function DemoTag({ text = 'демо-данные' }) {
-  return <span className="demo-tag">{text}</span>
-}
-
 /* ----------------------------------------------------------------- pieces */
 export function Chip({ active, children, onClick, className = '' }) {
   return (

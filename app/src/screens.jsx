@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import {
   Logo, BrandMark, Chip, Label, PrimaryButton, BackHeader, Avatar, VerificationCard,
-  StatBadge, Steps, GameIdIcon, CrownIcon, SuccessCheck, CloseIcon, DemoTag,
+  StatBadge, Steps, GameIdIcon, CrownIcon, SuccessCheck, CloseIcon,
 } from './ui.jsx'
 import {
   RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, CAPTAINS, DRAFT_POOL, DRAFT_FILTERS,
@@ -40,10 +40,6 @@ export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, se
     finally { setBusy(false) }
   }
   const [notice, setNotice] = useState('')
-  const login = (provider) => {
-    setNotice(`Вход через ${provider}…`)
-    setTimeout(() => onLogin(provider), 380)
-  }
   return (
     <div className="screen auth">
       <div className="auth__logo"><Logo size="lg" /></div>
@@ -83,19 +79,13 @@ export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, se
           {authError && <p role="alert">{authError}</p>}
         </form>
       ))}
-      <p className="field-hint">Социальные кнопки ниже — демонстрация, не реальный вход.</p>
-      <button type="button" className="social social--primary" onClick={() => login('Telegram')}>
-        <BrandMark type="telegram" /><span>Войти через Telegram</span>
-      </button>
-      <button type="button" className="social" onClick={() => login('VK')}>
-        <BrandMark type="vk" /><span>Войти через VK</span>
-      </button>
-      <button type="button" className="social" onClick={() => login('Google')}>
-        <BrandMark type="google" /><span>Войти через Google</span>
-      </button>
-      <button type="button" className="social" onClick={() => login('Facebook')}>
-        <BrandMark type="facebook" /><span>Войти через Facebook</span>
-      </button>
+      <div className="tg-auth">
+        <Label>TELEGRAM-БОТ</Label>
+        <p className="social-hint">Войди по почте, затем привяжи Telegram в Профиле — бот пришлёт ID лобби и уведомления о матчах.</p>
+        <a className="social social--primary tg-auth__link" href={`https://t.me/${TELEGRAM_BOT_USERNAME}`} target="_blank" rel="noreferrer">
+          <BrandMark type="telegram" /><span>Открыть @{TELEGRAM_BOT_USERNAME}</span>
+        </a>
+      </div>
 
       {notice && <div className="toast">{notice}</div>}
 
@@ -412,16 +402,16 @@ export function SocialRow({ profile, onAddSocial }) {
     <div className="social-block">
       <div className="section-head"><span>СОЦСЕТИ</span><b>{bound.length}/3</b></div>
       {bound.length === 0 && (
-        <p className="social-hint">Ничего не привязано. Нажми +, чтобы добавить (демо: 30 ₽).</p>
+        <p className="social-hint">Ничего не привязано. Нажми +, чтобы добавить.</p>
       )}
       <div className="social-row">
         {bound.map((x) => (
-          <button key={x} type="button" className="social-circle" title={SOCIAL_NAMES[x]} onClick={() => setToast(`Демо: ${SOCIAL_NAMES[x]} привязана`)}>
+          <button key={x} type="button" className="social-circle" title={SOCIAL_NAMES[x]} onClick={() => setToast(`${SOCIAL_NAMES[x]} привязана`)}>
             <BrandMark type={x} />
           </button>
         ))}
         {bound.length < SOCIAL_ORDER.length && (
-          <button type="button" className="social-circle social-circle--add" onClick={() => { onAddSocial(); setToast('Соцсеть привязана — 30 ₽ (демо)'); }} title="Привязать соцсеть — 30 ₽">
+          <button type="button" className="social-circle social-circle--add" onClick={() => { onAddSocial(); setToast('Соцсеть привязана'); }} title="Привязать соцсеть">
             <Plus size={18} />
           </button>
         )}
@@ -468,7 +458,7 @@ export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin 
 
       {profile.nick ? <VerificationCard /> : null}
 
-      <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот куплен за 150 ₽ (демо)'); }} onEdit={onEdit} />
+      <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот добавлен'); }} onEdit={onEdit} />
 
       <AdBanner compact />
 
@@ -627,7 +617,7 @@ export function ProfileScreen({ profile, actions, gameId, onBack, onEdit, supaba
       </div>
 
       {profile.nick ? <VerificationCard /> : null}
-      <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот куплен за 150 ₽ (демо)'); }} onEdit={onEdit} />
+      <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот добавлен'); }} onEdit={onEdit} />
       <SocialRow profile={profile} onAddSocial={actions.addSocial} />
       <TelegramLinkCard supabase={supabase} userId={userId} />
       {toast && <div className="toast toast--fixed">{toast}</div>}
@@ -742,7 +732,7 @@ export function DraftScreen({ onReady, onBack }) {
       <div className="draft__head">
         <div>
           <h1>CAPTAIN'S DRAFT</h1>
-          <p>Формат 5v5 • Выбор игроков в ростер <DemoTag /></p>
+          <p>Формат 5v5 • Выбор игроков в ростер</p>
         </div>
         <div className="draft__timer"><Clock3 size={16} /> 00:{String(timer).padStart(2, '0')}</div>
         <button type="button" className="icon-btn" onClick={reset} title="Сбросить драфт"><RotateCcw size={18} /></button>
@@ -844,7 +834,7 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase }) {
 
   return (
     <div className="screen match">
-      <div className="match__badges"><span className="match__badge"><i /> Матч найден</span> <DemoTag text="демо-симуляция" /></div>
+      <div className="match__badges"><span className="match__badge"><i /> Матч найден</span></div>
       <h1 className="match__title">Матч готов</h1>
       <p className="match__sub"><Bot size={16} /> Бот создал лобби в игре</p>
 
@@ -922,7 +912,7 @@ export function LeaderboardScreen() {
           <button key={t} type="button" className={tab === t ? 'is-active' : ''} onClick={() => setTab(t)}>{t}</button>
         ))}
       </div>
-      <p className="leaderboard__note">Призы топ-3 выплачиваются ежемесячно · <DemoTag /></p>
+      <p className="leaderboard__note">Призы топ-3 выплачиваются ежемесячно</p>
 
       <div className="league-switch">
         <button type="button" className={league === 'Обычная лига' ? 'is-active' : ''} onClick={() => setLeague('Обычная лига')}>Обычная лига · до 4000</button>
