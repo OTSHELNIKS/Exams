@@ -133,7 +133,6 @@ export function VerificationCard({ supabase, userId }) {
   const kinds = (rows) => [...new Set(rows.map((r) => REVIEW_KIND_NAMES[r.kind] || r.kind))].join(', ')
   const pending = reviews.filter((r) => r.status === 'pending')
   const rejected = reviews.filter((r) => r.status === 'rejected')
-  const approved = reviews.filter((r) => r.status === 'approved')
 
   if (pending.length > 0) {
     return (
@@ -157,17 +156,7 @@ export function VerificationCard({ supabase, userId }) {
       </div>
     )
   }
-  if (approved.length > 0) {
-    return (
-      <div className="verify-card verify-card--ok">
-        <div className="verify-card__icon"><Check size={22} /></div>
-        <div>
-          <strong>Модерация пройдена</strong>
-          <p>Одобрено: {kinds(approved)}</p>
-        </div>
-      </div>
-    )
-  }
+  // Fully approved (or nothing left to show) — the notice hides itself.
   return null
 }
 
