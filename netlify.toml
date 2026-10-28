@@ -1,15 +1,23 @@
 # NAME MLBB — деплой на Netlify напрямую из GitHub (автообновление при пуше).
 # Подключение: Netlify -> Add new site -> Import an existing project -> GitHub ->
 # выбрать репозиторий (настройки подхватятся из этого файла автоматически).
+# Ветка для деплоя: arena/cc650609-exams.
 # Затем Site settings -> Environment variables добавить:
 #   VITE_SUPABASE_URL
 #   VITE_SUPABASE_PUBLISHABLE_KEY   (только publishable ключ, НЕ service_role!)
+#
+# NB: Vite специально вшивает VITE_* в клиентский JS — publishable-ключ и URL
+# Supabase публичны по дизайну (видны в браузере любого посетителя), поэтому
+# их значения исключены из Netlify secrets scanning. Настоящие секреты
+# (service_role и др.) сюда добавлять нельзя.
 [build]
   command = "npm --prefix app ci && npm --prefix app run build"
   publish = "app/dist"
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_URL"
 
 [build.environment]
   NODE_VERSION = "22"
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_PUBLISHABLE_KEY,VITE_SUPABASE_URL"
 
 # SPA: все пути отдавать через index.html
 [[redirects]]
