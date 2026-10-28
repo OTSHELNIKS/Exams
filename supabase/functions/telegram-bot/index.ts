@@ -126,7 +126,10 @@ async function authGetUser(jwt) {
 const HELP_TEXT = '<b>NAME MLBB — команды</b>\n\n/profile — мой профиль и PTS\n/rating — топ-10 игроков\n/unlink — отвязать Telegram\n/help — это сообщение'
 
 function linkPrompt() {
-  return 'Сначала привяжи аккаунт: открой профиль в приложении' + (APP_URL ? ' (' + APP_URL + ')' : '') + ', нажми «Привязать Telegram» и отправь мне 6-значный код.'
+  return 'Я не знаю, кто ты, пока ты не покажешь код из приложения. Как привязать (1 минута):'
+    + '\n1) Войди в приложение по почте' + (APP_URL ? ': ' + APP_URL : '') + '.'
+    + '\n2) Открой Профиль → «Привязать Telegram» — там появится код из 6 цифр.'
+    + '\n3) Нажми «Открыть бота» и нажми START — либо просто отправь мне код сообщением.'
 }
 
 async function linkByCode(chatId, tgUsername, rawCode) {
