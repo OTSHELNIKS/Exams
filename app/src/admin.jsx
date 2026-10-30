@@ -179,8 +179,6 @@ function AdminDetail({ row, onClose }) {
         </p>
         <div className="admin-detail">
           {[
-            ['Game ID', row.game_id],
-            ['Сервер', row.game_server],
             ['Ранг', row.rank],
             ['PTS', row.pts],
             ['Роли', (row.roles || []).join(', ')],
