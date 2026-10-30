@@ -65,6 +65,29 @@ a { color: inherit; }
 .brand.google { font-size: 20px; background: #23252e; }
 .brand.facebook { font-size: 23px; font-family: Georgia, serif; }
 .brand.telegram { background: rgba(255, 75, 18, .18); color: #ff7a45; }
+.brand.tiktok { background: #23252e; color: #e8e9f0; }
+.brand.mlbb { background: rgba(255, 200, 61, .14); color: var(--gold); }
+
+/* способы регистрации на экране входа */
+.methods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.method {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 7px;
+  padding: 11px 6px 10px; border-radius: 16px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--text); font-size: 11.5px; font-weight: 700;
+  text-align: center; text-decoration: none; line-height: 1.2;
+  transition: transform .15s ease, border-color .15s ease;
+}
+.method:hover { transform: translateY(-1px); border-color: #4a4d5c; }
+.method .brand { width: 34px; height: 34px; border-radius: 11px; }
+.method--soon { color: #b9bcc8; }
+.method__soon {
+  position: absolute; top: 6px; right: 6px; font-style: normal; font-size: 8px; font-weight: 800;
+  letter-spacing: .4px; text-transform: uppercase; color: var(--dim);
+  border: 1px solid #33353f; border-radius: 6px; padding: 1px 4px;
+}
+.auth-methods__note { font-size: 12px; line-height: 1.5; color: #b9bcc8; margin: 0 0 12px; }
+.auth-methods__note b { color: var(--text); }
+.auth-methods__note--warn { color: #ffc9a8; border-left: 2px solid var(--orange); padding-left: 10px; }
 
 .btn {
   border: 0; border-radius: 16px; padding: 15px 20px;
@@ -1076,6 +1099,11 @@ html.is-modal-open .rail { overflow: hidden !important; }
    поднимаем на 1.5–2.5px: на большом мониторе 10–11px читаются как «пыль». */
 @media (min-width: 1024px) {
   /* подписи и подсказки */
+  .methods { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+  .method { font-size: 13px; padding: 14px 8px 13px; }
+  .method .brand { width: 40px; height: 40px; }
+  .auth-methods__note { font-size: 13px; }
+
   .label { font-size: 13px; }
   .label-hint { font-size: 12.5px; }
   .field-hint { font-size: 13.5px; }

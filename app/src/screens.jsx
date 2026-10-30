@@ -46,6 +46,29 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, onLog
     finally { setBusy(false) }
   }
   const [notice, setNotice] = useState('')
+  const [methodNote, setMethodNote] = useState('')
+  const oauth = async (provider, label) => {
+    setMethodNote('')
+    if (!supabase) {
+      setMethodNote(`Вход через ${label} появится, когда проект подключён к Supabase. Пока работает привязка Game ID.`)
+      return
+    }
+    setBusy(true)
+    try {
+      const redirectTo = window.location.protocol.startsWith('http')
+        ? window.location.origin + window.location.pathname
+        : undefined
+      const { error } = await supabase.auth.signInWithOAuth({ provider, options: redirectTo ? { redirectTo } : {} })
+      if (error) throw error
+    } catch (error) {
+      const raw = String(error?.message || '')
+      setMethodNote(
+        /not enabled|unsupported|provider/i.test(raw)
+          ? `Вход через ${label} ещё не включён в проекте: включите провайдера в Supabase → Authentication → Providers. Пока — почта или Telegram-бот.`
+          : (raw || `Не удалось открыть вход через ${label}`),
+      )
+    } finally { setBusy(false) }
+  }
   return (
     <div className="screen auth">
       <div className="auth__logo"><Logo size="lg" /></div>
@@ -92,6 +115,30 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, onLog
           : 'Game ID и сервер видны в профиле MLBB рядом с ником.'}
       </p>
 
+      <Label hint="одним нажатием">СПОСОБЫ РЕГИСТРАЦИИ</Label>
+      <div className="methods">
+        <button type="button" className="method" disabled={busy} onClick={() => oauth('google', 'Google')} aria-label="Зарегистрироваться через Google">
+          <BrandMark type="google" /><span>Google</span>
+        </button>
+        <a className="method" href={`https://t.me/${TELEGRAM_BOT_USERNAME}`} target="_blank" rel="noreferrer" aria-label="Войти через Telegram-бота" title="Откроется бот: привязка по коду из Профиля">
+          <BrandMark type="telegram" /><span>Telegram</span>
+        </a>
+        <button type="button" className="method method--soon" onClick={() => setMethodNote('VK не отдаёт вход без собственного приложения VK ID. Подключу, когда заведём его, — пока почта, Google или Telegram-бот.')} aria-label="Вход через VK — скоро">
+          <BrandMark type="vk" /><span>VK</span><em className="method__soon">скоро</em>
+        </button>
+        <button type="button" className="method method--soon" onClick={() => setMethodNote('Вход по игровому аккаунту: укажи Game ID и сервер выше, а подтверждение привязки придёт от бота @' + TELEGRAM_BOT_USERNAME + '. Почта нужна один раз — для создания аккаунта.')} aria-label="Вход через игру — скоро">
+          <BrandMark type="mlbb" /><span>MLBB</span><em className="method__soon">скоро</em>
+        </button>
+        <button type="button" className="method method--soon" onClick={() => setMethodNote('TikTok подключается через TikTok Login Kit — нужен аккаунт разработчика. Пока почта, Google или Telegram-бот.')} aria-label="Вход через TikTok — скоро">
+          <BrandMark type="tiktok" /><span>TikTok</span><em className="method__soon">скоро</em>
+        </button>
+      </div>
+      <p className="auth-methods__note">
+        Google входит сразу, Telegram — привязка через бота @{TELEGRAM_BOT_USERNAME}.
+        Игровой аккаунт привязывается по Game ID и серверу выше. VK и TikTok подключим позже.
+      </p>
+      {methodNote && <p className="auth-methods__note auth-methods__note--warn" role="status">{methodNote}</p>}
+
       {supabase && (session ? (
         <div className="account-box">
           <p>Вы вошли: {session.user.email}</p>
@@ -100,7 +147,7 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, onLog
         </div>
       ) : (
         <form className="account-box" onSubmit={(e) => { e.preventDefault(); auth(false) }}>
-          <Label>АККАУНТ ПО ПОЧТЕ</Label>
+          <Label hint="основной способ">ИЛИ ПО ПОЧТЕ</Label>
           <label className="field"><span>EMAIL</span><input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
           <label className="field"><span>ПАРОЛЬ</span><input type="password" autoComplete="current-password" minLength={6} required value={password} onChange={(e) => setPassword(e.target.value)} /></label>
           <button className="social social--primary" disabled={busy} type="submit">Войти по почте</button>

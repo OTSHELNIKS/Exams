@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ChevronLeft, Gamepad2, Send, Camera, Plus,
-  ShieldCheck, Check, X, Copy, Mic, MicOff, RotateCcw, Crown, Users, Trophy, Search,
+  ShieldCheck, Check, X, Copy, Mic, MicOff, RotateCcw, Crown, Users, Trophy, Search, Music2,
 } from 'lucide-react'
 import { HERO_BY_NAME } from './data.js'
 
@@ -22,6 +22,8 @@ export function BrandMark({ type }) {
   if (type === 'google') return <span className="brand google">G</span>
   if (type === 'facebook') return <span className="brand facebook">f</span>
   if (type === 'telegram') return <span className="brand telegram"><Send size={18} strokeWidth={2.2} /></span>
+  if (type === 'tiktok') return <span className="brand tiktok"><Music2 size={18} strokeWidth={2.2} /></span>
+  if (type === 'mlbb') return <span className="brand mlbb"><Gamepad2 size={18} strokeWidth={2.2} /></span>
   return null
 }
 
