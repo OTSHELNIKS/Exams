@@ -20,10 +20,14 @@ const STATE_KEY = 'name-mlbb:vk-state'
 // window.__NAME_VK_CLIENT_ID__ — второй путь нужен, чтобы значение можно было
 // подставить без пересборки. Читаем через window намеренно: иначе бандлер
 // подставит пустую строку на этапе сборки и вырежет весь модуль как мёртвый код.
+// Публичный ID приложения VK ID «NAME» (dev.vk.com). Не секрет: он и так
+// уходит в браузер. Переопределяется переменной сборки или window.
+export const DEFAULT_VK_CLIENT_ID = '54867424'
+
 export const VK_CLIENT_ID = (() => {
   const fromWindow = typeof window !== 'undefined' ? window.__NAME_VK_CLIENT_ID__ : ''
   const fromEnv = import.meta.env?.VITE_VK_CLIENT_ID
-  return String(fromWindow || fromEnv || '').trim()
+  return String(fromWindow || fromEnv || DEFAULT_VK_CLIENT_ID).trim()
 })()
 
 export const vkConfigured = Boolean(VK_CLIENT_ID)

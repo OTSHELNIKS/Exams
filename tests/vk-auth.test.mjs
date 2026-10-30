@@ -122,8 +122,9 @@ test('T-VK-07 полный цикл: state сверяется, ник возвр
   )
 })
 
-test('T-VK-08 без приложения VK ID приложение честно объясняет, что делать', () => {
-  assert.equal(vk.vkConfigured, false)
+test('T-VK-08 приложение VK ID подключено, ошибки объясняются по-русски', () => {
+  assert.equal(vk.VK_CLIENT_ID, '54867424')
+  assert.equal(vk.vkConfigured, true)
   const msg = vk.describeVkError(new Error('VK_ID_NOT_CONFIGURED'))
   assert.match(msg, /dev\.vk\.com/)
   assert.match(vk.describeVkError(new Error('VK_STATE_LOST')), /ещё раз/i)

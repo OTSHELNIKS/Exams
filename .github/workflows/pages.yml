@@ -59,10 +59,9 @@ jobs:
           VITE_BASE: /Exams/
           VITE_SUPABASE_URL: https://yjedqdbwvjvikyixsduw.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_yzJAjp-Nt7gfcsRXt0jKAQ_tFl2_-_x
-          # ID приложения VK ID (публичный). Задаётся в Settings → Secrets and
-          # variables → Actions → Variables: VITE_VK_CLIENT_ID. Пока пусто —
-          # кнопка VK честно пишет, что нужно создать приложение на dev.vk.com.
-          VITE_VK_CLIENT_ID: ${{ vars.VITE_VK_CLIENT_ID }}
+          # ID приложения VK ID «NAME» (публичный, не секрет).
+          # Можно переопределить переменной репозитория VITE_VK_CLIENT_ID.
+          VITE_VK_CLIENT_ID: ${{ vars.VITE_VK_CLIENT_ID || '54867424' }}
         run: npm --prefix app run build
       - name: SPA fallback
         run: cp app/dist/index.html app/dist/404.html

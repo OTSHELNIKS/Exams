@@ -63,9 +63,12 @@ MLBB. Файлы лежат в репозитории, поэтому `node test
 `users.get`. Секрет не нужен: VK ID разрешает обмен на фронтенде при PKCE,
 `state` и `code_verifier` проверяются. Для работы нужно приложение VK ID
 (dev.vk.com → «Создать приложение» → VK ID; доверенный redirect URL —
-`https://otshelniks.github.io/Exams/`), его ID кладётся в переменную репозитория
-`VITE_VK_CLIENT_ID` (Settings → Secrets and variables → Actions → Variables).
-Пока переменной нет — кнопка VK объясняет, что нужно сделать.
+`https://otshelniks.github.io/Exams/`), ID приложения — `54867424` (публичный, лежит в
+`DEFAULT_VK_CLIENT_ID` и в workflow; можно переопределить переменной репозитория
+`VITE_VK_CLIENT_ID`). В настройках приложения VK ID обязательно указать базовый
+домен `otshelniks.github.io` и доверенный redirect URL
+`https://otshelniks.github.io/Exams/` — иначе VK отвечает «settings don't show
+this base domain».
 
 **Google привязывается окном выбора аккаунта**, а не вводом почты: кнопка
 «Выбрать аккаунт Google» вызывает `supabase.auth.linkIdentity({ provider: 'google' })`,
