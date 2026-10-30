@@ -6,6 +6,29 @@
     <meta name="theme-color" content="#0b0b0f" />
     <meta name="description" content="NAME — соревновательный матчмейкинг MLBB: честный драфт игроков, автоматические лобби, рейтинг и призы." />
     <title>NAME — Играй. Побеждай. Зарабатывай.</title>
+    <!-- Netlify на free-плане сам вставляет поверх сайта бейдж «Powered by Netlify»
+         (iframe #nl-badge-frame) и промо-бар (#nl-hud-frame). В нашем коде их нет,
+         поэтому гасим их на стороне страницы. Окончательное выключение —
+         в панели Netlify: Project configuration → General → Powered by Netlify badge. -->
+    <style>
+      #nl-badge-frame, #nl-hud-frame, iframe[id^="nl-"][id$="-frame"] { display: none !important; }
+    </style>
+    <script>
+      (function () {
+        var SEL = '#nl-badge-frame, #nl-hud-frame, iframe[id^="nl-"][id$="-frame"]'
+        function strip() {
+          var nodes = document.querySelectorAll(SEL)
+          for (var i = 0; i < nodes.length; i += 1) nodes[i].remove()
+        }
+        strip()
+        if (typeof MutationObserver === 'function') {
+          new MutationObserver(function () {
+            if (document.querySelector('iframe[id^="nl-"]')) strip()
+          }).observe(document.documentElement, { childList: true, subtree: true })
+        }
+        window.addEventListener('load', strip)
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
