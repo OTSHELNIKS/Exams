@@ -1070,3 +1070,119 @@ html.is-modal-open .rail { overflow: hidden !important; }
   .wizard__ids { gap: 10px; }
   .id-fields .input-wrap__tag { font-size: 9px; }
 }
+
+/* ============================================================ desktop type
+   На ≥1024px места много, поэтому мелкие подписи, метаданные и строки списков
+   поднимаем на 1.5–2.5px: на большом мониторе 10–11px читаются как «пыль». */
+@media (min-width: 1024px) {
+  /* подписи и подсказки */
+  .label { font-size: 13px; }
+  .label-hint { font-size: 12.5px; }
+  .field-hint { font-size: 13.5px; }
+  .field span { font-size: 11.5px; }
+  .social-hint { font-size: 13px; }
+  .section-head span, .section-head b { font-size: 13px; }
+  .bot-note { font-size: 12.5px; }
+  .empty { font-size: 13.5px; }
+  .account-box p { font-size: 13.5px; }
+
+  /* главная, профиль, матч */
+  .home__id, .home__admin { font-size: 12px; padding: 7px 13px; }
+  .profile__gameid { font-size: 13.5px; }
+  .hero-filter-note { font-size: 13px; }
+  .match__sub { font-size: 14px; }
+  .match__hint { font-size: 13px; }
+  .voice-card__head { font-size: 13.5px; }
+  .voice-row small { font-size: 12px; }
+  .lobby-card__label { font-size: 11.5px; }
+  .draft__head p { font-size: 12.5px; }
+  .draft__turn em { font-size: 11.5px; }
+  .team-card__head, .team-card__head b { font-size: 11.5px; }
+  .team-card__captain small { font-size: 11.5px; }
+  .pool-row__text small { font-size: 12px; }
+  .rank-row__elo span { font-size: 11px; }
+  .tabs button { font-size: 13px; }
+  .modal__role { font-size: 13.5px; }
+  .modal__stats span { font-size: 11.5px; }
+
+  /* админка: KPI и графики */
+  .kpi b { font-size: 26px; }
+  .kpi span { font-size: 13px; }
+  .admin-stat span { font-size: 13px; }
+  .dash-card { padding: 18px; }
+  .dash-card__head h3 { font-size: 16.5px; }
+  .dash-card__head small { font-size: 12.5px; }
+  .dash-legend { font-size: 12px; }
+  .dash-row { font-size: 13.5px; padding: 8px 0; }
+  .dash-row b { font-size: 14px; }
+  .dash-bar__head { font-size: 13px; }
+  .dash-bar__track { height: 8px; }
+  .dash-donut svg { width: 86px; height: 86px; }
+  .dash-donut span { font-size: 12px; }
+  .dash-status__label { font-size: 11.5px; }
+  .dash-status__line b { font-size: 19px; }
+  .dash-status__line span { font-size: 12px; }
+  .dash-table__row { font-size: 14.5px; padding: 9px 0; }
+  .dash-table__num { font-size: 12.5px; width: 24px; }
+  .dash-table__meta { font-size: 12.5px; }
+  .dash-table__row b { font-size: 13.5px; }
+  .dash-section { font-size: 16.5px; }
+  .dash-empty { font-size: 13.5px; }
+  .dash-foot { font-size: 12.5px; gap: 8px; }
+
+  /* админка: список игроков и карточка */
+  .admin-row { padding: 12px 15px; gap: 13px; }
+  .admin-row__avatar { width: 46px; height: 46px; }
+  .admin-row__info strong { font-size: 15.5px; }
+  .admin-row__info small { font-size: 13px; }
+  .admin-row__meta { font-size: 12px; }
+  .admin-search input { font-size: 15.5px; }
+  .admin-detail { font-size: 14.5px; }
+  .admin-detail__line { gap: 18px; }
+
+  /* лендинг и каркас */
+  .eyebrow, .section__eyebrow { font-size: 12px; }
+  .hero-site__facts span { font-size: 13px; }
+  .hero-site__trust, .hero-site__hint { font-size: 13.5px; }
+  .step-card p, .prize-card span, .site-foot p { font-size: 13.5px; line-height: 1.65; }
+  .link-btn { font-size: 13px; }
+  .auth__foot { font-size: 13px; }
+  .info-strip { font-size: 13px; }
+  .avatar-upload { font-size: 13.5px; }
+  .ad-banner__body strong { font-size: 14px; }
+  .ad-banner__body small { font-size: 12.5px; }
+
+  /* левое меню и шапка рабочей панели */
+  .rail__nav button { font-size: 14px; }
+  .rail__label { font-size: 11.5px; }
+  .rail__note { font-size: 12.5px; }
+  .rail__num { font-size: 12px; width: 24px; }
+  .rail__back { font-size: 13.5px; }
+  .app-main__head small { font-size: 12.5px; }
+  .app-main__badge { font-size: 11.5px; }
+  .app-main__tip { font-size: 12.5px; }
+
+  /* драфт, матч, лидерборд, поддержка */
+  .draft__turn { font-size: 12.5px; }
+  .draft__vs { font-size: 11.5px; }
+  .team-card__slots span { font-size: 11.5px; }
+  .pick-btn { font-size: 11px; }
+  .match__badge { font-size: 13px; }
+  .parse-note { font-size: 13.5px; }
+  .league-switch button { font-size: 12.5px; }
+  .prize { font-size: 12px; }
+  .support-flash { font-size: 13.5px; }
+  .support-foot { font-size: 13px; }
+  .ticket__num { font-size: 14px; }
+  .ticket__status { font-size: 11.5px; }
+  .ticket__date { font-size: 12.5px; }
+  .ticket__reply strong { font-size: 11.5px; }
+  .ticket__reply small { font-size: 12.5px; }
+
+  /* герои */
+  .hero-pill { font-size: 13px; }
+  .hero-tile__name { font-size: 12.5px; }
+  .hero-strip__item > span { font-size: 12px; max-width: 74px; }
+  .input-wrap__tag { font-size: 10.5px; }
+  .home__id-server { font-size: 11.5px; }
+}
