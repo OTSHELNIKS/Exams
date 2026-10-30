@@ -12,7 +12,7 @@ import {
 import {
   RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, DRAFT_FILTERS, HERO_ROLE_FILTERS, HERO_ROLE_LABEL,
   GAME_ID_MAX, GAME_SERVER_MAX, normalizeGameId, normalizeServerId, formatGameId,
-  SOCIAL_PROVIDERS, SOCIAL_IDS, socialLabel, socialCaption, parseSocial,
+  SOCIAL_PROVIDERS, SOCIAL_IDS, SOCIAL_ACTIVE, SOCIAL_ACTIVE_IDS, socialLabel, socialCaption, parseSocial,
 } from './data.js'
 import { AvatarCropModal } from './crop.jsx'
 import {
@@ -147,9 +147,6 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
         <a className="method" href={`https://t.me/${TELEGRAM_BOT_USERNAME}`} target="_blank" rel="noreferrer" aria-label="Войти через Telegram-бота" title="Откроется бот: привязка по коду из Профиля">
           <BrandMark type="telegram" /><span>Telegram</span>
         </a>
-        <button type="button" className="method method--soon" onClick={() => setMethodNote('VK не отдаёт вход без собственного приложения VK ID. Подключу, когда заведём его, — пока почта, Google или Telegram-бот.')} aria-label="Вход через VK — скоро">
-          <BrandMark type="vk" /><span>VK</span><em className="method__soon">скоро</em>
-        </button>
         <button type="button" className="method method--soon" onClick={() => setMethodNote('Вход по игровому аккаунту: укажи Game ID и сервер выше, а подтверждение привязки придёт от бота @' + TELEGRAM_BOT_USERNAME + '. Почта нужна один раз — для создания аккаунта.')} aria-label="Вход через игру — скоро">
           <BrandMark type="mlbb" /><span>MLBB</span><em className="method__soon">скоро</em>
         </button>
@@ -159,7 +156,7 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
       </div>
       <p className="auth-methods__note">
         Google входит сразу, Telegram — привязка через бота @{TELEGRAM_BOT_USERNAME}.
-        Игровой аккаунт привязывается по Game ID и серверу выше. VK и TikTok подключим позже.
+        Игровой аккаунт привязывается по Game ID и серверу выше. TikTok подключим позже.
       </p>
       {methodNote && <p className="auth-methods__note auth-methods__note--warn" role="status">{methodNote}</p>}
 
@@ -603,7 +600,10 @@ export function SocialRow({
     ...(telegramLink ? [{ provider: 'telegram', handle: botHandle, viaBot: true }] : []),
     ...(profile.socials || []).map(parseSocial).filter((x) => SOCIAL_IDS.includes(x.provider) && x.provider !== 'telegram'),
   ]
-  const free = SOCIAL_PROVIDERS.filter((p) => !bound.some((x) => x.provider === p.id))
+  // picker показывает только включённые соцсети; уже привязанные (даже если
+  // способ скрыт) остаются видимыми, чтобы связку можно было увидеть/отвязать.
+  const pickable = SOCIAL_ACTIVE
+  const free = pickable.filter((p) => !bound.some((x) => x.provider === p.id))
   const current = SOCIAL_PROVIDERS.find((p) => p.id === provider)
 
   // Пока показан код — проверяем, не привязал ли уже бот (раз в 2.5 секунды).
@@ -668,9 +668,9 @@ export function SocialRow({
 
   return (
     <div className="social-block">
-      <div className="section-head"><span>СОЦСЕТИ</span><b>{bound.length}/{SOCIAL_IDS.length}</b></div>
+      <div className="section-head"><span>СОЦСЕТИ</span><b>{bound.length}/{SOCIAL_ACTIVE_IDS.length}</b></div>
       {bound.length === 0 && (
-        <p className="social-hint">Ничего не привязано. Telegram — через бота, VK и Google — одним нажатием.</p>
+        <p className="social-hint">Ничего не привязано. Telegram — через бота, Google — одним нажатием.</p>
       )}
       <div className="social-row">
         {bound.map(({ provider: id, handle: nick, viaBot }) => (
@@ -685,7 +685,7 @@ export function SocialRow({
             {!nick && <i className="social-circle__dot" aria-hidden="true" />}
           </button>
         ))}
-        {bound.length < SOCIAL_IDS.length && (
+        {bound.length < SOCIAL_ACTIVE_IDS.length && (
           <button type="button" className="social-circle social-circle--add" onClick={openAdd} title="Привязать соцсеть" aria-label="Привязать соцсеть">
             <Plus size={18} />
           </button>
@@ -694,9 +694,9 @@ export function SocialRow({
 
       <Modal open={open} onClose={() => setOpen(false)} labelledBy="social-add-title">
         <h3 id="social-add-title">Привязать соцсеть</h3>
-        <p className="modal__role">Telegram — через бота, VK и Google — окном самого сервиса. Ничего вводить руками не нужно.</p>
+        <p className="modal__role">Telegram — через бота, Google — окном самого сервиса. Ничего вводить руками не нужно.</p>
         <div className="social-pick">
-          {SOCIAL_PROVIDERS.map((p) => {
+          {pickable.map((p) => {
             const taken = bound.some((x) => x.provider === p.id)
             return (
               <button

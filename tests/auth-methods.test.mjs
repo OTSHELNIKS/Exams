@@ -31,14 +31,26 @@ function test(name, fn) {
   }
 }
 
-const METHODS = ['google', 'telegram', 'vk', 'mlbb', 'tiktok']
+// VK временно скрыт: приложение VK ID ждёт подтверждения профиля.
+// Код привязки (vk-auth.js) остался, включается флагом enabled в data.js.
+const METHODS = ['google', 'telegram', 'mlbb', 'tiktok']
+const HIDDEN = ['vk']
 
-test('T-AUTH-01 все пять способов есть на экране входа', () => {
+test('T-AUTH-01 все доступные способы есть на экране входа', () => {
   assert.ok(auth.includes('className="methods"'), 'нет блока способов')
   for (const id of METHODS) {
     assert.ok(auth.includes(`<BrandMark type="${id}" />`), 'нет плитки ' + id)
   }
   assert.ok(auth.includes('СПОСОБЫ РЕГИСТРАЦИИ'), 'нет подписи блока')
+})
+
+test('T-AUTH-01b скрытый VK не показывается и не обещает вход', () => {
+  for (const id of HIDDEN) {
+    assert.ok(!auth.includes(`<BrandMark type="${id}" />`), 'плитка ' + id + ' всё ещё на экране входа')
+  }
+  const data = read('app/src/data.js')
+  assert.ok(/id: 'vk'[^}]*enabled: false/.test(data), 'VK должен быть выключен флагом enabled: false')
+  assert.ok(read('app/src/vk-auth.js').includes('DEFAULT_VK_CLIENT_ID'), 'код VK удалять нельзя — только скрыть')
 })
 
 test('T-AUTH-02 Google — настоящий OAuth через Supabase', () => {
@@ -53,10 +65,10 @@ test('T-AUTH-03 Telegram ведёт в бота без payload', () => {
   assert.ok(auth.includes('target="_blank"'), 'ссылка на бота должна открываться в новой вкладке')
 })
 
-test('T-AUTH-04 VK, MLBB и TikTok не выдают себя за рабочие', () => {
+test('T-AUTH-04 MLBB и TikTok не выдают себя за рабочие', () => {
   const soon = (auth.match(/method--soon/g) || []).length
-  assert.ok(soon >= 3, 'ожидались три плитки со статусом «скоро», найдено ' + soon)
-  for (const label of ['VK', 'MLBB', 'TikTok']) {
+  assert.ok(soon >= 2, 'ожидались две плитки со статусом «скоро», найдено ' + soon)
+  for (const label of ['MLBB', 'TikTok']) {
     assert.ok(auth.includes(`<span>${label}</span>`), 'нет подписи ' + label)
   }
   // у «скоро»-плиток нет обработчика OAuth
@@ -72,7 +84,7 @@ test('T-AUTH-05 у каждого способа есть понятное об�
 })
 
 test('T-AUTH-06 иконки брендов отрисованы в BrandMark', () => {
-  for (const type of METHODS) {
+  for (const type of [...METHODS, ...HIDDEN]) {
     assert.ok(new RegExp(`type === '${type}'`).test(ui), 'BrandMark не знает ' + type)
   }
 })

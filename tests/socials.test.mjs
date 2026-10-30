@@ -20,7 +20,9 @@ const admin = read('app/src/admin.jsx')
 const styles = read('app/src/styles.css')
 const social = screens.slice(screens.indexOf('export function SocialRow'), screens.indexOf('export function HomeScreen'))
 
-const { formatSocial, parseSocial, socialCaption, SOCIAL_PROVIDERS, SOCIAL_IDS } = await import('../app/src/data.js')
+const dataModule = await import('../app/src/data.js')
+const { formatSocial, parseSocial, socialCaption, SOCIAL_PROVIDERS, SOCIAL_IDS } = dataModule
+const await_import = () => dataModule
 
 let passed = 0
 let failed = 0
@@ -144,6 +146,14 @@ test('T-SOC-16 Telegram привязывается через бота, ник �
   assert.ok(social.includes('Получить код для бота'), 'нет кнопки получения кода')
   assert.ok(app.includes('createTelegramLinkCode'), 'код не создаётся в App')
   assert.ok(!/provider === 'telegram' && !manual/.test(social), 'у Telegram остался ручной ввод')
+})
+
+test('T-SOC-17a VK скрыт из выбора соцсетей, старые привязки видны', () => {
+  const { SOCIAL_ACTIVE, SOCIAL_ACTIVE_IDS } = await_import()
+  assert.ok(!SOCIAL_ACTIVE_IDS.includes('vk'), 'VK не должен быть в активных')
+  assert.deepEqual(SOCIAL_ACTIVE_IDS, ['telegram', 'google'])
+  assert.ok(SOCIAL_ACTIVE.every((p) => p.enabled), 'в активные попал выключенный провайдер')
+  assert.ok(social.includes('const pickable = SOCIAL_ACTIVE'), 'окно выбора должно строиться из активных')
 })
 
 test('T-SOC-17 VK привязывается окном VK ID, а не ником', () => {

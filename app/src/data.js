@@ -154,13 +154,19 @@ export const HEROES = [
 // Соцсети профиля: в базе это text[] вида "vk:@nick" (провайдер + ник через
 // двоеточие). Старые записи без ника — просто "vk" — читаются как привязанные,
 // но без ника: их просим перепривязать в профиле.
+// enabled: false — способ временно скрыт в интерфейсе (VK ждёт подтверждения
+// приложения VK ID, чтобы VK не показывал ошибку «base domain»). Код привязки
+// остался в проекте: включается одним флагом, без переписывания экранов.
 export const SOCIAL_PROVIDERS = [
-  { id: 'telegram', label: 'Telegram', placeholder: '@nickname', hint: 'Ник в Telegram, начинается с @' },
-  { id: 'vk', label: 'VK', placeholder: 'vk.com/id123456', hint: 'Ссылка на страницу или короткое имя' },
-  { id: 'google', label: 'Google', placeholder: 'name@gmail.com', hint: 'Почта Google-аккаунта' },
+  { id: 'telegram', label: 'Telegram', placeholder: '@nickname', hint: 'Ник в Telegram, начинается с @', enabled: true },
+  { id: 'vk', label: 'VK', placeholder: 'vk.com/id123456', hint: 'Ссылка на страницу или короткое имя', enabled: false },
+  { id: 'google', label: 'Google', placeholder: 'name@gmail.com', hint: 'Почта Google-аккаунта', enabled: true },
 ]
 
 export const SOCIAL_IDS = SOCIAL_PROVIDERS.map((p) => p.id)
+// Только те соцсети, которые сейчас можно привязать.
+export const SOCIAL_ACTIVE = SOCIAL_PROVIDERS.filter((p) => p.enabled)
+export const SOCIAL_ACTIVE_IDS = SOCIAL_ACTIVE.map((p) => p.id)
 
 export const socialLabel = (id) => (SOCIAL_PROVIDERS.find((p) => p.id === id) || {}).label || id
 
