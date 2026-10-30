@@ -5,7 +5,8 @@
 ## Как запускать автотесты
 
 ```bash
-node tests/bot.test.mjs   # 34 теста логики бота, ноль зависимостей
+node tests/bot.test.mjs     # 34 теста логики бота, ноль зависимостей
+node tests/admin.test.mjs   # 9 проверок доступа к админке (статические)
 ```
 
 Тест грузит **настоящий** `supabase/functions/telegram-bot/index.ts`, подменяет `Deno`/`fetch`
@@ -27,6 +28,7 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 | Группа | Кейсы | Итог |
 |---|---|---|
 | T-BOT (авто, логика бота) | 01–34 | ✅ 34/34 PASS |
+| T-ADM (админка: доступ и RPC) | 01–09 | ✅ 9/9 PASS |
 | T-DB (база, RLS, ограничения) | 00–18 | ✅ 19/19 PASS |
 | T-FE (фронт: сборка, бандл) | 01–04 | ✅ 4/4 PASS |
 | T-LIVE (прод: сайт, health) | 01–02 | ✅ 2/2 PASS |
@@ -97,6 +99,25 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 
 При impersonation пишется проба `TEST_RLS_PROBE*` с последующим удалением —
 после прогона в базе ноль тестовых строк (проверено `count(*)=0`).
+
+## T-ADM — админка и статистика (авто + SQL)
+
+| ID | Кейс | Ожидание | Статус |
+|---|---|---|---|
+| 01 | `admin_stats()` объявлена SECURITY DEFINER | `search_path` зафиксирован | ✅ |
+| 02 | Вызов не-админом | `42501 admin_stats: forbidden` до чтения данных | ✅ |
+| 03 | Права на функции | `revoke ... from anon/public`, `grant ... to authenticated` | ✅ |
+| 04 | `is_admin()` | Смотрит только на строку `auth.uid()` | ✅ |
+| 05 | Экран без флага `isAdmin` | «Нет доступа. Этот раздел только для администраторов.» | ✅ |
+| 06 | Загрузка данных без админа | `load()` выходит до запросов | ✅ |
+| 07 | Вкладка в навигации | Рисуется только при `isAdmin` | ✅ |
+| 08 | Источник статистики | Только `rpc('admin_stats')`, ошибка показывается текстом | ✅ |
+| 09 | Политики `moderation_reviews` | Только роль `authenticated` | ✅ |
+
+Живая проверка RLS (impersonation, `set role authenticated` + чужой `sub`):
+`admins` = 0, `player_profiles` = 0, `support_tickets` = 0,
+`moderation_reviews` = 0, `leaderboard` = 1 (публичный рейтинг). Для владельца
+`admin_stats()` возвращает полный jsonb (KPI, 30-дневный ряд, разбивки, топ).
 
 ## T-FE — фронт (авто)
 

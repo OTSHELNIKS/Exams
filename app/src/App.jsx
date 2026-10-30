@@ -7,8 +7,9 @@ import { AppFrame, Logo } from './ui.jsx'
 import { Landing } from './landing.jsx'
 import {
   AuthScreen, WizardScreen, HomeScreen, ProfileScreen, DraftScreen,
-  MatchScreen, LeaderboardScreen, AdminScreen, BannedScreen, SupportScreen,
+  MatchScreen, LeaderboardScreen, BannedScreen, SupportScreen,
 } from './screens.jsx'
+import { AdminScreen } from './admin.jsx'
 import { DEFAULT_PROFILE } from './data.js'
 import { supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews } from './supabase.js'
 

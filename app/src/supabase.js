@@ -41,6 +41,39 @@ function extOf(file) {
   return byType[file.type] || 'jpg'
 }
 
+// Free-plan storage is 1 GB for the whole project, so big phone photos are
+// downscaled in the browser before upload (no server-side processing involved).
+const MAX_UPLOAD_SIDE = 1600
+const UPLOAD_QUALITY = 0.82
+const COMPRESS_OVER_BYTES = 300 * 1024
+
+/** Downscale/compress a photo client-side. Falls back to the original file. */
+async function prepareImage(file) {
+  if (file.type === 'image/gif') return file // keep animation
+  if (file.size <= COMPRESS_OVER_BYTES) return file
+  if (typeof document === 'undefined' || typeof createImageBitmap !== 'function') return file
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, MAX_UPLOAD_SIDE / Math.max(bitmap.width, bitmap.height))
+    const width = Math.max(1, Math.round(bitmap.width * scale))
+    const height = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return file
+    ctx.drawImage(bitmap, 0, 0, width, height)
+    if (typeof bitmap.close === 'function') bitmap.close()
+    const blob = await new Promise((resolve) => { canvas.toBlob(resolve, 'image/webp', UPLOAD_QUALITY) })
+    if (!blob || blob.size >= file.size) return file
+    const type = blob.type === 'image/webp' ? 'image/webp' : 'image/jpeg'
+    const base = file.name.replace(/\.[^.]+$/, '') || 'photo'
+    return new File([blob], base + (type === 'image/webp' ? '.webp' : '.jpg'), { type })
+  } catch {
+    return file
+  }
+}
+
 async function uploadToBucket(bucket, path, file) {
   const { error } = await supabase.storage.from(bucket).upload(path, file, {
     cacheControl: '3600', upsert: true, contentType: file.type,
@@ -54,16 +87,18 @@ async function uploadToBucket(bucket, path, file) {
 export async function uploadAvatar(file, userId) {
   const err = validateImage(file)
   if (err) throw new Error(err)
-  return uploadToBucket('avatars', `${userId}/avatar.${extOf(file)}`, file)
+  const prepared = await prepareImage(file)
+  return uploadToBucket('avatars', `${userId}/avatar.${extOf(prepared)}`, prepared)
 }
 
 /** Upload one MLBB stat screenshot. Returns the public URL. */
 export async function uploadScreenshot(file, userId) {
   const err = validateImage(file)
   if (err) throw new Error(err)
+  const prepared = await prepareImage(file)
   const stamp = Date.now().toString(36)
   const rand = Math.random().toString(36).slice(2, 8)
-  return uploadToBucket('screenshots', `${userId}/${stamp}-${rand}.${extOf(file)}`, file)
+  return uploadToBucket('screenshots', `${userId}/${stamp}-${rand}.${extOf(prepared)}`, prepared)
 }
 
 /** Best-effort delete of a screenshot object by its public URL. */
