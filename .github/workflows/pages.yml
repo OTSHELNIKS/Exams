@@ -1,0 +1,63 @@
+# NAME MLBB — деплой на GitHub Pages (бесплатно, без лимитов Netlify).
+# Сайт: https://otshelniks.github.io/Exams/
+# Включается один раз: Settings → Pages → Source = GitHub Actions.
+#
+# VITE_SUPABASE_URL и VITE_SUPABASE_PUBLISHABLE_KEY публичны по дизайну
+# (publishable-ключ всё равно уезжает в браузерный JS), поэтому они лежат
+# прямо здесь. Настоящие секреты (service_role) сюда добавлять нельзя.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - arena/cc650609-exams
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable Pages (first run only)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install
+        run: npm --prefix app ci
+      - name: Build
+        env:
+          VITE_BASE: /Exams/
+          VITE_SUPABASE_URL: https://yjedqdbwvjvikyixsduw.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_yzJAjp-Nt7gfcsRXt0jKAQ_tFl2_-_x
+        run: npm --prefix app run build
+      - name: SPA fallback
+        run: cp app/dist/index.html app/dist/404.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
