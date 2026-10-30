@@ -81,7 +81,7 @@ export function BackHeader({ title, onBack, right, progress }) {
             <span className="progress__on" /><span /><span />
           </div>
         )}
-        {right}
+        {right && <div className="backheader__right">{right}</div>}
       </div>
       {title && <h1 className="screen-title">{title}</h1>}
     </div>

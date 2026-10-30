@@ -103,6 +103,10 @@ a { color: inherit; }
 .label { font-size: 12px; font-weight: 800; letter-spacing: 1.4px; color: #a9acb9; text-transform: uppercase; }
 .label-hint { font-size: 11px; color: var(--dim); }
 .field-hint { font-size: 12px; color: var(--dim); margin: -2px 0 10px; }
+/* Заголовок экрана: «назад» слева, действие — справа, в одной строке. */
+.backheader { display: flex; flex-direction: column; gap: 14px; }
+.backheader__row { display: flex; align-items: center; gap: 10px; }
+.backheader__right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .screen-title { font-family: var(--display); font-weight: 900; font-size: 25px; line-height: 1.15; margin: 0; letter-spacing: -.7px; }
 .screen-subtitle { color: var(--muted); font-size: 13px; margin: 10px 0 20px; }
 .section-head { display: flex; justify-content: space-between; align-items: baseline; margin: 24px 0 12px; }
