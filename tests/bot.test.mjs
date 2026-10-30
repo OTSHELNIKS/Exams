@@ -590,6 +590,47 @@ t('T-BOT-42 без режима обычный текст по-прежнему 
   assert.match(tgTexts(), /Не понял команду/)
 })
 
+t('T-BOT-43 /start присылает приветственную картинку', async () => {
+  reset({ telegram_links: [] })
+  await post('', { headers: H, body: upd('/start') })
+  const photo = calls.tg.find((c) => c.method === 'sendPhoto')
+  assert.ok(photo, 'ожидалась картинка-приветствие')
+  assert.equal(photo.payload.photo, 'https://example.test/bot-avatar.jpg')
+  assert.match(photo.payload.caption, /NAME/)
+  assert.match(photo.payload.caption, /Mobile Legends/)
+  assert.match(tgTexts(), /Как привязать/)
+})
+
+t('T-BOT-44 приветствие ведёт в приложение кнопкой', async () => {
+  reset({ telegram_links: [] })
+  await post('', { headers: H, body: upd('/start') })
+  const msg = calls.tg.find((c) => c.method === 'sendMessage')
+  const btn = msg.payload.reply_markup.inline_keyboard[0][0]
+  assert.equal(btn.url, 'https://example.test/')
+  assert.match(btn.text, /Открыть приложение/)
+})
+
+t('T-BOT-45 /start привязанному: приветствие + кнопка, без картинки', async () => {
+  reset({ telegram_links: [{ user_id: 'user-1' }], player_profiles: [{ nick: 'Amy' }] })
+  await post('', { headers: H, body: upd('/start') })
+  assert.match(tgTexts(), /С возвращением/)
+  assert.match(tgTexts(), /Amy/)
+  assert.equal(calls.tg.filter((c) => c.method === 'sendPhoto').length, 0)
+  const msg = calls.tg.find((c) => c.method === 'sendMessage')
+  assert.ok(msg.payload.reply_markup.inline_keyboard[0][0].url)
+})
+
+t('T-BOT-46 ?setup прописывает описание бота', async () => {
+  reset({})
+  const r = await get('?setup=TESTSETUP')
+  assert.equal(r.json.setDescription, true)
+  assert.equal(r.json.setShortDescription, true)
+  const d = calls.tg.find((c) => c.method === 'setMyDescription')
+  assert.ok(d && d.payload.description.length > 40)
+  const sd = calls.tg.find((c) => c.method === 'setMyShortDescription')
+  assert.ok(sd && sd.payload.short_description.length <= 120)
+})
+
 let pass = 0
 let fail = 0
 for (const [name, fn] of tests) {

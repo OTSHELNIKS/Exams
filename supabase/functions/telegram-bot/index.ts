@@ -169,6 +169,40 @@ function linkPrompt() {
     + '\n3) Нажми «Открыть бота» и нажми START — либо просто отправь мне код сообщением.'
 }
 
+const APP_ORIGIN = APP_URL.replace(/\/+$/, '')
+// Аватарка лежит рядом с сайтом (app/public/bot-avatar.jpg -> Pages/bot-avatar.jpg).
+const AVATAR_URL = APP_ORIGIN ? APP_ORIGIN + '/bot-avatar.jpg' : ''
+
+const WELCOME_TEXT = '<b>NAME</b> — соревновательный матчмейкинг Mobile Legends: Bang Bang.\n\n'
+  + 'Здесь ID лобби, уведомления о матчах, ответы поддержки и рейтинг игроков.'
+
+// Описание бота в профиле: Telegram показывает его до первого /start.
+const BOT_DESCRIPTION = 'NAME — матчмейкинг Mobile Legends: Bang Bang: честный драфт, '
+  + 'свой сервер, зарплата топ-10 рейтинга. Бот пришлёт ID лобби, привяжет аккаунт '
+  + 'и примет обращение в поддержку.'
+const BOT_SHORT_DESCRIPTION = 'NAME MLBB: лобби, уведомления и поддержка в Telegram.'
+
+function appKeyboard() {
+  if (!APP_ORIGIN) return undefined
+  return { inline_keyboard: [[{ text: '🎮 Открыть приложение', url: APP_ORIGIN + '/' }]] }
+}
+
+// Приветствие новичку: картинка-визитка + шаги привязки + кнопка в приложение.
+async function greet(chatId) {
+  const kb = appKeyboard()
+  if (AVATAR_URL) {
+    const pic = await tg('sendPhoto', {
+      chat_id: chatId, photo: AVATAR_URL, caption: WELCOME_TEXT, parse_mode: 'HTML',
+    })
+    if (!pic || pic.ok === false) {
+      await send(chatId, WELCOME_TEXT)
+    }
+  } else {
+    await send(chatId, WELCOME_TEXT)
+  }
+  await send(chatId, linkPrompt(), kb ? { reply_markup: kb } : undefined)
+}
+
 async function adminLink(chatId) {
   const links = await dbSelect('telegram_links', { tg_chat_id: 'eq.' + chatId, select: 'user_id' })
   if (links.length === 0) return { link: null, admin: false }
@@ -611,9 +645,11 @@ async function handleUpdate(update) {
     if (links[0]) {
       const profs = await dbSelect('player_profiles', { user_id: 'eq.' + links[0].user_id, select: 'nick' })
       const nick = profs[0] && profs[0].nick ? ', ' + esc(profs[0].nick) : ''
-      await send(chatId, 'С возвращением' + nick + '! Аккаунт уже привязан.\n\n' + HELP_TEXT)
+      const kb = appKeyboard()
+      await send(chatId, 'С возвращением' + nick + '! Аккаунт уже привязан.\n\n' + HELP_TEXT,
+        kb ? { reply_markup: kb } : undefined)
     } else {
-      await send(chatId, 'Привет! Я бот <b>NAME MLBB</b> — пришлю ID лобби и уведомления о матчах.\n\n' + linkPrompt())
+      await greet(chatId)
     }
     return
   }
@@ -843,6 +879,8 @@ async function handleSetup(url) {
     { command: 'unlink', description: 'Отвязать Telegram' },
     { command: 'help', description: 'Помощь' },
   ] })
+  const desc = await tg('setMyDescription', { description: BOT_DESCRIPTION })
+  const shortDesc = await tg('setMyShortDescription', { short_description: BOT_SHORT_DESCRIPTION })
   const hookOk = !!(hook && hook.ok === true)
   return json({
     ok: true,
@@ -851,6 +889,8 @@ async function handleSetup(url) {
     setWebhook: hookOk,
     setWebhookError: hookOk ? null : ((hook && (hook.description || hook.error_code)) || 'no_response'),
     setCommands: !!(cmds && cmds.ok),
+    setDescription: !!(desc && desc.ok),
+    setShortDescription: !!(shortDesc && shortDesc.ok),
   })
 }
 
