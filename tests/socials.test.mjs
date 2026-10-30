@@ -64,16 +64,17 @@ test('T-SOC-04 без ника сохранить нельзя', () => {
 })
 
 test('T-SOC-05 тост появляется только после реального сохранения', () => {
-  assert.ok(/if \(!onAddSocial\(provider, nick\)\)/.test(social), 'сохранение не вызывает onAddSocial')
+  assert.ok(/await onAddSocial\(provider, nick\)/.test(social), 'сохранение не вызывает onAddSocial')
+  assert.ok(social.includes('result.ok === false'), 'ошибка сохранения не показывается игроку')
   assert.ok(!/setToast\('Соцсеть привязана'\)/.test(social), 'остался общий фальшивый тост')
   assert.ok(social.includes('setToast(`Google привязан'), 'нет тоста с подтверждённым аккаунтом Google')
   assert.ok(social.includes('onAddSocial(\'google\', googleAccount)'), 'аккаунт Google не записывается по кнопке «Привязать»')
 })
 
 test('T-SOC-06 в App привязка валидируется и умеет отвязывать', () => {
-  assert.ok(/addSocial: \(provider, handle\)/.test(app), 'addSocial не принимает ник')
-  assert.ok(app.includes('if (!SOCIAL_IDS.includes(id) || !nick) return false'), 'нет валидации провайдера и ника')
-  assert.ok(app.includes('removeSocial'), 'нельзя отвязать соцсеть')
+  assert.ok(/addSocial: async \(provider, handle\)/.test(app), 'addSocial не принимает ник')
+  assert.ok(app.includes("if (!SOCIAL_IDS.includes(id) || !nick) return { ok: false"), 'нет валидации провайдера и ника')
+  assert.ok(/removeSocial: async \(provider\)/.test(app), 'нельзя отвязать соцсеть')
 })
 
 test('T-SOC-07 пустые привязки не улетают в Supabase', () => {
@@ -169,6 +170,31 @@ test('T-SOC-18 стили потока привязки и кода бота', (
   for (const selector of ['.social-flow', '.social-flow__code', '.social-flow__cta', '.social-flow__again']) {
     assert.ok(styles.includes(selector), 'нет стиля ' + selector)
   }
+})
+
+test('T-SOC-19 привязка соцсети сразу уходит в базу — не пропадает после F5', () => {
+  assert.ok(app.includes('const persistProfileNow = async (next, label) =>'), 'нет общей точки сохранения')
+  assert.ok(/\.from\('player_profiles'\)\s*\n?\s*\.upsert\(profileToRow\(next, gameId, gameServer, session\.user\.id\)\)/.test(app),
+    'изменение соцсетей не сохраняется в player_profiles')
+  assert.ok(app.includes("return persistProfileNow(next, 'привязку соцсети')"), 'addSocial не пишет в базу')
+  assert.ok(app.includes("return persistProfileNow(next, 'отвязку соцсети')"), 'removeSocial не пишет в базу')
+  // Состояние меняется только после успешной записи: фантомных привязок нет.
+  assert.ok(app.indexOf('setProfile(next)') > app.indexOf('const { error } = await supabase'), 'профиль меняется до сохранения')
+  assert.ok(!/addSocial: async[\s\S]{0,400}setProfile\(\(p\) =>/.test(app), 'addSocial снова меняет только память')
+})
+
+test('T-SOC-20 подтверждённый Google виден и без строки в socials', () => {
+  assert.ok(social.includes('googleInSocials'), 'иконка Google строится только из socials')
+  assert.ok(/googleAccount && !googleInSocials/.test(social), 'подтверждённый Google не попадает в список привязок')
+  assert.ok(social.includes('viaGoogle'), 'нет пометки, что Google подтверждён OAuth')
+  assert.ok(social.includes('· подтверждено Google'), 'пометка не выводится в карточке')
+})
+
+test('T-SOC-21 отвязка Google снимает и identity — иконка не возвращается', () => {
+  assert.ok(app.includes('supabase.auth.unlinkIdentity(identity)'), 'identity Google остаётся после отвязки')
+  assert.ok(app.includes("find((i) => i.provider === 'google')"), 'identity Google не находится')
+  assert.ok(app.includes('await supabase.auth.getSession()'), 'сессия не обновляется после отвязки')
+  assert.ok(social.includes("setError((result && result.error) || 'Не удалось отвязать"), 'ошибка отвязки не показывается')
 })
 
 console.log(`\nsocials: ${passed}/${passed + failed}`)

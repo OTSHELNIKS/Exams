@@ -695,8 +695,12 @@ export function SocialRow({
 
   // Telegram — не ручная запись: он привязан, если в telegram_links есть строка.
   const botHandle = telegramLink ? (telegramLink.tg_username ? `@${telegramLink.tg_username}` : 'привязан через бота') : ''
+  // Google, подтверждённый OAuth, — настоящая привязка: показываем его даже
+  // если строки в socials ещё нет, иначе иконка исчезала после перезагрузки.
+  const googleInSocials = (profile.socials || []).map(parseSocial).some((x) => x.provider === 'google')
   const bound = [
     ...(telegramLink ? [{ provider: 'telegram', handle: botHandle, viaBot: true }] : []),
+    ...(googleAccount && !googleInSocials ? [{ provider: 'google', handle: googleAccount, viaGoogle: true }] : []),
     ...(profile.socials || []).map(parseSocial).filter((x) => SOCIAL_IDS.includes(x.provider) && x.provider !== 'telegram'),
   ]
   // picker показывает только включённые соцсети; уже привязанные (даже если
@@ -755,10 +759,14 @@ export function SocialRow({
     setLinking(false)
     if (result && result.error) { setError(result.error); setManual(true) }
   }
-  const saveManual = () => {
+  const saveManual = async () => {
     const nick = handle.trim()
     if (!nick) { setError('Укажи почту или ник.'); return }
-    if (!onAddSocial(provider, nick)) { setError('Эта соцсеть уже привязана.'); return }
+    const result = onAddSocial ? await onAddSocial(provider, nick) : { ok: false, error: 'Привязка недоступна.' }
+    if (result === false || (result && result.ok === false)) {
+      setError((result && result.error) || 'Эта соцсеть уже привязана.')
+      return
+    }
     setOpen(false); setManual(false)
     setToast(`${socialLabel(provider)} привязан: ${nick}`)
   }
@@ -895,8 +903,12 @@ export function SocialRow({
             <PrimaryButton onClick={() => { setOpen(false); setToast('Telegram уже привязан') }}>Готово</PrimaryButton>
           )}
           {provider === 'google' && googleAccount && (
-            <PrimaryButton onClick={() => {
-              if (!onAddSocial('google', googleAccount)) { setError('Эта соцсеть уже привязана.'); return }
+            <PrimaryButton onClick={async () => {
+              const result = onAddSocial ? await onAddSocial('google', googleAccount) : { ok: false, error: 'Привязка недоступна.' }
+              if (result === false || (result && result.ok === false)) {
+                setError((result && result.error) || 'Эта соцсеть уже привязана.')
+                return
+              }
               setOpen(false); setToast(`Google привязан: ${googleAccount}`)
             }}>Привязать</PrimaryButton>
           )}
@@ -911,7 +923,9 @@ export function SocialRow({
             <p className="modal__role">
               {view.handle || 'Ник не указан — привязка неполная.'}
               {view.viaBot ? ' · подтверждено ботом' : ''}
+              {view.viaGoogle ? ' · подтверждено Google' : ''}
             </p>
+            {error && <p className="social-error" role="alert">{error}</p>}
             <div className="social-modal__actions">
               <button
                 type="button"
@@ -923,7 +937,13 @@ export function SocialRow({
                     setToast('Telegram отвязан от аккаунта')
                     return
                   }
-                  if (onRemoveSocial) onRemoveSocial(view.provider)
+                  if (onRemoveSocial) {
+                    const result = await onRemoveSocial(view.provider)
+                    if (result === false || (result && result.ok === false)) {
+                      setError((result && result.error) || 'Не удалось отвязать. Попробуй ещё раз.')
+                      return
+                    }
+                  }
                   setView(null)
                   setToast(`${socialLabel(view.provider)} отвязан`)
                 }}
@@ -935,8 +955,14 @@ export function SocialRow({
                   Открыть бота
                 </a>
               ) : (
-                <PrimaryButton onClick={() => {
-                  if (onRemoveSocial) onRemoveSocial(view.provider)
+                <PrimaryButton onClick={async () => {
+                  if (onRemoveSocial) {
+                    const result = await onRemoveSocial(view.provider)
+                    if (result === false || (result && result.ok === false)) {
+                      setError((result && result.error) || 'Не удалось отвязать. Попробуй ещё раз.')
+                      return
+                    }
+                  }
                   setView(null); setProvider(view.provider); setHandle(''); setError(''); setManual(false); setTgCode(''); setOpen(true)
                 }}>Изменить</PrimaryButton>
               )}

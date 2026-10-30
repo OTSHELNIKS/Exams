@@ -334,30 +334,68 @@ export default function App() {
 
   const [draftTeams, setDraftTeams] = useState(null)
 
+  // Сохранение «лёгких» изменений профиля (соцсети) сразу в базу.
+  // Раньше привязка жила только в памяти: после F5 профиль перечитывался из
+  // player_profiles, и привязанный Google «пропадал». Теперь сначала пишем
+  // строку, и только при успехе меняем состояние — фантомных привязок нет.
+  const persistProfileNow = async (next, label) => {
+    if (!supabase || !session) {
+      return { ok: false, error: 'Войди в аккаунт, чтобы сохранить привязку.' }
+    }
+    setSaving(true); setSaveError('')
+    const { error } = await supabase
+      .from('player_profiles')
+      .upsert(profileToRow(next, gameId, gameServer, session.user.id))
+    setSaving(false)
+    if (error) {
+      const message = `Не удалось сохранить ${label}: ${error.message}`
+      setSaveError(message)
+      return { ok: false, error: message }
+    }
+    setProfile(next)
+    return { ok: true }
+  }
+
   const actions = {
     goDraft: () => go('draft'),
     goLeaderboard: () => go('leaderboard'),
     addSlot: () => setProfile((p) => ({ ...p, extraSlots: Math.min(3, (p.extraSlots || 0) + 1) })),
     // Соцсеть добавляется только с ником: [provider, handle]. Без ника
     // привязка бессмысленна — вернуть false, чтобы экран не писал «привязана».
-    addSocial: (provider, handle) => {
+    addSocial: async (provider, handle) => {
       const id = String(provider || '').toLowerCase()
       const nick = String(handle || '').trim()
-      if (!SOCIAL_IDS.includes(id) || !nick) return false
-      let added = false
-      setProfile((p) => {
-        const list = (p.socials || []).map(parseSocial)
-        if (list.some((x) => x.provider === id)) return p
-        if (list.length >= SOCIAL_IDS.length) return p
-        added = true
-        return { ...p, socials: [...(p.socials || []), formatSocial(id, nick)] }
-      })
-      return true
+      if (!SOCIAL_IDS.includes(id) || !nick) return { ok: false, error: 'Укажи ник или почту.' }
+      const base = profileRef.current || profile
+      const list = (base.socials || []).map(parseSocial)
+      if (list.some((x) => x.provider === id)) return { ok: false, error: 'Эта соцсеть уже привязана.' }
+      if (list.length >= SOCIAL_IDS.length) return { ok: false, error: 'Свободных слотов нет.' }
+      const next = { ...base, socials: [...(base.socials || []), formatSocial(id, nick)] }
+      return persistProfileNow(next, 'привязку соцсети')
     },
-    removeSocial: (provider) => setProfile((p) => ({
-      ...p,
-      socials: (p.socials || []).filter((x) => parseSocial(x).provider !== provider),
-    })),
+    removeSocial: async (provider) => {
+      const id = String(provider || '').toLowerCase()
+      const base = profileRef.current || profile
+      const next = { ...base, socials: (base.socials || []).filter((x) => parseSocial(x).provider !== id) }
+      // Google подтверждён ещё и identity в сессии. Если её не снять, иконка
+      // вернётся после перезагрузки — поэтому отвязываем и identity.
+      if (id === 'google' && supabase && session) {
+        const identity = (session.user?.identities || []).find((i) => i.provider === 'google')
+        if (identity) {
+          const { error } = await supabase.auth.unlinkIdentity(identity)
+          if (error) {
+            const message = 'Не удалось отвязать Google: ' + (error.message || 'ошибка проекта')
+            setSaveError(message)
+            return { ok: false, error: message }
+          }
+          try {
+            const { data } = await supabase.auth.getSession()
+            if (data?.session) setSession(data.session)
+          } catch { /* сессия обновится при следующем входе */ }
+        }
+      }
+      return persistProfileNow(next, 'отвязку соцсети')
+    },
   }
 
   const renderScreen = () => {
