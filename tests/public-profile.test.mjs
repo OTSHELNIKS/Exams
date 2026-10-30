@@ -112,6 +112,12 @@ test('T-PUB-12 у своего профиля в карточке есть по�
   assert.ok(screens.includes('isMe={openPlayer === userId}'), 'лидерборд не передаёт признак своего профиля')
 })
 
+test('T-PUB-15 аватар в карточке стоит по центру', () => {
+  assert.match(styles, /\.modal__card \.avatar \{[^}]*margin-left: auto;[^}]*margin-right: auto;/, 'аватар не центрируется в модалке')
+  // Аватар — блочный элемент фиксированной ширины: text-align родителя его не двигает.
+  assert.match(styles, /\.avatar \{[^}]*border-radius: 50%/, 'базовые стили аватара потерялись')
+})
+
 test('T-PUB-13 стили карточки и кликабельной строки на месте', () => {
   for (const selector of ['.rank-row--btn', '.rank-row__more', '.pub__chip', '.pub__social', '.pub__note', '.modal--player']) {
     assert.ok(styles.includes(selector), 'нет стиля ' + selector)
