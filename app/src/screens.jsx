@@ -12,6 +12,7 @@ import {
 import {
   RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, DRAFT_FILTERS,
 } from './data.js'
+import { AvatarCropModal } from './crop.jsx'
 import {
   uploadAvatar, uploadScreenshot, deleteScreenshot, validateImage,
   TELEGRAM_BOT_USERNAME, createTelegramLinkCode, getTelegramLink,
@@ -135,21 +136,37 @@ export function WizardScreen({ profile, setProfile, onDone, onBack, saveError, s
     reader.readAsDataURL(file)
   })
 
-  const onAvatar = async (e) => {
+  /* Выбор фото открывает обрезку: квадрат 512×512, сдвиг + масштаб. */
+  const [cropSrc, setCropSrc] = useState(null)
+
+  useEffect(() => () => { if (cropSrc) URL.revokeObjectURL(cropSrc) }, [cropSrc])
+
+  const closeCropper = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc(null)
+  }
+
+  const onAvatar = (e) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
     const err = validateImage(file)
     if (err) { setToast(err); return }
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc(URL.createObjectURL(file))
+  }
+
+  const applyAvatar = async (cropped) => {
+    closeCropper()
     try {
-      set({ avatar: await readAsDataUrl(file) })
+      set({ avatar: await readAsDataUrl(cropped) })
     } catch { setToast('Не удалось прочитать файл'); return }
     if (!canUpload) { setToast('Войди по почте, чтобы фото сохранилось в профиле'); return }
     setUploading('avatar')
     try {
-      const publicUrl = await uploadAvatar(file, userId)
+      const publicUrl = await uploadAvatar(cropped, userId)
       set({ avatarUrl: publicUrl })
-      setToast('Фото загружено')
+      setToast('Фото обновлено')
     } catch (error) {
       setToast('Не удалось загрузить фото: ' + (error.message || 'ошибка'))
     } finally {
@@ -335,6 +352,15 @@ export function WizardScreen({ profile, setProfile, onDone, onBack, saveError, s
           Очистить анкету
         </button>
       </div>
+
+      {cropSrc && (
+        <AvatarCropModal
+          src={cropSrc}
+          onCancel={closeCropper}
+          onApply={applyAvatar}
+          busy={uploading === 'avatar'}
+        />
+      )}
     </div>
   )
 }
