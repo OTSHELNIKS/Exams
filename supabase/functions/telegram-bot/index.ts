@@ -21,7 +21,7 @@ const APP_URL = Deno.env.get('APP_PUBLIC_URL') || ''
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').replace(/\/+$/, '')
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const TG = 'https://api.telegram.org/bot' + BOT_TOKEN
-const BUILD = 'ticket-dialog-v2'
+const BUILD = 'greeting-v2'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -187,20 +187,50 @@ function appKeyboard() {
   return { inline_keyboard: [[{ text: '🎮 Открыть приложение', url: APP_ORIGIN + '/' }]] }
 }
 
+// Картинка-визитка. Сначала пробуем отдать Telegram ссылку, а если он не смог
+// её скачать — заливаем файл сами. false = фото не ушло, надо слать текст.
+async function sendPhotoSafe(chatId, caption) {
+  if (!AVATAR_URL) return false
+  const pic = await tg('sendPhoto', {
+    chat_id: chatId, photo: AVATAR_URL, caption: caption, parse_mode: 'HTML',
+  })
+  if (pic && pic.ok !== false) return true
+  try {
+    const r = await fetch(AVATAR_URL)
+    if (!r.ok) return false
+    const fd = new FormData()
+    fd.append('chat_id', String(chatId))
+    fd.append('caption', caption)
+    fd.append('parse_mode', 'HTML')
+    fd.append('photo', new File([await r.blob()], 'bot-avatar.jpg', { type: 'image/jpeg' }))
+    const up = await fetch(TG + '/sendPhoto', { method: 'POST', body: fd })
+    const j = await up.json().catch(() => ({}))
+    if (j && j.ok) return true
+    console.error('avatar upload failed', JSON.stringify(j).slice(0, 300))
+  } catch (e) {
+    console.error('avatar upload threw', String(e))
+  }
+  return false
+}
+
 // Приветствие новичку: картинка-визитка + шаги привязки + кнопка в приложение.
 async function greet(chatId) {
   const kb = appKeyboard()
-  if (AVATAR_URL) {
-    const pic = await tg('sendPhoto', {
-      chat_id: chatId, photo: AVATAR_URL, caption: WELCOME_TEXT, parse_mode: 'HTML',
-    })
-    if (!pic || pic.ok === false) {
-      await send(chatId, WELCOME_TEXT)
-    }
-  } else {
-    await send(chatId, WELCOME_TEXT)
-  }
+  if (!(await sendPhotoSafe(chatId, WELCOME_TEXT))) await send(chatId, WELCOME_TEXT)
   await send(chatId, linkPrompt(), kb ? { reply_markup: kb } : undefined)
+}
+
+// Возвращение: та же визитка, но с ником, и сразу меню команд.
+async function greetBack(chatId, nick) {
+  const kb = appKeyboard()
+  const caption = nick
+    ? 'С возвращением, <b>' + esc(nick) + '</b>! Аккаунт уже привязан.'
+    : 'С возвращением! Аккаунт уже привязан.'
+  const tail = 'Сюда приходят ID лобби, ответы поддержки и уведомления о матчах.'
+  if (!(await sendPhotoSafe(chatId, caption + '\n\n' + tail))) {
+    await send(chatId, caption + '\n\n' + tail)
+  }
+  await send(chatId, HELP_TEXT, kb ? { reply_markup: kb } : undefined)
 }
 
 async function adminLink(chatId) {
@@ -644,10 +674,7 @@ async function handleUpdate(update) {
     const links = await dbSelect('telegram_links', { tg_chat_id: 'eq.' + chatId, select: '*' })
     if (links[0]) {
       const profs = await dbSelect('player_profiles', { user_id: 'eq.' + links[0].user_id, select: 'nick' })
-      const nick = profs[0] && profs[0].nick ? ', ' + esc(profs[0].nick) : ''
-      const kb = appKeyboard()
-      await send(chatId, 'С возвращением' + nick + '! Аккаунт уже привязан.\n\n' + HELP_TEXT,
-        kb ? { reply_markup: kb } : undefined)
+      await greetBack(chatId, profs[0] && profs[0].nick)
     } else {
       await greet(chatId)
     }

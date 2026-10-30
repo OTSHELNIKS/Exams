@@ -36,9 +36,22 @@ globalThis.fetch = async (url, opts = {}) => {
   const u = String(url)
   if (u.startsWith('https://api.telegram.org/bot')) {
     const method = u.slice(u.lastIndexOf('/') + 1)
-    calls.tg.push({ method, payload: JSON.parse(opts.body || '{}') })
+    const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData
+    calls.tg.push({ method, payload: isForm ? { form: true } : JSON.parse(opts.body || '{}') })
     if (method === 'getMe') return J(200, { ok: true, result: { username: 'name_mlbb_bot' } })
+    // Telegram не смог скачать картинку по ссылке — бот должен залить файл.
+    if (method === 'sendPhoto' && SCEN.photoFail && !isForm) {
+      return J(400, { ok: false, error_code: 400, description: 'wrong file identifier/HTTP URL specified' })
+    }
     return J(200, { ok: true, result: {} })
+  }
+  if (u.startsWith('https://example.test/')) {
+    if (SCEN.avatarFail) return { ok: false, status: 404, blob: async () => null }
+    return {
+      ok: true,
+      status: 200,
+      blob: async () => new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: 'image/jpeg' }),
+    }
   }
   if (u.includes('/auth/v1/user')) {
     const ok = (opts.headers || {}).Authorization === 'Bearer GOODJWT'
@@ -610,14 +623,34 @@ t('T-BOT-44 приветствие ведёт в приложение кнопк
   assert.match(btn.text, /Открыть приложение/)
 })
 
-t('T-BOT-45 /start привязанному: приветствие + кнопка, без картинки', async () => {
+t('T-BOT-45 /start привязанному: та же картинка, ник и меню', async () => {
   reset({ telegram_links: [{ user_id: 'user-1' }], player_profiles: [{ nick: 'Amy' }] })
   await post('', { headers: H, body: upd('/start') })
-  assert.match(tgTexts(), /С возвращением/)
-  assert.match(tgTexts(), /Amy/)
-  assert.equal(calls.tg.filter((c) => c.method === 'sendPhoto').length, 0)
+  const photo = calls.tg.find((c) => c.method === 'sendPhoto')
+  assert.ok(photo, 'привязанный тоже должен видеть визитку')
+  assert.equal(photo.payload.photo, 'https://example.test/bot-avatar.jpg')
+  assert.match(photo.payload.caption, /С возвращением/)
+  assert.match(photo.payload.caption, /Amy/)
+  assert.match(tgTexts(), /команды/)
   const msg = calls.tg.find((c) => c.method === 'sendMessage')
   assert.ok(msg.payload.reply_markup.inline_keyboard[0][0].url)
+})
+
+t('T-BOT-47 если Telegram не скачал картинку — бот заливает файл', async () => {
+  reset({ telegram_links: [], photoFail: true })
+  await post('', { headers: H, body: upd('/start') })
+  const photos = calls.tg.filter((c) => c.method === 'sendPhoto')
+  assert.equal(photos.length, 2, 'сначала ссылка, потом файл')
+  assert.equal(photos[0].payload.photo, 'https://example.test/bot-avatar.jpg')
+  assert.equal(photos[1].payload.form, true)
+  assert.match(tgTexts(), /Как привязать/)
+})
+
+t('T-BOT-48 если картинки нет совсем — приветствие уходит текстом', async () => {
+  reset({ telegram_links: [], photoFail: true, avatarFail: true })
+  await post('', { headers: H, body: upd('/start') })
+  assert.match(tgTexts(), /Mobile Legends/)
+  assert.match(tgTexts(), /Как привязать/)
 })
 
 t('T-BOT-46 ?setup прописывает описание бота', async () => {

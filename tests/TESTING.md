@@ -1,11 +1,11 @@
 # NAME MLBB — чек-лист и тест-кейсы
 
-Сайт: https://otshelniks.github.io/Exams/ (GitHub Pages) · зеркало: https://name-mlbb.netlify.app · Бот: @name_mlbb_bot (функция v13) · База: Supabase `yjedqdbwvjvikyixsduw`
+Сайт: https://otshelniks.github.io/Exams/ (GitHub Pages) · зеркало: https://name-mlbb.netlify.app · Бот: @name_mlbb_bot (функция v17, сборка `greeting-v2`) · База: Supabase `yjedqdbwvjvikyixsduw`
 
 ## Как запускать автотесты
 
 ```bash
-node tests/bot.test.mjs     # 42 теста логики бота, ноль зависимостей
+node tests/bot.test.mjs     # 48 тестов логики бота, ноль зависимостей
 node tests/admin.test.mjs   # 9 проверок доступа к админке (статические)
 node tests/avatar.test.mjs  # 7 проверок геометрии обрезки аватарки
 ```
@@ -82,6 +82,12 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 | 40 | `/support` + кнопка «Написать» | Сессия `support`, обычный текст создаёт заявку | ✅ |
 | 41 | `/cancel` | Сессия удалена, «отменил» | ✅ |
 | 42 | Обычный текст без режима | Подсказка «Не понял команду» | ✅ |
+| 43 | `/start` без привязки | `sendPhoto` с `bot-avatar.jpg` и подписью NAME + шаги привязки | ✅ |
+| 44 | Кнопка в приветствии | Inline `🎮 Открыть приложение` → `https://otshelniks.github.io/Exams/` | ✅ |
+| 45 | `/start` привязанному | Та же визитка, «С возвращением, ник», меню и кнопка | ✅ |
+| 46 | `?setup` | `setDescription` и `setShortDescription` применены | ✅ |
+| 47 | Telegram не скачал картинку по URL | Бот заливает файл сам (`sendPhoto` + форма) | ✅ |
+| 48 | Картинка недоступна совсем | Приветствие уходит текстом, шаги привязки на месте | ✅ |
 
 ## T-DB — база и доступы (полуавто, SQL)
 
