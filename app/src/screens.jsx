@@ -7,10 +7,10 @@ import {
 } from 'lucide-react'
 import {
   Logo, BrandMark, Chip, Label, PrimaryButton, BackHeader, Avatar, VerificationCard,
-  StatBadge, Steps, GameIdIcon, CrownIcon, SuccessCheck, Modal,
+  StatBadge, Steps, GameIdIcon, CrownIcon, SuccessCheck, Modal, HeroPicker, HeroStrip,
 } from './ui.jsx'
 import {
-  RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, DRAFT_FILTERS,
+  RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, DRAFT_FILTERS, HERO_ROLE_FILTERS, HERO_ROLE_LABEL,
 } from './data.js'
 import { AvatarCropModal } from './crop.jsx'
 import {
@@ -116,6 +116,18 @@ export function WizardScreen({ profile, setProfile, onDone, onBack, saveError, s
   const shots = profile.screenshots || []
 
   const set = (patch) => setProfile((p) => ({ ...p, ...patch }))
+  const [heroRole, setHeroRole] = useState('all')
+  const [heroQuery, setHeroQuery] = useState('')
+
+  const toggleHero = (hero) => {
+    setProfile((p) => {
+      const arr = p.heroes || []
+      if (arr.includes(hero.name)) return { ...p, heroes: arr.filter((v) => v !== hero.name) }
+      if (arr.length >= 6) { setToast('Можно выбрать не больше 6 героев'); return p }
+      return { ...p, heroes: [...arr, hero.name] }
+    })
+  }
+
   const toggle = (key, value, max) => setProfile((p) => {
     const arr = p[key] || []
     if (arr.includes(value)) return { ...p, [key]: arr.filter((v) => v !== value) }
@@ -300,10 +312,25 @@ export function WizardScreen({ profile, setProfile, onDone, onBack, saveError, s
 
       {step === 3 && (
         <>
-          <Label hint={`${profile.heroes.length}/6`}>ЛЮБИМЫЕ ГЕРОИ (МАКС. 6)</Label>
-          <div className="chips">
-            {HEROES.map((h) => <Chip key={h} active={profile.heroes.includes(h)} onClick={() => toggle('heroes', h, 6)}>{h}</Chip>)}
+          <Label hint={`${(profile.heroes || []).length}/6`}>ЛЮБИМЫЕ ГЕРОИ (МАКС. 6)</Label>
+          {(profile.heroes || []).length > 0 && (
+            <HeroStrip names={profile.heroes} empty="" />
+          )}
+          <div className="hero-filter-note">
+            {heroRole === 'all' ? `Все герои: ${HEROES.length}` : `${HERO_ROLE_LABEL[heroRole]}: ${HEROES.filter((h) => h.roles.includes(heroRole)).length}`}
+            {' · '}нажми на иконку, чтобы добавить или убрать
           </div>
+          <HeroPicker
+            heroes={HEROES}
+            selected={profile.heroes || []}
+            onToggle={toggleHero}
+            limit={6}
+            roleFilters={HERO_ROLE_FILTERS}
+            role={heroRole}
+            onRole={setHeroRole}
+            query={heroQuery}
+            onQuery={setHeroQuery}
+          />
 
           <Label>КЛАССЫ ГЕРОЕВ (МАКС. 6)</Label>
           <div className="chips">
@@ -686,6 +713,12 @@ export function ProfileScreen({ profile, actions, gameId, onBack, onEdit, supaba
         )}
         {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
       </div>
+
+      <div className="section-head"><span>ЛЮБИМЫЕ ГЕРОИ</span><b>{(profile.heroes || []).length}/6</b></div>
+      <HeroStrip names={profile.heroes} empty="Героев пока нет — выбери их в анкете." />
+      <button type="button" className="slot-btn" onClick={onEdit}>
+        <Settings size={15} /> {(profile.heroes || []).length ? 'Изменить героев' : 'Выбрать героев'}
+      </button>
 
       <SocialRow profile={profile} onAddSocial={actions.addSocial} />
       <TelegramLinkCard supabase={supabase} userId={userId} />

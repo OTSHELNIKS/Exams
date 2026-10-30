@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ChevronLeft, Gamepad2, Send, Camera, Plus,
-  ShieldCheck, Check, X, Copy, Mic, MicOff, RotateCcw, Crown, Users, Trophy,
+  ShieldCheck, Check, X, Copy, Mic, MicOff, RotateCcw, Crown, Users, Trophy, Search,
 } from 'lucide-react'
+import { HERO_BY_NAME } from './data.js'
 
 /* ------------------------------------------------------------------ logo */
 export function Logo({ size = 'md', light = false }) {
@@ -100,6 +101,112 @@ export function Modal({ open, onClose, children, className = '', labelledBy }) {
       </div>
     </div>,
     document.body,
+  )
+}
+
+/* ------------------------------------------------------------ hero icons */
+/* Иконки лежат в app/public/heroes/<id>.webp -> /heroes/<id>.webp на сайте. */
+const HERO_BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '')
+
+export function heroIcon(id) {
+  return `${HERO_BASE}/heroes/${id}.webp`
+}
+
+export function HeroIcon({ hero, size = 44, className = '' }) {
+  return (
+    <img
+      className={`hero-icon ${className}`.trim()}
+      src={heroIcon(hero.id)}
+      alt={hero.name}
+      width={size}
+      height={size}
+      loading="lazy"
+      draggable={false}
+    />
+  )
+}
+
+/* ------------------------------------------------------------ hero picker */
+/* Выбор любимых героев из полного ростера: фильтр по ролям, поиск, лимит.
+   Используется в анкете; в профиле — компактный HeroStrip. */
+export function HeroPicker({ heroes, selected, onToggle, limit = 6, roleFilters, query, onQuery, role, onRole }) {
+  const selectedSet = new Set(selected || [])
+  const filtered = heroes.filter((h) => (role === 'all' || h.roles.includes(role)))
+  const q = (query || '').trim().toLowerCase()
+  const shown = q ? filtered.filter((h) => h.name.toLowerCase().includes(q)) : filtered
+  const full = (selected || []).length >= limit
+
+  return (
+    <div className="hero-picker">
+      <div className="hero-picker__bar">
+        <div className="hero-picker__roles">
+          {roleFilters.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              className={`hero-pill ${role === r.id ? 'is-active' : ''}`}
+              onClick={() => onRole(r.id)}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <label className="hero-search">
+          <Search size={15} />
+          <input
+            value={query || ''}
+            onChange={(e) => onQuery(e.target.value)}
+            placeholder="Поиск героя"
+            aria-label="Поиск героя"
+          />
+        </label>
+      </div>
+
+      {shown.length === 0 ? (
+        <p className="field-hint">Героев не нашлось — попробуй другое имя или роль.</p>
+      ) : (
+        <div className="hero-grid">
+          {shown.map((h) => {
+            const on = selectedSet.has(h.name)
+            return (
+              <button
+                key={h.id}
+                type="button"
+                className={`hero-tile ${on ? 'is-on' : ''} ${!on && full ? 'is-locked' : ''}`}
+                onClick={() => onToggle(h)}
+                title={h.name}
+                aria-pressed={on}
+              >
+                <span className="hero-tile__pic">
+                  <HeroIcon hero={h} size={52} />
+                  {on && <span className="hero-tile__check"><Check size={12} /></span>}
+                </span>
+                <span className="hero-tile__name">{h.name}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* Компактная полоска выбранных героев (профиль, карточка игрока). */
+export function HeroStrip({ names, size = 40, empty = 'Герои не выбраны' }) {
+  const list = names || []
+  if (list.length === 0) return <p className="field-hint">{empty}</p>
+  return (
+    <div className="hero-strip">
+      {list.map((name) => {
+        const hero = HERO_BY_NAME[name] || { id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name }
+        return (
+          <span key={name} className="hero-strip__item" title={name}>
+            <HeroIcon hero={hero} size={size} />
+            <span>{name}</span>
+          </span>
+        )
+      })}
+    </div>
   )
 }
 

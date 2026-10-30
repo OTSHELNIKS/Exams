@@ -635,6 +635,72 @@ html.is-modal-open .rail { overflow: hidden !important; }
 .bottom-nav button { flex: 1; border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 7px 2px; color: var(--dim); font-size: 9.5px; border-radius: 12px; }
 .bottom-nav button.is-active { color: var(--orange-2); background: rgba(255,75,18,.09); }
 
+
+/* ------------------------------------------------------------ hero picker */
+.hero-picker { margin: 6px 0 4px; }
+.hero-picker__bar { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.hero-picker__roles { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.hero-picker__roles::-webkit-scrollbar { display: none; }
+.hero-pill {
+  flex: none; border: 1px solid var(--line); background: var(--surface); color: #cfd1da;
+  border-radius: 999px; padding: 8px 14px; font-size: 12px; font-weight: 700; white-space: nowrap;
+  transition: all .15s ease;
+}
+.hero-pill:hover { border-color: #4a4d5c; }
+.hero-pill.is-active {
+  background: linear-gradient(100deg, #ff5317, #ff4b12); border-color: transparent;
+  color: #160a05; box-shadow: 0 6px 18px rgba(255,75,18,.28);
+}
+.hero-search {
+  display: flex; align-items: center; gap: 9px; height: 44px; padding: 0 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; color: var(--dim);
+}
+.hero-search:focus-within { border-color: var(--orange); }
+.hero-search input {
+  flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none;
+  color: var(--text); font-size: 14px;
+}
+.hero-search input::placeholder { color: #6c6f7e; }
+
+.hero-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 8px; max-height: 340px; overflow-y: auto; padding: 4px 2px 6px;
+  scrollbar-width: thin; overscroll-behavior: contain;
+}
+.hero-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  border: 1px solid transparent; background: #14151c; border-radius: 14px;
+  padding: 6px 4px 7px; color: var(--muted); transition: all .12s ease;
+}
+.hero-tile:hover { border-color: #3a3c48; background: #191b23; }
+.hero-tile__pic { position: relative; display: block; line-height: 0; border-radius: 12px; overflow: hidden; }
+.hero-icon { border-radius: 12px; object-fit: cover; display: block; background: #1d1f28; }
+.hero-tile__name {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .2px; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hero-tile.is-on { border-color: var(--orange); background: rgba(255,75,18,.12); color: #fff; }
+.hero-tile.is-on .hero-tile__pic { box-shadow: 0 0 0 2px var(--orange), 0 6px 18px rgba(255,75,18,.3); }
+.hero-tile__check {
+  position: absolute; right: 3px; bottom: 3px; width: 17px; height: 17px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--orange); color: #160a05; border: 1.5px solid #14151c;
+}
+.hero-tile.is-locked { opacity: .45; }
+
+.hero-filter-note { font-size: 11.5px; color: var(--dim); margin: 0 0 10px; }
+
+@media (max-width: 640px) {
+  /* на телефоне листается сама анкета — вложенный скролл только мешает */
+  .hero-grid { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }
+  .hero-tile__name { font-size: 9px; }
+}
+
+.hero-strip { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 12px; }
+.hero-strip__item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.hero-strip__item > span { font-size: 9.5px; color: var(--muted); max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hero-strip .hero-icon { box-shadow: 0 0 0 1px rgba(255,75,18,.35); }
+
 /* ------------------------------------------------------------ responsive */
 @media (max-width: 1080px) {
   .feature-grid { grid-template-columns: repeat(2, 1fr); }
@@ -964,6 +1030,14 @@ html.is-modal-open .rail { overflow: hidden !important; }
   .admin-search input { font-size: 15px; }
   .modal__card { max-width: 460px; padding: 26px; }
   .modal__card--tall { max-width: 620px; }
+  .hero-grid { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 10px; max-height: 420px; }
+  .hero-tile { padding: 8px 6px 9px; border-radius: 16px; }
+  .hero-tile__name { font-size: 11px; }
+  .hero-strip__item > span { font-size: 10.5px; }
+  .hero-pill { font-size: 13px; padding: 9px 16px; }
+  .hero-search { height: 48px; }
+  .hero-search input { font-size: 15px; }
+  .hero-strip { gap: 12px; }
   .modal__card h3 { font-size: 19px; }
   .admin-detail { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 26px; font-size: 14px; }
   .admin-detail__bio, .admin-detail .shots-grid { grid-column: 1 / -1; }
