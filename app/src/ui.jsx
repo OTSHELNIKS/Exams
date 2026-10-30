@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ChevronLeft, Gamepad2, Send, Camera, Plus,
   ShieldCheck, Check, X, Copy, Mic, MicOff, RotateCcw, Crown, Users, Trophy,
@@ -34,6 +35,35 @@ export function AppFrame({ children, className = '' }) {
         <div className="appframe__content">{children}</div>
       </div>
     </div>
+  )
+}
+
+/* ------------------------------------------------------------------ modal */
+/* Оверлей поверх всего окна: карточка всегда по центру экрана, независимо от
+   прокрутки списка под ней. Раньше .modal был absolute внутри ленты и уезжал
+   вверх — приходилось долистывать. */
+export function Modal({ open, onClose, children, className = '', labelledBy }) {
+  useEffect(() => {
+    if (!open) return undefined
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [open, onClose])
+
+  if (!open || typeof document === 'undefined') return null
+  return createPortal(
+    <div className="modal" role="dialog" aria-modal="true" aria-labelledby={labelledBy} onClick={onClose}>
+      <div className={`modal__card ${className}`} onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть"><CloseIcon /></button>
+        {children}
+      </div>
+    </div>,
+    document.body,
   )
 }
 

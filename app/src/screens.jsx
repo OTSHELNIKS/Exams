@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import {
   Logo, BrandMark, Chip, Label, PrimaryButton, BackHeader, Avatar, VerificationCard,
-  StatBadge, Steps, GameIdIcon, CrownIcon, SuccessCheck, CloseIcon,
+  StatBadge, Steps, GameIdIcon, CrownIcon, SuccessCheck, Modal,
 } from './ui.jsx'
 import {
   RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, DRAFT_FILTERS,
@@ -709,12 +709,11 @@ function matchDraftRole(p, f) {
 }
 
 function PlayerPeek({ player, onClose, onPick }) {
-  if (!player) return null
   const roles = (player.roles || []).join(', ')
   return (
-    <div className="modal" onClick={onClose}>
-      <div className="modal__card" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="modal__close" onClick={onClose}><CloseIcon /></button>
+    <Modal open={Boolean(player)} onClose={onClose}>
+      {player && (
+        <>
         <div className="modal__avatar">{(player.nick?.[0] || '?').toUpperCase()}</div>
         <h3>{player.nick}</h3>
         <p className="modal__role">{roles || 'Роли не указаны'} · {player.pts ?? 0} PTS</p>
@@ -724,8 +723,9 @@ function PlayerPeek({ player, onClose, onPick }) {
           <div><b>{(player.roles || []).length || '—'}</b><span>Роли</span></div>
         </div>
         <PrimaryButton glow={false} onClick={() => { onPick(); onClose() }}>ВЫБРАТЬ В КОМАНДУ</PrimaryButton>
-      </div>
-    </div>
+        </>
+      )}
+    </Modal>
   )
 }
 

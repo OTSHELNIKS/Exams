@@ -3,7 +3,7 @@ import {
   RefreshCw, Search, Users, UserRound, Send, Ticket, ShieldCheck,
   Database, Trophy, Activity, CheckCheck, Image as ImageIcon, Gamepad2,
 } from 'lucide-react'
-import { BackHeader, CloseIcon } from './ui.jsx'
+import { BackHeader, Modal } from './ui.jsx'
 
 /* ================================================================ charts ==
    Tiny dependency-free charts: plain SVG, scaled by CSS to the container.
@@ -163,17 +163,16 @@ function Card({ title, hint, children, action }) {
 
 /* ------------------------------------------------------------------ detail */
 function AdminDetail({ row, onClose }) {
-  if (!row) return null
   return (
-    <div className="modal" onClick={onClose}>
-      <div className="modal__card modal__card--tall" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="modal__close" onClick={onClose}><CloseIcon /></button>
+    <Modal open={Boolean(row)} onClose={onClose} className="modal__card--tall" labelledBy="admin-detail-title">
+      {row && (
+        <>
         <div className="modal__avatar">
           {row.avatar_url
             ? <img src={row.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
             : (row.nick?.[0] || '?').toUpperCase()}
         </div>
-        <h3>{row.nick || 'Без ника'}</h3>
+        <h3 id="admin-detail-title">{row.nick || 'Без ника'}</h3>
         <p className="modal__role">Game ID • {row.game_id || '—'}</p>
         <div className="admin-detail">
           {[
@@ -200,8 +199,9 @@ function AdminDetail({ row, onClose }) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </Modal>
   )
 }
 
