@@ -334,7 +334,8 @@ a { color: inherit; }
 .home__header { gap: 8px; }
 .home__admin { display: inline-flex; align-items: center; gap: 5px; background: rgba(255,200,61,.12); color: var(--gold); border: 1px solid rgba(255,200,61,.4); border-radius: 999px; padding: 6px 12px; font-size: 11px; font-weight: 800; }
 .home__id { background: rgba(255,75,18,.14); color: #ff8557; border-radius: 999px; padding: 6px 12px; font-size: 11px; font-weight: 800; }
-.home__hero { text-align: center; padding: 10px 0 4px; }
+.home__hero { text-align: center; padding: 10px 0 4px; display: flex; flex-direction: column; align-items: center; }
+.home__hero .avatar { margin: 0 auto; }
 .home__hero h1 { font-family: var(--display); font-weight: 900; font-size: 30px; margin: 22px 0 12px; }
 .home__badges { display: flex; justify-content: center; gap: 9px; flex-wrap: wrap; }
 .home__bio { color: #b8bbc7; font-size: 13px; line-height: 1.5; margin: 16px 0 0; }
