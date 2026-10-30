@@ -197,6 +197,7 @@ export default function App() {
         onOpenScreen={() => openApp('home')}
         gameId={gameId}
         setGameId={setGameId}
+        screensCount={SCREENS.filter((s) => !s.admin).length}
       />
     )
   }
