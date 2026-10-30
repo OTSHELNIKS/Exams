@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ChevronLeft, Gamepad2, Send, Camera, Plus,
@@ -42,23 +42,59 @@ export function AppFrame({ children, className = '' }) {
 /* Оверлей поверх всего окна: карточка всегда по центру экрана, независимо от
    прокрутки списка под ней. Раньше .modal был absolute внутри ленты и уезжал
    вверх — приходилось долистывать. */
+// Пока карточка открыта, прокрутка заморожена у всех контейнеров приложения
+// (на ПК листается .app-main, на телефоне — .appframe__content, лендинг — body).
+const SCROLLERS = '.app-shell, .app-main, .appframe, .appframe__content, .rail, .landing, .modal'
+
 export function Modal({ open, onClose, children, className = '', labelledBy }) {
+  const cardRef = useRef(null)
+
   useEffect(() => {
     if (!open) return undefined
+    const nodes = [document.documentElement, document.body,
+      ...Array.from(document.querySelectorAll(SCROLLERS))]
+    const saved = nodes.map((n) => ({
+      node: n,
+      overflow: n.style.overflow,
+      scrollTop: n.scrollTop,
+      scrollLeft: n.scrollLeft,
+    }))
+    const pageY = window.scrollY
+    const pageX = window.scrollX
+
+    nodes.forEach((n) => { n.style.overflow = 'hidden' })
+    document.documentElement.classList.add('is-modal-open')
+
     const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', onKey)
+    cardRef.current?.focus?.({ preventScroll: true })
+
     return () => {
       window.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prevOverflow
+      document.documentElement.classList.remove('is-modal-open')
+      saved.forEach(({ node, overflow, scrollTop, scrollLeft }) => {
+        node.style.overflow = overflow
+        if (node.scrollTop !== scrollTop && node !== document.documentElement && node !== document.body) {
+          node.scrollTop = scrollTop
+          node.scrollLeft = scrollLeft
+        }
+      })
+      // окно могло «дёрнуться» от смены overflow — возвращаем позицию как была
+      if (window.scrollY !== pageY || window.scrollX !== pageX) window.scrollTo(pageX, pageY)
     }
   }, [open, onClose])
 
   if (!open || typeof document === 'undefined') return null
   return createPortal(
     <div className="modal" role="dialog" aria-modal="true" aria-labelledby={labelledBy} onClick={onClose}>
-      <div className={`modal__card ${className}`} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={cardRef}
+        className={`modal__card ${className}`}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+      >
         <button type="button" className="modal__close" onClick={onClose} aria-label="Закрыть"><CloseIcon /></button>
         {children}
       </div>

@@ -427,24 +427,32 @@ a { color: inherit; }
 }
 .empty { text-align: center; color: var(--dim); font-size: 12px; padding: 20px; }
 .draft__bottom { position: sticky; bottom: 0; padding: 14px 0 4px; background: linear-gradient(transparent, var(--phone) 26%); }
-/* Оверлей поверх окна (портал в body): карточка всегда по центру экрана
+/* Оверлей поверх окна (портал в body): карточка всегда по центру вьюпорта
    и не уезжает вместе с прокрученным списком под ней. */
 .modal {
   position: fixed; inset: 0; z-index: 60; background: rgba(4,4,7,.8);
   display: flex; align-items: center; justify-content: center;
-  padding: 24px; overflow-y: auto; overscroll-behavior: contain;
+  padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+  overflow: hidden; overscroll-behavior: contain; touch-action: none;
   animation: modal-fade .12s ease-out;
 }
 @keyframes modal-fade { from { opacity: 0 } to { opacity: 1 } }
 .modal__card {
-  position: relative; width: 100%; max-width: 440px;
+  position: relative; width: 100%; max-width: 440px; outline: none;
   max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain;
+  touch-action: pan-y;
   background: #171820; border: 1px solid var(--line); border-radius: 22px;
   padding: 24px 18px 18px; text-align: center;
   box-shadow: 0 30px 80px rgba(0,0,0,.55);
   animation: modal-pop .14s ease-out;
 }
 @keyframes modal-pop { from { transform: translateY(10px) scale(.985); opacity: .6 } to { transform: none; opacity: 1 } }
+
+/* Пока карточка открыта — фон не двигается вообще: ни окно, ни лента экрана. */
+html.is-modal-open, html.is-modal-open body { overflow: hidden !important; touch-action: none; }
+html.is-modal-open .app-main { overflow: hidden !important; }
+html.is-modal-open .appframe__content { overflow: hidden !important; }
+html.is-modal-open .rail { overflow: hidden !important; }
 .modal__close { position: absolute; top: 12px; right: 12px; background: none; border: 0; color: var(--muted); }
 .modal__avatar { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center; background: #242631; font-weight: 900; }
 .modal__card h3 { font-family: var(--display); font-size: 16px; margin: 14px 0 6px; }
@@ -848,7 +856,7 @@ a { color: inherit; }
   .rail__note { font-size: 12px; }
   .rail__back { font-size: 13px; padding: 12px; }
 
-  .app-main { align-items: center; padding: 22px 26px 26px; max-height: 100dvh; overflow-y: auto; scrollbar-width: thin; }
+  .app-main { align-items: center; padding: 22px 26px 26px; max-height: 100dvh; overflow-y: auto; scrollbar-width: thin; scrollbar-gutter: stable; }
   .app-stage { width: 100%; max-width: 1200px; }
   .app-main__head { width: 100%; max-width: none; }
   .app-main__head strong { font-size: 17px; }

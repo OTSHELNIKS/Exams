@@ -69,5 +69,21 @@ test('T-ADM-09 moderation policies are limited to authenticated users', () => {
   assert.match(migration, /alter policy "Users can read own moderation reviews" on public\.moderation_reviews to authenticated/)
 })
 
+test('T-ADM-10 player card is an overlay portaled to body, not inline in the list', () => {
+  assert.match(adminScreen, /<Modal open=\{Boolean\(row\)\}/)
+  assert.match(adminScreen, /from '\.\/ui\.jsx'/)
+  assert.doesNotMatch(adminScreen, /className="modal"/, 'карточка не должна рисоваться внутри ленты')
+})
+
+test('T-ADM-11 overlay freezes background scrolling while open', () => {
+  const ui = read('app/src/ui.jsx')
+  const css = read('app/src/styles.css')
+  assert.match(ui, /createPortal\(/)
+  assert.match(ui, /document\.documentElement\.classList\.add\('is-modal-open'\)/)
+  assert.match(ui, /n\.style\.overflow = 'hidden'/)
+  assert.match(css, /html\.is-modal-open[^{]*\{[^}]*overflow: hidden !important/)
+  assert.match(css, /\.modal \{[^}]*position: fixed/)
+})
+
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`)
 if (failed > 0) process.exit(1)
