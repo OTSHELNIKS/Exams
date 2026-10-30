@@ -1,11 +1,15 @@
 # NAME — соревновательный матчмейкинг MLBB
 
 **Сайт (рабочий, с бэкендом Supabase):**
-https://name-mlbb.netlify.app
-— деплой на Netlify напрямую из GitHub: каждый пуш в ветку
-`arena/cc650609-exams` сам пересобирает и публикует сайт
-(настройки в [`netlify.toml`](./netlify.toml)). После регистрации по почте
-подтвердите email по письму и вернитесь по ссылке, чтобы войти.
+https://otshelniks.github.io/Exams/ — GitHub Pages, публикуется workflow
+[`.github/workflows/pages.yml`](./.github/workflows/pages.yml) на каждый пуш
+в ветку `arena/cc650609-exams` (включён один раз: Settings → Pages →
+Source: GitHub Actions).
+Зеркало на Netlify: https://name-mlbb.netlify.app (деплой из GitHub,
+настройки в [`netlify.toml`](./netlify.toml); на free-плане Netlify
+production-деплои ставятся на паузу, когда заканчиваются operational credits).
+После регистрации по почте подтвердите email по письму и вернитесь по ссылке,
+чтобы войти.
 
 Реализация проекта по презентации заказчика:
 [папка с видео на Google Диске](https://drive.google.com/drive/folders/1NkWbVfC0ya0yPKKve7BPyAK1mQ0dG8x1)
@@ -209,7 +213,7 @@ Telegram-запросы проверяются по секретному заг�
 Колонка `pts` закрыта от записи клиентским кодом (REVOKE).
 
 Ссылка на сайт в сообщениях бота (`APP_PUBLIC_URL`):
-https://name-mlbb.netlify.app
+https://otshelniks.github.io/Exams/
 
 Развёртывание с нуля: примените миграции, задеплойте функцию с
 `verify_jwt=false`, задайте 4 секрета и один раз откройте в браузере
