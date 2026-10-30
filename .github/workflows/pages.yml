@@ -27,12 +27,26 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      pages_ready: ${{ steps.pages.outputs.ready }}
     steps:
       - uses: actions/checkout@v4
-      - name: Enable Pages (first run only)
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
+
+      # Pages включается один раз в настройках репозитория (Settings → Pages →
+      # Source: GitHub Actions). Пока не включён — сборка проходит, деплой
+      # пропускается и в логе будет подсказка, а не красный прогон.
+      - id: pages
+        name: Check Pages availability
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" >/dev/null 2>&1; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=GitHub Pages не включён::Включите один раз: Settings → Pages → Source: GitHub Actions"
+          fi
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -54,6 +68,7 @@ jobs:
 
   deploy:
     needs: build
+    if: needs.build.outputs.pages_ready == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
