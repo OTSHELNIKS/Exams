@@ -4,6 +4,7 @@ import {
   Database, Trophy, Activity, CheckCheck, Image as ImageIcon, Gamepad2,
 } from 'lucide-react'
 import { BackHeader, Modal } from './ui.jsx'
+import { socialCaption } from './data.js'
 
 /* ================================================================ charts ==
    Tiny dependency-free charts: plain SVG, scaled by CSS to the container.
@@ -185,7 +186,7 @@ function AdminDetail({ row, onClose }) {
             ['Серверы', (row.regions || []).join(', ')],
             ['Герои', (row.heroes || []).join(', ')],
             ['Классы', (row.hero_classes || []).join(', ')],
-            ['Соцсети', (row.socials || []).join(', ')],
+            ['Соцсети', (row.socials || []).map(socialCaption).join(', ')],
             ['Возраст', row.age],
             ['Пол', row.gender],
             ['Обновлён', fmtDate(row.updated_at)],

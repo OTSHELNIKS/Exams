@@ -10,7 +10,7 @@ import {
   MatchScreen, LeaderboardScreen, BannedScreen, SupportScreen,
 } from './screens.jsx'
 import { AdminScreen } from './admin.jsx'
-import { DEFAULT_PROFILE, splitCombinedGameId } from './data.js'
+import { DEFAULT_PROFILE, splitCombinedGameId, SOCIAL_IDS, parseSocial, formatSocial } from './data.js'
 import { supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews } from './supabase.js'
 import { parseAuthReturn, cleanAuthUrl, describeAuthError } from './auth-return.js'
 
@@ -189,12 +189,26 @@ export default function App() {
     goDraft: () => go('draft'),
     goLeaderboard: () => go('leaderboard'),
     addSlot: () => setProfile((p) => ({ ...p, extraSlots: Math.min(3, (p.extraSlots || 0) + 1) })),
-    addSocial: () => setProfile((p) => {
-      const order = ['telegram', 'vk', 'google']
-      const next = order.find((x) => !(p.socials || []).includes(x))
-      if (!next) return p
-      return { ...p, socials: [...(p.socials || []), next] }
-    }),
+    // Соцсеть добавляется только с ником: [provider, handle]. Без ника
+    // привязка бессмысленна — вернуть false, чтобы экран не писал «привязана».
+    addSocial: (provider, handle) => {
+      const id = String(provider || '').toLowerCase()
+      const nick = String(handle || '').trim()
+      if (!SOCIAL_IDS.includes(id) || !nick) return false
+      let added = false
+      setProfile((p) => {
+        const list = (p.socials || []).map(parseSocial)
+        if (list.some((x) => x.provider === id)) return p
+        if (list.length >= SOCIAL_IDS.length) return p
+        added = true
+        return { ...p, socials: [...(p.socials || []), formatSocial(id, nick)] }
+      })
+      return true
+    },
+    removeSocial: (provider) => setProfile((p) => ({
+      ...p,
+      socials: (p.socials || []).filter((x) => parseSocial(x).provider !== provider),
+    })),
   }
 
   const renderScreen = () => {

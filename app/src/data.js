@@ -151,6 +151,41 @@ export const HEROES = [
   { id: 'zilong', name: "Zilong", roles: ['fighter', 'assassin'] },
 ]
 
+// Соцсети профиля: в базе это text[] вида "vk:@nick" (провайдер + ник через
+// двоеточие). Старые записи без ника — просто "vk" — читаются как привязанные,
+// но без ника: их просим перепривязать в профиле.
+export const SOCIAL_PROVIDERS = [
+  { id: 'telegram', label: 'Telegram', placeholder: '@nickname', hint: 'Ник в Telegram, начинается с @' },
+  { id: 'vk', label: 'VK', placeholder: 'vk.com/id123456', hint: 'Ссылка на страницу или короткое имя' },
+  { id: 'google', label: 'Google', placeholder: 'name@gmail.com', hint: 'Почта Google-аккаунта' },
+]
+
+export const SOCIAL_IDS = SOCIAL_PROVIDERS.map((p) => p.id)
+
+export const socialLabel = (id) => (SOCIAL_PROVIDERS.find((p) => p.id === id) || {}).label || id
+
+// "vk:@durov" -> { provider: 'vk', handle: '@durov' }
+export function parseSocial(entry) {
+  const raw = String(entry || '').trim()
+  const idx = raw.indexOf(':')
+  if (idx === -1) return { provider: raw.toLowerCase(), handle: '' }
+  return { provider: raw.slice(0, idx).trim().toLowerCase(), handle: raw.slice(idx + 1).trim() }
+}
+
+export function formatSocial(provider, handle) {
+  const id = String(provider || '').trim().toLowerCase()
+  const nick = String(handle || '').trim()
+  return nick ? `${id}:${nick}` : id
+}
+
+// Человеческая подпись: "Telegram · @nick" (без ника — "Telegram, ник не указан").
+export function socialCaption(entry) {
+  const { provider, handle } = parseSocial(entry)
+  return handle ? `${socialLabel(provider)} · ${handle}` : `${socialLabel(provider)}, ник не указан`
+}
+
+export const boundSocials = (socials) => (socials || []).map(parseSocial)
+
 // Фильтр героев по ролям (значения ролей — как в базе MLBB).
 export const HERO_ROLE_FILTERS = [
   { id: 'all', label: 'Все', short: 'Все' },

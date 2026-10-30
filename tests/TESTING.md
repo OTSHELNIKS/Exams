@@ -12,7 +12,8 @@ node tests/heroes.test.mjs  # 9 проверок каталога героев �
 node tests/gameid.test.mjs  # 10 проверок раздельного хранения Game ID и сервера
 node tests/typography.test.mjs  # 5 проверок читаемости шрифтов на десктопе
 node tests/auth-methods.test.mjs  # 8 проверок способов регистрации
-node tests/auth-return.test.mjs  # 6 проверок возврата с внешнего входа
+node tests/auth-return.test.mjs  # 7 проверок возврата с внешнего входа
+node tests/socials.test.mjs  # 10 проверок привязки соцсетей
 ```
 
 Тест грузит **настоящий** `supabase/functions/telegram-bot/index.ts`, подменяет `Deno`/`fetch`

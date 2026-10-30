@@ -12,6 +12,7 @@ import {
 import {
   RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, DRAFT_FILTERS, HERO_ROLE_FILTERS, HERO_ROLE_LABEL,
   GAME_ID_MAX, GAME_SERVER_MAX, normalizeGameId, normalizeServerId, formatGameId,
+  SOCIAL_PROVIDERS, SOCIAL_IDS, socialLabel, socialCaption, parseSocial,
 } from './data.js'
 import { AvatarCropModal } from './crop.jsx'
 import {
@@ -566,36 +567,139 @@ export function StatsGrid({ profile, onAddSlot, onEdit }) {
   )
 }
 
-const SOCIAL_ORDER = ['telegram', 'vk', 'google']
-const SOCIAL_NAMES = { telegram: 'Telegram', vk: 'VK', google: 'Google' }
+const SOCIAL_ICONS = { telegram: 'telegram', vk: 'vk', google: 'google' }
 
-export function SocialRow({ profile, onAddSocial }) {
+/* Соцсети: привязка только с ником/ссылкой.
+   Раньше «+» просто дописывал первый свободный провайдер и врал «Соцсеть
+   привязана». Теперь открывается выбор соцсети + поле ника, и запись
+   появляется в профиле лишь после сохранения. Занятые соцсети в выборе
+   помечены: одну и ту же нельзя привязать дважды. */
+export function SocialRow({ profile, onAddSocial, onRemoveSocial }) {
   const [toast, setToast] = useState('')
+  const [open, setOpen] = useState(false)
+  const [view, setView] = useState(null)
+  const [provider, setProvider] = useState('')
+  const [handle, setHandle] = useState('')
+  const [error, setError] = useState('')
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(''), 2200)
     return () => clearTimeout(t)
   }, [toast])
 
-  const bound = profile.socials || []
+  const bound = (profile.socials || []).map(parseSocial).filter((x) => SOCIAL_IDS.includes(x.provider))
+  const free = SOCIAL_PROVIDERS.filter((p) => !bound.some((x) => x.provider === p.id))
+  const current = SOCIAL_PROVIDERS.find((p) => p.id === provider)
+
+  const openAdd = () => {
+    setProvider(free[0]?.id || '')
+    setHandle('')
+    setError('')
+    setOpen(true)
+  }
+  const save = () => {
+    const nick = handle.trim()
+    if (!provider) { setError('Выбери соцсеть.'); return }
+    if (!nick) { setError('Укажи ник или ссылку — без них привязка ничего не значит.'); return }
+    if (nick.length > 80) { setError('Слишком длинная строка — до 80 символов.'); return }
+    if (!onAddSocial(provider, nick)) { setError('Эта соцсеть уже привязана.'); return }
+    setOpen(false)
+    setToast(`${socialLabel(provider)} привязан: ${nick}`)
+  }
+
   return (
     <div className="social-block">
-      <div className="section-head"><span>СОЦСЕТИ</span><b>{bound.length}/3</b></div>
+      <div className="section-head"><span>СОЦСЕТИ</span><b>{bound.length}/{SOCIAL_IDS.length}</b></div>
       {bound.length === 0 && (
-        <p className="social-hint">Ничего не привязано. Нажми +, чтобы добавить.</p>
+        <p className="social-hint">Ничего не привязано. Нажми +, выбери соцсеть и укажи ник.</p>
       )}
       <div className="social-row">
-        {bound.map((x) => (
-          <button key={x} type="button" className="social-circle" title={SOCIAL_NAMES[x]} onClick={() => setToast(`${SOCIAL_NAMES[x]} привязана`)}>
-            <BrandMark type={x} />
+        {bound.map(({ provider: id, handle: nick }) => (
+          <button
+            key={id}
+            type="button"
+            className={`social-circle${nick ? '' : ' social-circle--empty'}`}
+            title={nick ? socialCaption(`${id}:${nick}`) : `${socialLabel(id)}: ник не указан — перепривяжи`}
+            onClick={() => { setView({ provider: id, handle: nick }); setError('') }}
+          >
+            <BrandMark type={id} />
+            {!nick && <i className="social-circle__dot" aria-hidden="true" />}
           </button>
         ))}
-        {bound.length < SOCIAL_ORDER.length && (
-          <button type="button" className="social-circle social-circle--add" onClick={() => { onAddSocial(); setToast('Соцсеть привязана'); }} title="Привязать соцсеть">
+        {bound.length < SOCIAL_IDS.length && (
+          <button type="button" className="social-circle social-circle--add" onClick={openAdd} title="Привязать соцсеть" aria-label="Привязать соцсеть">
             <Plus size={18} />
           </button>
         )}
       </div>
+
+      <Modal open={open} onClose={() => setOpen(false)} labelledBy="social-add-title">
+        <h3 id="social-add-title">Привязать соцсеть</h3>
+        <p className="modal__role">Выбери сеть и укажи, как тебя там найти — это увидит капитан драфта.</p>
+        <div className="social-pick">
+          {SOCIAL_PROVIDERS.map((p) => {
+            const taken = bound.some((x) => x.provider === p.id)
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className={`social-pick__item${provider === p.id ? ' is-active' : ''}`}
+                disabled={taken}
+                onClick={() => { setProvider(p.id); setError('') }}
+              >
+                <BrandMark type={SOCIAL_ICONS[p.id]} />
+                <span>{p.label}</span>
+                {taken && <em>уже есть</em>}
+              </button>
+            )
+          })}
+        </div>
+        <label className="field">
+          <span>{current ? current.label.toUpperCase() : 'НИК'}</span>
+          <input
+            value={handle}
+            onChange={(e) => { setHandle(e.target.value); setError('') }}
+            placeholder={current ? current.placeholder : '@nickname'}
+            autoComplete="off"
+            maxLength={80}
+            aria-label="Ник или ссылка на профиль в соцсети"
+          />
+        </label>
+        <p className="field-hint">{current ? current.hint : 'Ник или ссылка на профиль.'}</p>
+        {error && <p className="social-error" role="alert">{error}</p>}
+        <div className="social-modal__actions">
+          <button type="button" className="btn btn--ghost" onClick={() => setOpen(false)}>Отмена</button>
+          <PrimaryButton onClick={save}>Привязать</PrimaryButton>
+        </div>
+      </Modal>
+
+      <Modal open={Boolean(view)} onClose={() => setView(null)} labelledBy="social-view-title">
+        {view && (
+          <>
+            <h3 id="social-view-title">{socialLabel(view.provider)}</h3>
+            <p className="modal__role">{view.handle || 'Ник не указан — привязка неполная, укажи ник заново.'}</p>
+            <div className="social-modal__actions">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  if (onRemoveSocial) onRemoveSocial(view.provider)
+                  setView(null)
+                  setToast(`${socialLabel(view.provider)} отвязан`)
+                }}
+              >
+                Отвязать
+              </button>
+              <PrimaryButton onClick={() => {
+                // Старую запись снимаем сразу: привязать ту же сеть дважды нельзя.
+                if (onRemoveSocial) onRemoveSocial(view.provider)
+                setView(null); setProvider(view.provider); setHandle(view.handle || ''); setError(''); setOpen(true)
+              }}>Изменить</PrimaryButton>
+            </div>
+          </>
+        )}
+      </Modal>
+
       {toast && <div className="toast toast--fixed">{toast}</div>}
     </div>
   )
@@ -642,7 +746,7 @@ export function HomeScreen({ profile, actions, gameId, gameServer, onEdit, isAdm
         {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
       </div>
 
-      <SocialRow profile={profile} onAddSocial={actions.addSocial} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} />
 
       <div className="home__actions">
         {profile.nick
@@ -856,7 +960,7 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, onBack, on
         <Settings size={15} /> {(profile.heroes || []).length ? 'Изменить героев' : 'Выбрать героев'}
       </button>
 
-      <SocialRow profile={profile} onAddSocial={actions.addSocial} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} />
       <TelegramLinkCard supabase={supabase} userId={userId} />
       <button type="button" className="btn btn--ghost profile__back" onClick={onBack}>На главную</button>
       </div>
