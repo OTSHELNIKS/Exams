@@ -21,7 +21,7 @@ const APP_URL = Deno.env.get('APP_PUBLIC_URL') || ''
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').replace(/\/+$/, '')
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const TG = 'https://api.telegram.org/bot' + BOT_TOKEN
-const BUILD = 'support-notify-v1'
+const BUILD = 'ticket-dialog-v2'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -160,7 +160,7 @@ async function authGetUser(jwt) {
 
 /* ---------------- bot logic ---------------- */
 const HELP_TEXT = '<b>NAME MLBB — команды</b>\n\n/profile — мой профиль и PTS\n/rating — топ-10 игроков\n/support — задать вопрос поддержке\n/unlink — отвязать Telegram\n/help — это сообщение'
-const ADMIN_HELP = '\n\n<b>Модерация</b>\n/ban — заблокировать: <code>/ban НИК причина</code>\n/unban — разблокировать\n/users — последние пользователи\n/userinfo — карточка: <code>/userinfo НИК</code>\n/review — очередь проверки (ники, фото, скриншоты)\n/pending — сколько на проверке\n/tickets — открытые заявки\n/ticket — заявка: <code>/ticket 3</code>\n/reply — ответить: <code>/reply 3 текст</code>\n/close — закрыть заявку'
+const ADMIN_HELP = '\n\n<b>Модерация</b>\n/ban — заблокировать: <code>/ban НИК причина</code>\n/unban — разблокировать\n/users — последние пользователи\n/userinfo — карточка: <code>/userinfo НИК</code>\n/review — очередь проверки (ники, фото, скриншоты)\n/pending — сколько на проверке\n/tickets — открытые заявки\n/ticket — заявка: <code>/ticket 3</code>\n/reply — ответить на заявку: <code>/reply 3</code>, дальше просто текст\n/close — закрыть заявку'
 
 function linkPrompt() {
   return 'Я не знаю, кто ты, пока ты не покажешь код из приложения. Как привязать (1 минута):'
@@ -191,12 +191,12 @@ async function adminChatIds() {
 }
 
 // DM the same text to all linked admins. Returns how many messages went out.
-async function notifyAdmins(text, exceptChatId) {
+async function notifyAdmins(text, exceptChatId, extra) {
   const chats = await adminChatIds()
   let sent = 0
   for (const chat of chats) {
     if (exceptChatId !== undefined && String(chat) === String(exceptChatId)) continue
-    const res = await send(chat, text)
+    const res = await send(chat, text, extra)
     if (res && res.ok !== false) sent += 1
   }
   return sent
@@ -207,8 +207,183 @@ function ticketAnnounce(ticket, nick) {
   return '<b>Новая заявка поддержки #' + ticket.num + '</b>'
     + '\n' + esc(nick || 'Без ника') + ' · ' + esc(when)
     + '\n\n' + esc(String(ticket.message || '').slice(0, 500))
-    + '\n\nОтветить: <code>/reply ' + ticket.num + ' текст</code>'
-    + '\nЗакрыть: <code>/close ' + ticket.num + '</code>'
+    + '\n\nНажми «Ответить» — текст отправишь обычным сообщением, команду писать не нужно.'
+}
+
+/* ---------------- ticket cards, buttons and dialog sessions ----------------
+   Раньше админу приходилось набирать /reply 6 текст. Теперь он жмёт кнопку
+   в карточке заявки, бот запоминает «жду текст» (таблица telegram_sessions)
+   и принимает следующее обычное сообщение как ответ. */
+
+const SESSION_TTL_MS = 20 * 60 * 1000
+
+async function setSession(chatId, action, payload) {
+  return dbUpsert('telegram_sessions', {
+    chat_id: chatId,
+    action,
+    payload: payload || {},
+    created_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+  }, 'chat_id')
+}
+
+async function clearSession(chatId) {
+  return dbDelete('telegram_sessions', { chat_id: 'eq.' + chatId })
+}
+
+async function getSession(chatId) {
+  const rows = await dbSelect('telegram_sessions', { chat_id: 'eq.' + chatId, select: '*' })
+  const row = rows[0]
+  if (!row) return null
+  if (new Date(row.expires_at).getTime() < Date.now()) {
+    await clearSession(chatId)
+    return null
+  }
+  return row
+}
+
+function ticketKeyboard(num) {
+  return { inline_keyboard: [
+    [
+      { text: '✍️ Ответить', callback_data: 't:reply:' + num },
+      { text: '✅ Закрыть', callback_data: 't:close:' + num },
+    ],
+    [{ text: '⬅️ Все заявки', callback_data: 't:list' }],
+  ] }
+}
+
+async function ticketCard(num) {
+  const rows = await dbSelect('support_tickets', { num: 'eq.' + num, select: '*' })
+  const ticket = rows[0]
+  if (!ticket) return null
+  const profs = await dbSelect('player_profiles', { user_id: 'eq.' + ticket.user_id, select: 'nick,game_id' })
+  const who = profs[0]
+    ? esc(profs[0].nick || 'Без ника') + ' (' + esc(profs[0].game_id || '—') + ')'
+    : 'пользователь'
+  const when = String(ticket.created_at || '').slice(0, 16).replace('T', ' ')
+  let text = '<b>Заявка #' + ticket.num + '</b> · ' + (TICKET_STATUS[ticket.status] || ticket.status)
+    + '\n' + who + ' · ' + when
+    + '\n\n' + esc(String(ticket.message || ''))
+  if (ticket.admin_reply) text += '\n\n<b>Ответ:</b> ' + esc(ticket.admin_reply)
+  return { ticket, text }
+}
+
+async function sendTicketCard(chatId, num) {
+  const card = await ticketCard(num)
+  if (!card) { await send(chatId, 'Заявка #' + num + ' не найдена.'); return }
+  await send(chatId, card.text, { reply_markup: ticketKeyboard(card.ticket.num) })
+}
+
+async function sendTicketList(chatId) {
+  const open = await dbSelect('support_tickets',
+    { status: 'eq.open', order: 'created_at.asc', limit: '20', select: 'num,user_id,message,created_at' })
+  if (!open || open.length === 0) { await send(chatId, 'Открытых заявок нет.'); return }
+  const ids = [...new Set(open.map((x) => x.user_id))]
+  const profs = await dbSelect('player_profiles', { user_id: 'in.(' + ids.join(',') + ')', select: 'user_id,nick' })
+  const names = {}
+  profs.forEach((p) => { names[p.user_id] = p.nick || 'Без ника' })
+  const lines = open.map((x) => {
+    const when = String(x.created_at || '').slice(0, 16).replace('T', ' ')
+    return '#' + x.num + ' · ' + esc(names[x.user_id] || '—') + ' · ' + when
+      + '\n> ' + esc(String(x.message || '').slice(0, 120))
+  })
+  const buttons = open.slice(0, 12).map((x) => ({ text: '#' + x.num, callback_data: 't:open:' + x.num }))
+  const rows = []
+  for (let i = 0; i < buttons.length; i += 4) rows.push(buttons.slice(i, i + 4))
+  await send(chatId,
+    '<b>Открытые заявки</b>\n\n' + lines.join('\n\n') + '\n\nНажми номер заявки, чтобы открыть её.',
+    { reply_markup: { inline_keyboard: rows } })
+}
+
+async function answerTicket(chatId, adminUserId, num, rawText) {
+  const text = String(rawText || '').trim()
+  if (text.length < 2) {
+    await send(chatId, 'Ответ слишком короткий — напиши хотя бы пару слов.')
+    return false
+  }
+  const rows = await dbSelect('support_tickets', { num: 'eq.' + num, select: '*' })
+  const ticket = rows[0]
+  if (!ticket) { await send(chatId, 'Заявка #' + num + ' не найдена.'); return false }
+  await dbUpdate('support_tickets', { num: 'eq.' + num },
+    { admin_reply: text, status: 'answered', answered_by: adminUserId, answered_at: new Date().toISOString() })
+  await send(chatId, '✅ Ответ на заявку <b>#' + num + '</b> отправлен игроку.')
+  const userChat = await linkedChatOf(ticket.user_id)
+  if (userChat && String(userChat) !== String(chatId)) {
+    await send(userChat, '<b>Ответ поддержки</b> (заявка #' + num + ')\n\n' + esc(text))
+  }
+  return true
+}
+
+async function closeTicket(chatId, num) {
+  const rows = await dbSelect('support_tickets', { num: 'eq.' + num, select: '*' })
+  const ticket = rows[0]
+  if (!ticket) { await send(chatId, 'Заявка #' + num + ' не найдена.'); return false }
+  if (ticket.status === 'closed') { await send(chatId, 'Заявка #' + num + ' уже закрыта.'); return false }
+  await dbUpdate('support_tickets', { num: 'eq.' + num }, { status: 'closed' })
+  await send(chatId, 'Заявка #' + num + ' закрыта.')
+  const chat = await linkedChatOf(ticket.user_id)
+  if (chat && String(chat) !== String(chatId)) await send(chat, 'Твоя заявка #' + num + ' закрыта.')
+  return true
+}
+
+async function createTicket(chatId, userId, rawQuestion) {
+  const question = String(rawQuestion || '').trim()
+  if (question.length < 5) {
+    await send(chatId, 'Опиши проблему подробнее — хотя бы пара слов.')
+    return false
+  }
+  if (question.length > 2000) {
+    await send(chatId, 'Слишком длинно — умести вопрос в 2000 символов.')
+    return false
+  }
+  const created = await dbInsert('support_tickets', { user_id: userId, message: question })
+  if (!created) { await send(chatId, 'Не получилось создать заявку. Попробуй позже.'); return false }
+  await send(chatId, 'Заявка <b>#' + created.num + '</b> создана. Админ ответит сюда, в этот чат.')
+  const profs = await dbSelect('player_profiles', { user_id: 'eq.' + userId, select: 'nick' })
+  const sent = await notifyAdmins(ticketAnnounce(created, profs[0] && profs[0].nick), undefined,
+    { reply_markup: ticketKeyboard(created.num) })
+  if (sent > 0 && created.id) {
+    await dbUpdate('support_tickets', { id: 'eq.' + created.id }, { notified_at: new Date().toISOString() })
+  }
+  return true
+}
+
+// Следующее обычное сообщение (без команды) в рамках начатого диалога.
+async function handlePlainText(chatId, text) {
+  const session = await getSession(chatId)
+  if (!session) return false
+  const payload = session.payload || {}
+
+  if (session.action === 'reply') {
+    const adm = await adminLink(chatId)
+    if (!adm.link || !adm.admin) {
+      await clearSession(chatId)
+      await send(chatId, 'Эта команда только для администраторов.')
+      return true
+    }
+    const num = parseInt(payload.num, 10)
+    if (!num) {
+      await clearSession(chatId)
+      await send(chatId, 'Потерял номер заявки — открой её заново: /tickets')
+      return true
+    }
+    if (await answerTicket(chatId, adm.link.user_id, num, text)) await clearSession(chatId)
+    return true
+  }
+
+  if (session.action === 'support') {
+    const links = await dbSelect('telegram_links', { tg_chat_id: 'eq.' + chatId, select: 'user_id' })
+    if (!links[0]) {
+      await clearSession(chatId)
+      await send(chatId, linkPrompt())
+      return true
+    }
+    if (await createTicket(chatId, links[0].user_id, text)) await clearSession(chatId)
+    return true
+  }
+
+  await clearSession(chatId)
+  return false
 }
 
 // Find profiles by nick (exact, case-insensitive) or game_id (substring).
@@ -298,10 +473,82 @@ async function linkByCode(chatId, tgUsername, rawCode) {
   return 'Готово! Telegram привязан к профилю' + nick + '. Теперь сюда будут приходить уведомления о матчах.\n\n' + HELP_TEXT
 }
 
+async function handleSupportCallback(q) {
+  const data = String((q && q.data) || '')
+  const fromId = q && q.from ? q.from.id : null
+  const msg = q ? q.message : null
+  if (data !== 's:new' || !fromId || !msg) return
+  const links = await dbSelect('telegram_links', { tg_chat_id: 'eq.' + fromId, select: 'user_id' })
+  if (!links[0]) {
+    await tg('answerCallbackQuery', {
+      callback_query_id: q.id,
+      text: 'Сначала привяжи аккаунт: Профиль → «Привязать Telegram».',
+    })
+    return
+  }
+  await setSession(fromId, 'support', {})
+  await tg('answerCallbackQuery', { callback_query_id: q.id, text: 'Жду описание' })
+  await send(fromId, 'Опиши проблему одним сообщением — команду писать не нужно.\nОтмена — /cancel.')
+}
+
+async function handleTicketCallback(q) {
+  const data = String((q && q.data) || '')
+  const fromId = q && q.from ? q.from.id : null
+  const msg = q ? q.message : null
+  if (!fromId || !msg) return
+  const [, action, rawNum] = data.split(':')
+  const adm = await adminLink(fromId)
+  if (!adm || !adm.link || !adm.admin) {
+    await tg('answerCallbackQuery', { callback_query_id: q.id, text: 'Только для администраторов.' })
+    return
+  }
+  const chatId = msg.chat.id
+
+  if (action === 'list') {
+    await tg('answerCallbackQuery', { callback_query_id: q.id })
+    await sendTicketList(chatId)
+    return
+  }
+
+  const num = parseInt(rawNum || '', 10)
+  if (!num) {
+    await tg('answerCallbackQuery', { callback_query_id: q.id, text: 'Не понял номер заявки.' })
+    return
+  }
+
+  if (action === 'open') {
+    await tg('answerCallbackQuery', { callback_query_id: q.id })
+    await sendTicketCard(chatId, num)
+    return
+  }
+
+  if (action === 'reply') {
+    const card = await ticketCard(num)
+    if (!card) {
+      await tg('answerCallbackQuery', { callback_query_id: q.id, text: 'Заявка не найдена.' })
+      return
+    }
+    await setSession(chatId, 'reply', { num })
+    await tg('answerCallbackQuery', { callback_query_id: q.id, text: 'Жду текст ответа' })
+    await send(chatId, 'Отвечаю на заявку <b>#' + num + '</b>\n> '
+      + esc(String(card.ticket.message || '').slice(0, 200))
+      + '\n\nОтправь текст ответа следующим сообщением — команду писать не нужно.\nОтмена — /cancel.')
+    return
+  }
+
+  if (action === 'close') {
+    await closeTicket(chatId, num)
+    await tg('answerCallbackQuery', { callback_query_id: q.id, text: 'Закрыто' })
+    return
+  }
+}
+
 async function handleCallback(q) {
   const data = (q && q.data) || ''
   const fromId = q && q.from ? q.from.id : null
   const msg = q ? q.message : null
+  if (data.startsWith('t:')) { await handleTicketCallback(q); return }
+  if (data.startsWith('s:')) { await handleSupportCallback(q); return }
   if (!data.startsWith('rev:') || !fromId || !msg) return
   const parts = data.split(':')
   const action = parts[1]
@@ -346,6 +593,17 @@ async function handleUpdate(update) {
   const parts = text.split(/\s+/)
   const cmd = parts[0]
   const arg = parts[1]
+
+  // Начатый диалог («Ответить» / «Написать в поддержку»): команда не нужна.
+  if (!text.startsWith('/') && !/^[0-9]{6}$/.test(text)) {
+    if (await handlePlainText(chatId, text)) return
+  }
+
+  if (cmd === '/cancel' || cmd === '/отмена') {
+    await clearSession(chatId)
+    await send(chatId, 'Ок, отменил. Все команды — /help.')
+    return
+  }
 
   if (cmd === '/start') {
     if (arg) { await send(chatId, await linkByCode(chatId, tgUsername, arg)); return }
@@ -405,52 +663,26 @@ async function handleUpdate(update) {
       return
     }
     if (cmd === '/tickets') {
-      const open = await dbSelect('support_tickets', { status: 'eq.open', order: 'created_at.asc', limit: '20', select: 'num,user_id,message,created_at' })
-      if (open.length === 0) { await send(chatId, 'Открытых заявок нет.'); return }
-      const ids = [...new Set(open.map((x) => x.user_id))]
-      const profs = await dbSelect('player_profiles', { user_id: 'in.(' + ids.join(',') + ')', select: 'user_id,nick' })
-      const names = {}
-      profs.forEach((p) => { names[p.user_id] = p.nick || 'Без ника' })
-      const lines = open.map((x) => {
-        const when = String(x.created_at || '').slice(0, 16).replace('T', ' ')
-        return '#' + x.num + ' · ' + esc(names[x.user_id] || '—') + ' · ' + when + '\n> ' + esc(x.message.slice(0, 120))
-      })
-      await send(chatId, '<b>Открытые заявки</b>\n\n' + lines.join('\n\n') + '\n\nЧитать: <code>/ticket N</code>')
+      await sendTicketList(chatId)
       return
     }
     if (cmd === '/ticket' || cmd === '/reply' || cmd === '/close') {
       const num = parseInt(parts[1] || '', 10)
-      if (!num) { await send(chatId, 'Укажи номер заявки. Например: <code>' + cmd + ' 3</code>'); return }
-      const rows = await dbSelect('support_tickets', { num: 'eq.' + num, select: '*' })
-      const ticket = rows[0]
-      if (!ticket) { await send(chatId, 'Заявка #' + num + ' не найдена.'); return }
-      const profs = await dbSelect('player_profiles', { user_id: 'eq.' + ticket.user_id, select: 'nick,game_id' })
-      const who = profs[0] ? esc(profs[0].nick || 'Без ника') + ' (' + esc(profs[0].game_id || '—') + ')' : 'пользователь'
-      const when = String(ticket.created_at || '').slice(0, 16).replace('T', ' ')
-      if (cmd === '/ticket') {
-        let text = '<b>Заявка #' + ticket.num + '</b> · ' + (TICKET_STATUS[ticket.status] || ticket.status) + '\n' + who + ' · ' + when + '\n\n' + esc(ticket.message)
-        if (ticket.admin_reply) text += '\n\n<b>Ответ:</b> ' + esc(ticket.admin_reply)
-        else text += '\n\nОтветить: <code>/reply ' + ticket.num + ' текст</code>'
-        await send(chatId, text)
-        return
-      }
-      if (cmd === '/close') {
-        if (ticket.status === 'closed') { await send(chatId, 'Заявка #' + num + ' уже закрыта.'); return }
-        await dbUpdate('support_tickets', { num: 'eq.' + num }, { status: 'closed' })
-        await send(chatId, 'Заявка #' + num + ' закрыта.')
-        const chat = await linkedChatOf(ticket.user_id)
-        if (chat && chat !== chatId) await send(chat, 'Твоя заявка #' + num + ' закрыта.')
-        return
-      }
+      if (!num) { await send(chatId, 'Укажи номер заявки. Например: <code>/ticket 3</code>'); return }
+      if (cmd === '/ticket') { await sendTicketCard(chatId, num); return }
+      if (cmd === '/close') { await closeTicket(chatId, num); return }
+      // /reply без текста — переходим в диалог: дальше просто сообщение.
       const replyText = parts.slice(2).join(' ').trim()
-      if (!replyText) { await send(chatId, 'Напиши текст ответа: <code>/reply ' + num + ' текст</code>'); return }
-      await dbUpdate('support_tickets', { num: 'eq.' + num },
-        { admin_reply: replyText, status: 'answered', answered_by: adm.link.user_id, answered_at: new Date().toISOString() })
-      await send(chatId, 'Ответ на заявку #' + num + ' отправлен.')
-      const userChat = await linkedChatOf(ticket.user_id)
-      if (userChat && userChat !== chatId) {
-        await send(userChat, '<b>Ответ поддержки</b> (заявка #' + num + ')\n\n' + esc(replyText))
+      const card = await ticketCard(num)
+      if (!card) { await send(chatId, 'Заявка #' + num + ' не найдена.'); return }
+      if (!replyText) {
+        await setSession(chatId, 'reply', { num })
+        await send(chatId, 'Отвечаю на заявку <b>#' + num + '</b>\n> '
+          + esc(String(card.ticket.message || '').slice(0, 200))
+          + '\n\nОтправь текст ответа следующим сообщением — команду писать не нужно.\nОтмена — /cancel.')
+        return
       }
+      await answerTicket(chatId, adm.link.user_id, num, replyText)
       return
     }
     if (cmd === '/users') {
@@ -511,24 +743,21 @@ async function handleUpdate(update) {
     const question = parts.slice(1).join(' ').trim()
     if (!question) {
       const mine = await dbSelect('support_tickets', { user_id: 'eq.' + links[0].user_id, select: 'num,status,created_at,admin_reply', order: 'created_at.desc', limit: '5' })
-      if (mine.length === 0) { await send(chatId, 'У тебя пока нет заявок. Напиши так: <code>/support у меня вопрос…</code>'); return }
+      const newBtn = { inline_keyboard: [[{ text: '✍️ Написать в поддержку', callback_data: 's:new' }]] }
+      if (mine.length === 0) {
+        await send(chatId, 'У тебя пока нет заявок. Нажми кнопку ниже — и просто опиши проблему сообщением.', { reply_markup: newBtn })
+        return
+      }
       const lines = mine.map((x) => {
         const when = String(x.created_at || '').slice(0, 16).replace('T', ' ')
         let s = '#' + x.num + ' · ' + (TICKET_STATUS[x.status] || x.status) + ' · ' + when
         if (x.status === 'answered' && x.admin_reply) s += '\nОтвет: ' + esc(x.admin_reply.slice(0, 200))
         return s
       })
-      await send(chatId, '<b>Твои заявки</b>\n\n' + lines.join('\n\n'))
+      await send(chatId, '<b>Твои заявки</b>\n\n' + lines.join('\n\n'), { reply_markup: newBtn })
       return
     }
-    if (question.length < 5) { await send(chatId, 'Опиши проблему подробнее — хотя бы пара слов.'); return }
-    if (question.length > 2000) { await send(chatId, 'Слишком длинно — умести вопрос в 2000 символов.'); return }
-    const created = await dbInsert('support_tickets', { user_id: links[0].user_id, message: question })
-    if (!created) { await send(chatId, 'Не получилось создать заявку. Попробуй позже.'); return }
-    await send(chatId, 'Заявка <b>#' + created.num + '</b> создана. Админ ответит сюда, в этот чат.')
-    const profs = await dbSelect('player_profiles', { user_id: 'eq.' + links[0].user_id, select: 'nick' })
-    const sent = await notifyAdmins(ticketAnnounce(created, profs[0] && profs[0].nick))
-    if (sent > 0) await dbUpdate('support_tickets', { id: 'eq.' + created.id }, { notified_at: new Date().toISOString() })
+    await createTicket(chatId, links[0].user_id, question)
     return
   }
 
@@ -567,7 +796,8 @@ async function handleNotify(req) {
     if (!ticket || ticket.user_id !== user.id) return json({ ok: false, error: 'forbidden' }, 403)
     if (ticket.notified_at) return json({ ok: true, already: true, admins: 0 })
     const profs = await dbSelect('player_profiles', { user_id: 'eq.' + user.id, select: 'nick' })
-    const admins = await notifyAdmins(ticketAnnounce(ticket, profs[0] && profs[0].nick))
+    const admins = await notifyAdmins(ticketAnnounce(ticket, profs[0] && profs[0].nick), undefined,
+      { reply_markup: ticketKeyboard(ticket.num) })
     await dbUpdate('support_tickets', { id: 'eq.' + id }, { notified_at: new Date().toISOString() })
     return json({ ok: true, admins })
   }

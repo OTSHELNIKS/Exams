@@ -371,7 +371,11 @@ t('T-BOT-27 admin /ticket shows full text and user', async () => {
   assert.match(tgTexts(), /Заявка #1/)
   assert.match(tgTexts(), /Помогите с входом/)
   assert.match(tgTexts(), /Amy/)
-  assert.match(tgTexts(), /\/reply 1/)
+  const card = calls.tg.find((c) => c.method === 'sendMessage')
+  const buttons = card.payload.reply_markup.inline_keyboard.flat().map((b) => b.callback_data).join(' ')
+  assert.match(buttons, /t:reply:1/)
+  assert.match(buttons, /t:close:1/)
+  assert.ok(!/\/reply 1/.test(tgTexts()), 'карточка не должна просить вводить команду')
 })
 
 t('T-BOT-28 admin /reply answers and DMs the user', async () => {
@@ -423,7 +427,11 @@ t('T-BOT-30 /support announces the new ticket to admins', async () => {
   const dm = tgTo(999).map((c) => c.payload.text).join(' ')
   assert.match(dm, /Новая заявка поддержки #7/)
   assert.match(dm, /Amy/)
-  assert.match(dm, /\/reply 7/)
+  assert.match(dm, /Нажми «Ответить»/)
+  const announce = tgTo(999).find((c) => c.method === 'sendMessage')
+  const ab = announce.payload.reply_markup.inline_keyboard.flat().map((b) => b.callback_data).join(' ')
+  assert.match(ab, /t:reply:7/)
+  assert.match(ab, /t:close:7/)
   const stamp = calls.db.find((c) => c.method === 'PATCH' && c.table === 'support_tickets')
   assert.ok(stamp && stamp.body.notified_at, 'expected notified_at stamp')
 })
@@ -469,6 +477,117 @@ t('T-BOT-34 notify support rejects a malformed id', async () => {
   reset({})
   const r = await post('?action=notify', { headers: { authorization: 'Bearer GOODJWT' }, body: { kind: 'support', ticketId: 'nope' } })
   assert.equal(r.status, 400)
+})
+
+t('T-BOT-35 кнопка «Ответить» включает режим ожидания текста', async () => {
+  reset({
+    telegram_links: ADMIN, admins: ADMIN,
+    support_tickets: [{ num: 1, user_id: 'u2', message: 'Помогите', status: 'open', created_at: '2026-10-30T09:00:00Z', admin_reply: null }],
+    player_profiles: [{ nick: 'Amy', game_id: '555' }],
+  })
+  const q = { callback_query: { id: 'cq9', from: { id: 999 }, data: 't:reply:1', message: { message_id: 9, chat: { id: 999 } } } }
+  await post('', { headers: H, body: q })
+  assert.match(tgTexts(), /Отправь текст ответа/)
+  const saved = calls.db.find((c) => c.method === 'POST' && c.table === 'telegram_sessions')
+  assert.ok(saved, 'ожидалась запись сессии')
+  assert.equal(saved.body.action, 'reply')
+  assert.equal(saved.body.chat_id, 999)
+  assert.equal(saved.body.payload.num, 1)
+})
+
+t('T-BOT-36 обычный текст в режиме ответа уходит в заявку без команды', async () => {
+  reset({
+    telegram_links: ({ params }) => (params.get('user_id') ? [{ tg_chat_id: 222 }] : ADMIN),
+    admins: ADMIN,
+    telegram_sessions: [{ chat_id: 999, action: 'reply', payload: { num: 1 }, expires_at: FUTURE }],
+    support_tickets: [{ num: 1, user_id: 'u2', message: 'Помогите', status: 'open', created_at: '2026-10-30T09:00:00Z', admin_reply: null }],
+    player_profiles: [{ nick: 'Amy', game_id: '555' }],
+  })
+  await post('', { headers: H, body: upd('Всё починили, заходи', 999) })
+  const patch = calls.db.find((c) => c.method === 'PATCH' && c.table === 'support_tickets')
+  assert.ok(patch, 'ожидался ответ в заявку')
+  assert.equal(patch.body.admin_reply, 'Всё починили, заходи')
+  assert.equal(patch.body.status, 'answered')
+  assert.match(tgTo(222).map((c) => c.payload.text).join(' '), /Ответ поддержки/)
+  assert.ok(calls.db.find((c) => c.method === 'DELETE' && c.table === 'telegram_sessions'), 'сессия должна сброситься')
+})
+
+t('T-BOT-37 /reply без текста тоже включает режим ответа', async () => {
+  reset({
+    telegram_links: ADMIN, admins: ADMIN,
+    support_tickets: [{ num: 4, user_id: 'u2', message: 'Не приходит лобби', status: 'open', created_at: '2026-10-30T09:00:00Z', admin_reply: null }],
+    player_profiles: [{ nick: 'Amy', game_id: '555' }],
+  })
+  await post('', { headers: H, body: upd('/reply 4', 999) })
+  assert.match(tgTexts(), /Отправь текст ответа/)
+  const saved = calls.db.find((c) => c.method === 'POST' && c.table === 'telegram_sessions')
+  assert.ok(saved && saved.body.action === 'reply' && saved.body.payload.num === 4)
+})
+
+t('T-BOT-38 кнопка «Закрыть» закрывает заявку и уведомляет игрока', async () => {
+  reset({
+    telegram_links: ({ params }) => (params.get('user_id') ? [{ tg_chat_id: 222 }] : ADMIN),
+    admins: ADMIN,
+    support_tickets: [{ num: 2, user_id: 'u2', message: 'Вопрос', status: 'open', created_at: '2026-10-30T09:00:00Z', admin_reply: null }],
+  })
+  const q = { callback_query: { id: 'cq10', from: { id: 999 }, data: 't:close:2', message: { message_id: 10, chat: { id: 999 } } } }
+  await post('', { headers: H, body: q })
+  const patch = calls.db.find((c) => c.method === 'PATCH' && c.table === 'support_tickets')
+  assert.ok(patch && patch.body.status === 'closed')
+  assert.match(tgTo(222).map((c) => c.payload.text).join(' '), /закрыта/)
+})
+
+t('T-BOT-39 кнопка заявки доступна только админу', async () => {
+  reset({ telegram_links: [{ user_id: 'user-1' }], admins: [] })
+  const q = { callback_query: { id: 'cq11', from: { id: 111 }, data: 't:reply:1', message: { message_id: 11, chat: { id: 111 } } } }
+  await post('', { headers: H, body: q })
+  const ans = calls.tg.find((c) => c.method === 'answerCallbackQuery')
+  assert.equal(ans.payload.text, 'Только для администраторов.')
+  assert.equal(calls.db.filter((c) => c.table === 'telegram_sessions').length, 0)
+})
+
+t('T-BOT-40 поддержка: кнопка «Написать» + текст без команды', async () => {
+  reset({
+    telegram_links: [{ user_id: 'user-1' }],
+    support_tickets: [],
+    'POST support_tickets': [{ id: 'dddddddd-4444-4444-8444-444444444444', num: 12 }],
+  })
+  await post('', { headers: H, body: upd('/support') })
+  const list = calls.tg.find((c) => c.method === 'sendMessage')
+  assert.match(list.payload.reply_markup.inline_keyboard[0][0].callback_data, /s:new/)
+
+  const q = { callback_query: { id: 'cq12', from: { id: 111 }, data: 's:new', message: { message_id: 12, chat: { id: 111 } } } }
+  await post('', { headers: H, body: q })
+  const session = calls.db.find((c) => c.method === 'POST' && c.table === 'telegram_sessions')
+  assert.ok(session && session.body.action === 'support')
+  assert.match(tgTexts(), /Опиши проблему/)
+
+  reset({
+    telegram_links: [{ user_id: 'user-1' }],
+    telegram_sessions: [{ chat_id: 111, action: 'support', payload: {}, expires_at: FUTURE }],
+    'POST support_tickets': [{ id: 'dddddddd-4444-4444-8444-444444444444', num: 12 }],
+  })
+  await post('', { headers: H, body: upd('Не приходит ID лобби') })
+  const ins = calls.db.find((c) => c.method === 'POST' && c.table === 'support_tickets')
+  assert.ok(ins, 'ожидалась новая заявка из обычного сообщения')
+  assert.equal(ins.body.message, 'Не приходит ID лобби')
+  assert.match(tgTexts(), /Заявка <b>#12<\/b> создана/)
+})
+
+t('T-BOT-41 /cancel сбрасывает режим', async () => {
+  reset({
+    telegram_links: ADMIN, admins: ADMIN,
+    telegram_sessions: [{ chat_id: 999, action: 'reply', payload: { num: 1 }, expires_at: FUTURE }],
+  })
+  await post('', { headers: H, body: upd('/cancel', 999) })
+  assert.match(tgTexts(), /отменил/)
+  assert.ok(calls.db.find((c) => c.method === 'DELETE' && c.table === 'telegram_sessions'))
+})
+
+t('T-BOT-42 без режима обычный текст по-прежнему даёт подсказку', async () => {
+  reset({ telegram_links: [{ user_id: 'user-1' }] })
+  await post('', { headers: H, body: upd('привет', 111) })
+  assert.match(tgTexts(), /Не понял команду/)
 })
 
 let pass = 0
