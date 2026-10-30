@@ -7,23 +7,44 @@
     <meta name="description" content="NAME — соревновательный матчмейкинг MLBB: честный драфт игроков, автоматические лобби, рейтинг и призы." />
     <title>NAME — Играй. Побеждай. Зарабатывай.</title>
     <!-- Netlify на free-плане сам вставляет поверх сайта бейдж «Powered by Netlify»
-         (iframe #nl-badge-frame) и промо-бар (#nl-hud-frame). В нашем коде их нет,
-         поэтому гасим их на стороне страницы. Окончательное выключение —
-         в панели Netlify: Project configuration → General → Powered by Netlify badge. -->
+         (скрипт /.netlify/scripts/hud создаёт рамку #nl-badge-frame с промо-панелью).
+         В нашем коде этого нет, поэтому гасим на стороне страницы.
+         Окончательное выключение — в панели Netlify:
+         Project configuration → General → Powered by Netlify badge → Off. -->
     <style>
-      #nl-badge-frame, #nl-hud-frame, iframe[id^="nl-"][id$="-frame"] { display: none !important; }
+      #nl-badge-frame, #nl-hud-frame,
+      iframe[src*="/.netlify/"], iframe[id^="nl-"], iframe[id*="netlify-badge"],
+      netlify-badge, .nl-badge, [data-netlify-badge] { display: none !important; visibility: hidden !important; }
     </style>
     <script>
       (function () {
-        var SEL = '#nl-badge-frame, #nl-hud-frame, iframe[id^="nl-"][id$="-frame"]'
+        var SEL = [
+          '#nl-badge-frame', '#nl-hud-frame', '[id^="nl-"][id$="-frame"]',
+          'iframe[src*="/.netlify/"]', 'iframe[id*="netlify"]',
+          'netlify-badge', '.nl-badge', '[data-netlify-badge]'
+        ].join(',')
         function strip() {
           var nodes = document.querySelectorAll(SEL)
-          for (var i = 0; i < nodes.length; i += 1) nodes[i].remove()
+          for (var i = 0; i < nodes.length; i += 1) {
+            nodes[i].style.setProperty('display', 'none', 'important')
+            nodes[i].remove()
+          }
         }
         strip()
         if (typeof MutationObserver === 'function') {
-          new MutationObserver(function () {
-            if (document.querySelector('iframe[id^="nl-"]')) strip()
+          new MutationObserver(function (records) {
+            for (var i = 0; i < records.length; i += 1) {
+              var added = records[i].addedNodes
+              for (var j = 0; j < added.length; j += 1) {
+                var n = added[j]
+                if (n.nodeType !== 1) continue
+                var isBadge = (n.id && /^nl-|netlify/i.test(n.id))
+                  || (n.tagName === 'IFRAME' && /netlify|\.netlify/i.test(n.src || ''))
+                  || (n.tagName === 'NETLIFY-BADGE')
+                if (isBadge) { n.remove(); continue }
+                if (n.querySelector && n.querySelector(SEL)) strip()
+              }
+            }
           }).observe(document.documentElement, { childList: true, subtree: true })
         }
         window.addEventListener('load', strip)
