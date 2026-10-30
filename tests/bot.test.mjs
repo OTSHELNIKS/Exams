@@ -56,7 +56,10 @@ globalThis.fetch = async (url, opts = {}) => {
     const rows = typeof h === 'function' ? h({ params, calls }) : (h || [])
     return J(200, rows)
   }
-  return J(200, {})
+  const hk = method + ' ' + table
+  const hw = SCEN[hk] !== undefined ? SCEN[hk] : h
+  const out = typeof hw === 'function' ? hw({ params, calls, body }) : (hw !== undefined ? hw : {})
+  return J(200, out)
 }
 
 // ---- load real bot source ----
@@ -300,6 +303,107 @@ t('T-BOT-21 junk update and group chat are ignored safely', async () => {
   const r2 = await post('', { headers: H, body: { message: { chat: { id: -1, type: 'group' }, text: '/start' } } })
   assert.equal(r2.status, 200)
   assert.equal(calls.tg.length, 0, 'expected no telegram calls')
+})
+
+t('T-BOT-22 /support without link asks to link', async () => {
+  reset({ telegram_links: [] })
+  await post('', { headers: H, body: upd('/support помогите') })
+  assert.match(tgTexts(), /Как привязать/)
+})
+
+t('T-BOT-23 /support with text creates a ticket', async () => {
+  reset({
+    telegram_links: [{ user_id: 'user-1' }],
+    'POST support_tickets': [{ num: 7 }],
+  })
+  await post('', { headers: H, body: upd('/support не приходит лобби') })
+  const ins = calls.db.find((c) => c.method === 'POST' && c.table === 'support_tickets')
+  assert.ok(ins, 'expected insert into support_tickets')
+  assert.equal(ins.body.user_id, 'user-1')
+  assert.match(ins.body.message, /не приходит лобби/)
+  assert.match(tgTexts(), /Заявка <b>#7<\/b> создана/)
+})
+
+t('T-BOT-24 /support without text lists own tickets', async () => {
+  reset({
+    telegram_links: [{ user_id: 'user-1' }],
+    support_tickets: [
+      { num: 7, status: 'open', created_at: '2026-10-30T10:00:00Z', admin_reply: null },
+      { num: 6, status: 'answered', created_at: '2026-10-29T10:00:00Z', admin_reply: 'Готово' },
+    ],
+  })
+  await post('', { headers: H, body: upd('/support') })
+  assert.match(tgTexts(), /Твои заявки/)
+  assert.match(tgTexts(), /#7/)
+  assert.match(tgTexts(), /открыта/)
+  assert.match(tgTexts(), /Готово/)
+})
+
+t('T-BOT-25 non-admin is stopped at /tickets', async () => {
+  reset({ telegram_links: [{ user_id: 'user-1' }], admins: [] })
+  await post('', { headers: H, body: upd('/tickets') })
+  assert.match(tgTexts(), /только для администраторов/)
+})
+
+t('T-BOT-26 admin /tickets lists open with nicks', async () => {
+  reset({
+    telegram_links: ADMIN, admins: ADMIN,
+    support_tickets: [
+      { num: 1, user_id: 'u2', message: 'Помогите с входом', status: 'open', created_at: '2026-10-30T09:00:00Z' },
+      { num: 2, user_id: 'u3', message: 'Куда делись очки', status: 'open', created_at: '2026-10-30T09:30:00Z' },
+    ],
+    player_profiles: [{ user_id: 'u2', nick: 'Amy' }, { user_id: 'u3', nick: 'Bob' }],
+  })
+  await post('', { headers: H, body: upd('/tickets', 999) })
+  assert.match(tgTexts(), /Открытые заявки/)
+  assert.match(tgTexts(), /#1/)
+  assert.match(tgTexts(), /Amy/)
+  assert.match(tgTexts(), /Помогите с входом/)
+})
+
+t('T-BOT-27 admin /ticket shows full text and user', async () => {
+  reset({
+    telegram_links: ADMIN, admins: ADMIN,
+    support_tickets: [{ num: 1, user_id: 'u2', message: 'Помогите с входом', status: 'open', created_at: '2026-10-30T09:00:00Z', admin_reply: null }],
+    player_profiles: [{ nick: 'Amy', game_id: '555' }],
+  })
+  await post('', { headers: H, body: upd('/ticket 1', 999) })
+  assert.match(tgTexts(), /Заявка #1/)
+  assert.match(tgTexts(), /Помогите с входом/)
+  assert.match(tgTexts(), /Amy/)
+  assert.match(tgTexts(), /\/reply 1/)
+})
+
+t('T-BOT-28 admin /reply answers and DMs the user', async () => {
+  reset({
+    telegram_links: ({ params }) => (params.get('user_id') ? [{ tg_chat_id: 222 }] : ADMIN),
+    admins: ADMIN,
+    support_tickets: [{ num: 1, user_id: 'u2', message: 'Помогите', status: 'open', created_at: '2026-10-30T09:00:00Z', admin_reply: null }],
+    player_profiles: [{ nick: 'Amy', game_id: '555' }],
+  })
+  await post('', { headers: H, body: upd('/reply 1 Всё починили', 999) })
+  const patch = calls.db.find((c) => c.method === 'PATCH' && c.table === 'support_tickets')
+  assert.ok(patch, 'expected ticket PATCH')
+  assert.equal(patch.body.status, 'answered')
+  assert.equal(patch.body.admin_reply, 'Всё починили')
+  const dm = tgTo(222).map((c) => c.payload.text).join(' ')
+  assert.match(dm, /Ответ поддержки/)
+  assert.match(dm, /Всё починили/)
+})
+
+t('T-BOT-29 admin /close closes and notifies', async () => {
+  reset({
+    telegram_links: ({ params }) => (params.get('user_id') ? [{ tg_chat_id: 222 }] : ADMIN),
+    admins: ADMIN,
+    support_tickets: [{ num: 1, user_id: 'u2', message: 'Помогите', status: 'open', created_at: '2026-10-30T09:00:00Z', admin_reply: null }],
+    player_profiles: [{ nick: 'Amy', game_id: '555' }],
+  })
+  await post('', { headers: H, body: upd('/close 1', 999) })
+  const patch = calls.db.find((c) => c.method === 'PATCH' && c.table === 'support_tickets')
+  assert.ok(patch, 'expected close PATCH')
+  assert.equal(patch.body.status, 'closed')
+  const dm = tgTo(222).map((c) => c.payload.text).join(' ')
+  assert.match(dm, /закрыта/)
 })
 
 let pass = 0

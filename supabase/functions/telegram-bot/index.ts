@@ -111,6 +111,22 @@ async function dbUpsert(table, row, onConflict) {
   }
 }
 
+async function dbInsert(table, row) {
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table, {
+      method: 'POST',
+      headers: svcHeaders({ Prefer: 'return=representation' }),
+      body: JSON.stringify(row),
+    })
+    if (!r.ok) { console.error('db insert failed', table, r.status); return null }
+    const j = await r.json().catch(() => null)
+    return Array.isArray(j) ? j[0] : null
+  } catch (e) {
+    console.error('db insert threw', table, String(e))
+    return null
+  }
+}
+
 async function dbUpdate(table, params, patch) {
   try {
     const q = new URLSearchParams(params || {}).toString()
@@ -141,8 +157,8 @@ async function authGetUser(jwt) {
 }
 
 /* ---------------- bot logic ---------------- */
-const HELP_TEXT = '<b>NAME MLBB — команды</b>\n\n/profile — мой профиль и PTS\n/rating — топ-10 игроков\n/unlink — отвязать Telegram\n/help — это сообщение'
-const ADMIN_HELP = '\n\n<b>Модерация</b>\n/ban — заблокировать: <code>/ban НИК причина</code>\n/unban — разблокировать\n/users — последние пользователи\n/userinfo — карточка: <code>/userinfo НИК</code>\n/review — очередь проверки (ники, фото, скриншоты)\n/pending — сколько на проверке'
+const HELP_TEXT = '<b>NAME MLBB — команды</b>\n\n/profile — мой профиль и PTS\n/rating — топ-10 игроков\n/support — задать вопрос поддержке\n/unlink — отвязать Telegram\n/help — это сообщение'
+const ADMIN_HELP = '\n\n<b>Модерация</b>\n/ban — заблокировать: <code>/ban НИК причина</code>\n/unban — разблокировать\n/users — последние пользователи\n/userinfo — карточка: <code>/userinfo НИК</code>\n/review — очередь проверки (ники, фото, скриншоты)\n/pending — сколько на проверке\n/tickets — открытые заявки\n/ticket — заявка: <code>/ticket 3</code>\n/reply — ответить: <code>/reply 3 текст</code>\n/close — закрыть заявку'
 
 function linkPrompt() {
   return 'Я не знаю, кто ты, пока ты не покажешь код из приложения. Как привязать (1 минута):'
@@ -181,6 +197,7 @@ async function resolveTarget(words) {
 }
 
 const KIND_TITLE = { screenshot: 'скриншот', nick: 'ник', avatar: 'фото профиля' }
+const TICKET_STATUS = { open: 'открыта', answered: 'есть ответ', closed: 'закрыта' }
 
 function reviewVerdict(rev, ok) {
   if (rev.kind === 'nick') {
@@ -338,7 +355,7 @@ async function handleUpdate(update) {
     return
   }
 
-  if (cmd === '/ban' || cmd === '/unban' || cmd === '/users' || cmd === '/userinfo' || cmd === '/review' || cmd === '/pending') {
+  if (cmd === '/ban' || cmd === '/unban' || cmd === '/users' || cmd === '/userinfo' || cmd === '/review' || cmd === '/pending' || cmd === '/tickets' || cmd === '/ticket' || cmd === '/reply' || cmd === '/close') {
     const adm = await adminLink(chatId)
     if (!adm.link) { await send(chatId, linkPrompt()); return }
     if (!adm.admin) { await send(chatId, 'Эта команда только для администраторов.'); return }
@@ -353,6 +370,55 @@ async function handleUpdate(update) {
       if (n.avatar) bits.push('фото: ' + n.avatar)
       if (n.screenshot) bits.push('скриншоты: ' + n.screenshot)
       await send(chatId, 'На проверке: <b>' + rows.length + '</b>' + (rows.length === 100 ? '+' : '') + ' (' + bits.join(', ') + '). Команда /review — смотреть по одному.')
+      return
+    }
+    if (cmd === '/tickets') {
+      const open = await dbSelect('support_tickets', { status: 'eq.open', order: 'created_at.asc', limit: '20', select: 'num,user_id,message,created_at' })
+      if (open.length === 0) { await send(chatId, 'Открытых заявок нет.'); return }
+      const ids = [...new Set(open.map((x) => x.user_id))]
+      const profs = await dbSelect('player_profiles', { user_id: 'in.(' + ids.join(',') + ')', select: 'user_id,nick' })
+      const names = {}
+      profs.forEach((p) => { names[p.user_id] = p.nick || 'Без ника' })
+      const lines = open.map((x) => {
+        const when = String(x.created_at || '').slice(0, 16).replace('T', ' ')
+        return '#' + x.num + ' · ' + esc(names[x.user_id] || '—') + ' · ' + when + '\n> ' + esc(x.message.slice(0, 120))
+      })
+      await send(chatId, '<b>Открытые заявки</b>\n\n' + lines.join('\n\n') + '\n\nЧитать: <code>/ticket N</code>')
+      return
+    }
+    if (cmd === '/ticket' || cmd === '/reply' || cmd === '/close') {
+      const num = parseInt(parts[1] || '', 10)
+      if (!num) { await send(chatId, 'Укажи номер заявки. Например: <code>' + cmd + ' 3</code>'); return }
+      const rows = await dbSelect('support_tickets', { num: 'eq.' + num, select: '*' })
+      const ticket = rows[0]
+      if (!ticket) { await send(chatId, 'Заявка #' + num + ' не найдена.'); return }
+      const profs = await dbSelect('player_profiles', { user_id: 'eq.' + ticket.user_id, select: 'nick,game_id' })
+      const who = profs[0] ? esc(profs[0].nick || 'Без ника') + ' (' + esc(profs[0].game_id || '—') + ')' : 'пользователь'
+      const when = String(ticket.created_at || '').slice(0, 16).replace('T', ' ')
+      if (cmd === '/ticket') {
+        let text = '<b>Заявка #' + ticket.num + '</b> · ' + (TICKET_STATUS[ticket.status] || ticket.status) + '\n' + who + ' · ' + when + '\n\n' + esc(ticket.message)
+        if (ticket.admin_reply) text += '\n\n<b>Ответ:</b> ' + esc(ticket.admin_reply)
+        else text += '\n\nОтветить: <code>/reply ' + ticket.num + ' текст</code>'
+        await send(chatId, text)
+        return
+      }
+      if (cmd === '/close') {
+        if (ticket.status === 'closed') { await send(chatId, 'Заявка #' + num + ' уже закрыта.'); return }
+        await dbUpdate('support_tickets', { num: 'eq.' + num }, { status: 'closed' })
+        await send(chatId, 'Заявка #' + num + ' закрыта.')
+        const chat = await linkedChatOf(ticket.user_id)
+        if (chat && chat !== chatId) await send(chat, 'Твоя заявка #' + num + ' закрыта.')
+        return
+      }
+      const replyText = parts.slice(2).join(' ').trim()
+      if (!replyText) { await send(chatId, 'Напиши текст ответа: <code>/reply ' + num + ' текст</code>'); return }
+      await dbUpdate('support_tickets', { num: 'eq.' + num },
+        { admin_reply: replyText, status: 'answered', answered_by: adm.link.user_id, answered_at: new Date().toISOString() })
+      await send(chatId, 'Ответ на заявку #' + num + ' отправлен.')
+      const userChat = await linkedChatOf(ticket.user_id)
+      if (userChat && userChat !== chatId) {
+        await send(userChat, '<b>Ответ поддержки</b> (заявка #' + num + ')\n\n' + esc(replyText))
+      }
       return
     }
     if (cmd === '/users') {
@@ -407,6 +473,30 @@ async function handleUpdate(update) {
     return
   }
 
+  if (cmd === '/support') {
+    const links = await dbSelect('telegram_links', { tg_chat_id: 'eq.' + chatId, select: 'user_id' })
+    if (!links[0]) { await send(chatId, linkPrompt()); return }
+    const question = parts.slice(1).join(' ').trim()
+    if (!question) {
+      const mine = await dbSelect('support_tickets', { user_id: 'eq.' + links[0].user_id, select: 'num,status,created_at,admin_reply', order: 'created_at.desc', limit: '5' })
+      if (mine.length === 0) { await send(chatId, 'У тебя пока нет заявок. Напиши так: <code>/support у меня вопрос…</code>'); return }
+      const lines = mine.map((x) => {
+        const when = String(x.created_at || '').slice(0, 16).replace('T', ' ')
+        let s = '#' + x.num + ' · ' + (TICKET_STATUS[x.status] || x.status) + ' · ' + when
+        if (x.status === 'answered' && x.admin_reply) s += '\nОтвет: ' + esc(x.admin_reply.slice(0, 200))
+        return s
+      })
+      await send(chatId, '<b>Твои заявки</b>\n\n' + lines.join('\n\n'))
+      return
+    }
+    if (question.length < 5) { await send(chatId, 'Опиши проблему подробнее — хотя бы пара слов.'); return }
+    if (question.length > 2000) { await send(chatId, 'Слишком длинно — умести вопрос в 2000 символов.'); return }
+    const created = await dbInsert('support_tickets', { user_id: links[0].user_id, message: question })
+    if (!created) { await send(chatId, 'Не получилось создать заявку. Попробуй позже.'); return }
+    await send(chatId, 'Заявка <b>#' + created.num + '</b> создана. Админ ответит сюда, в этот чат.')
+    return
+  }
+
   if (cmd === '/unlink') {
     await dbDelete('telegram_links', { tg_chat_id: 'eq.' + chatId })
     await send(chatId, 'Готово, Telegram отвязан. Уведомления приходить не будут.')
@@ -445,22 +535,40 @@ async function handleSetup(url) {
   if (!BOT_TOKEN) return json({ ok: false, error: 'no_bot_token' }, 500)
   if (!WEBHOOK_SECRET) return json({ ok: false, error: 'no_webhook_secret' }, 500)
   const fnUrl = SUPABASE_URL + '/functions/v1/telegram-bot'
-  const hook = await tg('setWebhook', { url: fnUrl, secret_token: WEBHOOK_SECRET, drop_pending_updates: true })
+  let hook = await tg('setWebhook', { url: fnUrl, secret_token: WEBHOOK_SECRET, drop_pending_updates: true })
+  if (!hook || hook.ok !== true) {
+    // Retry once: Telegram occasionally rejects a burst of setWebhook calls.
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    hook = await tg('setWebhook', { url: fnUrl, secret_token: WEBHOOK_SECRET, drop_pending_updates: true })
+  }
   const me = await tg('getMe', {})
   const cmds = await tg('setMyCommands', { commands: [
     { command: 'start', description: 'Начать / привязать аккаунт' },
     { command: 'profile', description: 'Мой профиль и PTS' },
     { command: 'rating', description: 'Топ-10 игроков' },
+    { command: 'support', description: 'Вопрос поддержке' },
     { command: 'ban', description: 'Заблокировать (админ)' },
     { command: 'unban', description: 'Разблокировать (админ)' },
     { command: 'users', description: 'Пользователи (админ)' },
     { command: 'userinfo', description: 'Карточка игрока (админ)' },
     { command: 'review', description: 'Проверка анкет (админ)' },
     { command: 'pending', description: 'Сколько на проверке (админ)' },
+    { command: 'tickets', description: 'Открытые заявки (админ)' },
+    { command: 'ticket', description: 'Читать заявку (админ)' },
+    { command: 'reply', description: 'Ответить на заявку (админ)' },
+    { command: 'close', description: 'Закрыть заявку (админ)' },
     { command: 'unlink', description: 'Отвязать Telegram' },
     { command: 'help', description: 'Помощь' },
   ] })
-  return json({ ok: true, bot: (me && me.result && me.result.username) || null, webhook: fnUrl, setWebhook: !!(hook && hook.ok), setCommands: !!(cmds && cmds.ok) })
+  const hookOk = !!(hook && hook.ok === true)
+  return json({
+    ok: true,
+    bot: (me && me.result && me.result.username) || null,
+    webhook: fnUrl,
+    setWebhook: hookOk,
+    setWebhookError: hookOk ? null : ((hook && (hook.description || hook.error_code)) || 'no_response'),
+    setCommands: !!(cmds && cmds.ok),
+  })
 }
 
 Deno.serve(async (req) => {
