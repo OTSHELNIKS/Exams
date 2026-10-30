@@ -369,6 +369,12 @@ a { color: inherit; }
 .social-circle--add { border-style: dashed; color: var(--dim); }
 .social-circle { position: relative; }
 .social-circle--empty { border-style: dashed; border-color: rgba(255,200,61,.5); }
+/* привязано через бота — подтверждённая связка, зелёная точка */
+.social-circle--bot::after {
+  content: ''; position: absolute; top: 2px; right: 2px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--green); box-shadow: 0 0 0 2px var(--bg);
+}
+.social-modal__link { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 .social-circle__dot {
   position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%;
   background: var(--gold); box-shadow: 0 0 0 2px var(--bg);

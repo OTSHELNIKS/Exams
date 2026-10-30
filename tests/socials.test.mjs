@@ -119,5 +119,22 @@ test('T-SOC-13 ручной ввод — только аварийный пут�
   assert.ok(/manual linking/i.test(app), 'нет понятного сообщения, если связывание выключено')
 }) 
 
+test('T-SOC-14 Telegram берётся из telegram_links, а не из массива socials', () => {
+  assert.ok(app.includes('getTelegramLink'), 'App не читает реальную привязку Telegram')
+  assert.ok(app.includes('setTelegramLink'), 'нет состояния привязки Telegram')
+  assert.ok(social.includes('telegramLink'), 'SocialRow не знает о привязке бота')
+  assert.ok(/telegramLink \? \[\{ provider: 'telegram'/.test(social), 'иконка Telegram не строится из привязки')
+  assert.ok(social.includes("x.provider !== 'telegram'"), 'ручной telegram всё ещё дублирует иконку')
+})
+
+test('T-SOC-15 иконка Telegram не пропадает после перезагрузки и честно отвязывается', () => {
+  assert.ok(app.includes('deleteTelegramLink'), 'отвязка не удаляет строку в базе')
+  assert.ok(app.includes('unlinkTelegram'), 'нет обработчика отвязки Telegram')
+  assert.ok(social.includes('onUnlinkTelegram'), 'карточка Telegram не умеет отвязывать')
+  assert.ok(social.includes('Telegram отвязан'), 'нет подтверждения отвязки')
+  assert.ok(social.includes('через бота'), 'в выборе соцсети Telegram не помечен как «через бота»')
+  assert.ok(styles.includes('.social-circle--bot'), 'нет отметки привязки через бота')
+})
+
 console.log(`\nsocials: ${passed}/${passed + failed}`)
 if (failed) process.exit(1)

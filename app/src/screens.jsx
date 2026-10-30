@@ -574,7 +574,7 @@ const SOCIAL_ICONS = { telegram: 'telegram', vk: 'vk', google: 'google' }
    привязана». Теперь открывается выбор соцсети + поле ника, и запись
    появляется в профиле лишь после сохранения. Занятые соцсети в выборе
    помечены: одну и ту же нельзя привязать дважды. */
-export function SocialRow({ profile, onAddSocial, onRemoveSocial, googleAccount = '', onLinkGoogle }) {
+export function SocialRow({ profile, onAddSocial, onRemoveSocial, googleAccount = '', onLinkGoogle, telegramLink, onUnlinkTelegram }) {
   const [toast, setToast] = useState('')
   const [open, setOpen] = useState(false)
   const [view, setView] = useState(null)
@@ -591,8 +591,18 @@ export function SocialRow({ profile, onAddSocial, onRemoveSocial, googleAccount 
     return () => clearTimeout(t)
   }, [toast])
 
-  const bound = (profile.socials || []).map(parseSocial).filter((x) => SOCIAL_IDS.includes(x.provider))
-  const free = SOCIAL_PROVIDERS.filter((p) => !bound.some((x) => x.provider === p.id))
+  // Telegram — не ручная запись: он привязан, если в telegram_links есть строка
+  // (её создаёт бот по коду). Так иконка не пропадает после перезагрузки и не
+  // может появиться «на пустом месте».
+  const botHandle = telegramLink ? (telegramLink.tg_username ? `@${telegramLink.tg_username}` : 'привязан через бота') : ''
+  const manualBound = (profile.socials || [])
+    .map(parseSocial)
+    .filter((x) => SOCIAL_IDS.includes(x.provider) && x.provider !== 'telegram')
+  const bound = [
+    ...(telegramLink ? [{ provider: 'telegram', handle: botHandle, viaBot: true }] : []),
+    ...manualBound,
+  ]
+  const free = SOCIAL_PROVIDERS.filter((p) => p.id !== 'telegram' && !bound.some((x) => x.provider === p.id))
   const current = SOCIAL_PROVIDERS.find((p) => p.id === provider)
 
   const openAdd = () => {
@@ -625,16 +635,16 @@ export function SocialRow({ profile, onAddSocial, onRemoveSocial, googleAccount 
     <div className="social-block">
       <div className="section-head"><span>СОЦСЕТИ</span><b>{bound.length}/{SOCIAL_IDS.length}</b></div>
       {bound.length === 0 && (
-        <p className="social-hint">Ничего не привязано. Нажми +, выбери соцсеть и укажи ник.</p>
+        <p className="social-hint">Ничего не привязано. Нажми +, выбери соцсеть и укажи ник. Telegram привязывается через бота.</p>
       )}
       <div className="social-row">
-        {bound.map(({ provider: id, handle: nick }) => (
+        {bound.map(({ provider: id, handle: nick, viaBot }) => (
           <button
             key={id}
             type="button"
-            className={`social-circle${nick ? '' : ' social-circle--empty'}`}
+            className={`social-circle${nick ? '' : ' social-circle--empty'}${viaBot ? ' social-circle--bot' : ''}`}
             title={nick ? socialCaption(`${id}:${nick}`) : `${socialLabel(id)}: ник не указан — перепривяжи`}
-            onClick={() => { setView({ provider: id, handle: nick }); setError('') }}
+            onClick={() => { setView({ provider: id, handle: nick, viaBot }); setError('') }}
           >
             <BrandMark type={id} />
             {!nick && <i className="social-circle__dot" aria-hidden="true" />}
@@ -653,17 +663,22 @@ export function SocialRow({ profile, onAddSocial, onRemoveSocial, googleAccount 
         <div className="social-pick">
           {SOCIAL_PROVIDERS.map((p) => {
             const taken = bound.some((x) => x.provider === p.id)
+            const viaBot = p.id === 'telegram'
             return (
               <button
                 key={p.id}
                 type="button"
                 className={`social-pick__item${provider === p.id ? ' is-active' : ''}`}
                 disabled={taken}
-                onClick={() => { setProvider(p.id); setError('') }}
+                onClick={() => {
+                  if (viaBot) return
+                  setProvider(p.id); setError('')
+                }}
               >
                 <BrandMark type={SOCIAL_ICONS[p.id]} />
                 <span>{p.label}</span>
                 {taken && <em>уже есть</em>}
+                {!taken && viaBot && <em>через бота</em>}
               </button>
             )
           })}
@@ -724,7 +739,13 @@ export function SocialRow({ profile, onAddSocial, onRemoveSocial, googleAccount 
               <button
                 type="button"
                 className="btn btn--ghost"
-                onClick={() => {
+                onClick={async () => {
+                  if (view.provider === 'telegram') {
+                    if (onUnlinkTelegram) await onUnlinkTelegram()
+                    setView(null)
+                    setToast('Telegram отвязан от аккаунта')
+                    return
+                  }
                   if (onRemoveSocial) onRemoveSocial(view.provider)
                   setView(null)
                   setToast(`${socialLabel(view.provider)} отвязан`)
@@ -732,11 +753,17 @@ export function SocialRow({ profile, onAddSocial, onRemoveSocial, googleAccount 
               >
                 Отвязать
               </button>
-              <PrimaryButton onClick={() => {
-                // Старую запись снимаем сразу: привязать ту же сеть дважды нельзя.
-                if (onRemoveSocial) onRemoveSocial(view.provider)
-                setView(null); setProvider(view.provider); setHandle(view.handle || ''); setError(''); setManual(false); setOpen(true)
-              }}>Изменить</PrimaryButton>
+              {view.provider === 'telegram' ? (
+                <a className="btn btn--primary social-modal__link" href={`https://t.me/${TELEGRAM_BOT_USERNAME}`} target="_blank" rel="noreferrer">
+                  Открыть бота
+                </a>
+              ) : (
+                <PrimaryButton onClick={() => {
+                  // Старую запись снимаем сразу: привязать ту же сеть дважды нельзя.
+                  if (onRemoveSocial) onRemoveSocial(view.provider)
+                  setView(null); setProvider(view.provider); setHandle(view.handle || ''); setError(''); setManual(false); setOpen(true)
+                }}>Изменить</PrimaryButton>
+              )}
             </div>
           </>
         )}
@@ -747,7 +774,7 @@ export function SocialRow({ profile, onAddSocial, onRemoveSocial, googleAccount 
   )
 }
 
-export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, onEdit, isAdmin, onAdmin, supabase, userId }) {
+export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onEdit, isAdmin, onAdmin, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -788,7 +815,7 @@ export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount
         {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
       </div>
 
-      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} onUnlinkTelegram={onUnlinkTelegram} />
 
       <div className="home__actions">
         {profile.nick
@@ -960,7 +987,7 @@ function TelegramLinkCard({ supabase, userId }) {
 }
 
 /* ============================================================= PROFILE ==== */
-export function ProfileScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, onBack, onEdit, supabase, userId }) {
+export function ProfileScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onBack, onEdit, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -1002,7 +1029,7 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, googleAcco
         <Settings size={15} /> {(profile.heroes || []).length ? 'Изменить героев' : 'Выбрать героев'}
       </button>
 
-      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} onUnlinkTelegram={onUnlinkTelegram} />
       <TelegramLinkCard supabase={supabase} userId={userId} />
       <button type="button" className="btn btn--ghost profile__back" onClick={onBack}>На главную</button>
       </div>

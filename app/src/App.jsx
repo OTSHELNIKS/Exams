@@ -11,7 +11,7 @@ import {
 } from './screens.jsx'
 import { AdminScreen } from './admin.jsx'
 import { DEFAULT_PROFILE, splitCombinedGameId, SOCIAL_IDS, parseSocial, formatSocial } from './data.js'
-import { supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews } from './supabase.js'
+import { supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews, getTelegramLink, deleteTelegramLink } from './supabase.js'
 import { parseAuthReturn, cleanAuthUrl, describeAuthError } from './auth-return.js'
 
 // Ошибку внешнего входа (Google и т.п.) читаем один раз при загрузке страницы:
@@ -75,6 +75,9 @@ export default function App() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
+  // Реальная привязка Telegram (таблица telegram_links, её пишет бот).
+  const [telegramLink, setTelegramLink] = useState(null)
+  const [tgLoaded, setTgLoaded] = useState(false)
   const [profile, setProfile] = useState(() => {
     try {
       localStorage.removeItem(LEGACY_STORAGE_KEY)
@@ -144,11 +147,16 @@ export default function App() {
               if (socialError) setSaveError('Google привязан, но сохранить не удалось: ' + socialError.message)
             }
           }
+          try {
+            setTelegramLink(await getTelegramLink(next.user.id))
+          } catch { setTelegramLink(null) }
+          setTgLoaded(true)
           const { data: adminRow } = await supabase.from('admins').select('user_id').eq('user_id', next.user.id).maybeSingle()
           if (!active || current !== generation) return
           setIsAdmin(!!adminRow)
         } else if (previousUserId) {
           setProfile({ ...DEFAULT_PROFILE }); setGameId(''); setGameServer(''); setIsAdmin(false)
+          setTelegramLink(null)
         }
         setSaveError(''); setSessionLoading(false)
       }, 0)
@@ -183,6 +191,13 @@ export default function App() {
       }
       return { error: raw || 'Не удалось открыть окно Google.' }
     }
+  }
+
+  // Отвязка Telegram: удаляем строку в telegram_links — бот перестанет писать.
+  const unlinkTelegram = async () => {
+    if (!supabase || !session) { setTelegramLink(null); return }
+    try { await deleteTelegramLink(session.user.id) } catch { /* noop */ }
+    setTelegramLink(null)
   }
 
   const go = (id) => setScreen(id)
@@ -277,9 +292,9 @@ export default function App() {
       case 'wizard':
         return <WizardScreen profile={profile} setProfile={setProfile} gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
-        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
+        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
       case 'profile':
-        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
+        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
         return <DraftScreen supabase={supabase} userId={session?.user?.id || null} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
       case 'match':
