@@ -6,7 +6,7 @@
 
 ```bash
 node tests/bot.test.mjs     # 48 тестов логики бота, ноль зависимостей
-node tests/admin.test.mjs   # 9 проверок доступа к админке (статические)
+node tests/admin.test.mjs   # 11 проверок админки и оверлея карточки (статические)
 node tests/avatar.test.mjs  # 7 проверок геометрии обрезки аватарки
 ```
 
