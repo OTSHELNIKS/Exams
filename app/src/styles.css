@@ -384,6 +384,17 @@ a { color: inherit; }
 .social-pick__item:disabled { opacity: .45; }
 .social-pick__item em { font-style: normal; font-size: 9px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: .5px; }
 .social-error { color: #ff9d8a; font-size: 12.5px; line-height: 1.45; margin: 0 0 10px; }
+.social-google { display: flex; flex-direction: column; gap: 8px; margin-bottom: 6px; }
+.social-google__btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; }
+.social-google__btn .brand { width: 26px; height: 26px; border-radius: 9px; font-size: 15px; }
+.social-google__manual { width: 100%; font-size: 12px; margin: -2px 0 10px; }
+.social-account {
+  display: flex; align-items: center; gap: 12px; margin: 0 0 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px;
+}
+.social-account .brand { width: 34px; height: 34px; border-radius: 11px; }
+.social-account strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.social-account small { color: var(--green); font-size: 11.5px; }
 .social-modal__actions { display: flex; gap: 10px; }
 .social-modal__actions > * { flex: 1; }
 .social-circle--add:hover { border-color: var(--orange); color: var(--orange-2); }
@@ -1234,5 +1245,8 @@ html.is-modal-open .rail { overflow: hidden !important; }
   .social-pick__item { font-size: 13px; padding: 12px 8px; }
   .social-pick__item .brand { width: 34px; height: 34px; }
   .social-error { font-size: 13.5px; }
+  .social-account strong { font-size: 15.5px; }
+  .social-account small { font-size: 12.5px; }
+  .social-google__manual { font-size: 13px; }
   .home__id-server { font-size: 11.5px; }
 }

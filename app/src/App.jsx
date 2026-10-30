@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Home, UserRound, Swords, Gamepad2, Trophy, Globe, ChevronLeft, Sparkles,
   ClipboardList, LogIn, ShieldCheck, LifeBuoy, LogOut,
@@ -42,6 +42,17 @@ const SCREENS = [
 ]
 
 const STORAGE_KEY = 'name-mlbb-profile:v2'
+// Метка «идём связывать Google»: после возврата от Google именно она разрешает
+// автоматически записать подтверждённый аккаунт в соцсети профиля.
+const LINK_GOOGLE_KEY = STORAGE_KEY + ':linkGoogle'
+
+// Почта подтверждённого Google-аккаунта из сессии (или '' если Google не привязан).
+function googleEmailOf(user) {
+  if (!user) return ''
+  const identity = (user.identities || []).find((i) => i.provider === 'google')
+  if (identity) return identity.identity_data?.email || user.email || ''
+  return user.app_metadata?.provider === 'google' ? (user.email || '') : ''
+}
 const LEGACY_STORAGE_KEY = 'name-mlbb-profile'
 
 export default function App() {
@@ -105,11 +116,34 @@ export default function App() {
           const { data, error } = await supabase.from('player_profiles').select('*').eq('user_id', next.user.id).maybeSingle()
           if (!active || current !== generation) return
           if (error) { setSaveError('Не удалось загрузить профиль: ' + error.message); setSessionLoading(false); return }
-          setProfile(data ? rowToProfile(data, DEFAULT_PROFILE) : { ...DEFAULT_PROFILE })
+          const loaded = data ? rowToProfile(data, DEFAULT_PROFILE) : { ...DEFAULT_PROFILE }
+          setProfile(loaded)
           // Старые профили хранили «123456789 (1234)» одной строкой — разбираем.
           const legacy = splitCombinedGameId(data?.game_id || '')
           setGameId(legacy.gameId)
           setGameServer(data?.game_server || legacy.server)
+
+          // Вернулись от Google после «Привязать»: аккаунт подтверждён — пишем
+          // его в соцсети. Сохраняем сразу из свежезагруженного профиля, чтобы
+          // не перетереть остальные поля пустыми.
+          const googleEmail = googleEmailOf(next.user)
+          let pendingLink = false
+          try { pendingLink = localStorage.getItem(LINK_GOOGLE_KEY) === '1' } catch { pendingLink = false }
+          if (googleEmail && pendingLink) {
+            try { localStorage.removeItem(LINK_GOOGLE_KEY) } catch { /* noop */ }
+            const boundNow = (loaded.socials || []).map(parseSocial)
+            if (!boundNow.some((x) => x.provider === 'google') && boundNow.length < SOCIAL_IDS.length) {
+              const withGoogle = {
+                ...loaded,
+                socials: [...(loaded.socials || []), formatSocial('google', googleEmail)],
+              }
+              setProfile(withGoogle)
+              const { error: socialError } = await supabase
+                .from('player_profiles')
+                .upsert(profileToRow(withGoogle, legacy.gameId, data?.game_server || legacy.server, next.user.id))
+              if (socialError) setSaveError('Google привязан, но сохранить не удалось: ' + socialError.message)
+            }
+          }
           const { data: adminRow } = await supabase.from('admins').select('user_id').eq('user_id', next.user.id).maybeSingle()
           if (!active || current !== generation) return
           setIsAdmin(!!adminRow)
@@ -125,6 +159,31 @@ export default function App() {
   useEffect(() => {
     document.body.classList.toggle('app-mode', mode === 'app')
   }, [mode])
+
+  // Аккаунт Google, подтверждённый OAuth: почту руками не спрашиваем.
+  const googleAccount = useMemo(() => googleEmailOf(session?.user), [session])
+
+  // Связывание Google с текущим аккаунтом: открывается окно выбора аккаунта.
+  const linkGoogle = async () => {
+    if (!supabase) return { error: 'Проект не подключён к Supabase.' }
+    if (!session) return { error: 'Сначала войди в аккаунт, потом привязывай соцсети.' }
+    try {
+      localStorage.setItem(LINK_GOOGLE_KEY, '1')
+    } catch { /* noop */ }
+    try {
+      const redirectTo = window.location.origin + window.location.pathname
+      const { error } = await supabase.auth.linkIdentity({ provider: 'google', options: { redirectTo } })
+      if (error) throw error
+      return { redirected: true }
+    } catch (error) {
+      try { localStorage.removeItem(LINK_GOOGLE_KEY) } catch { /* noop */ }
+      const raw = String(error?.message || '')
+      if (/manual linking|not enabled|disabled/i.test(raw)) {
+        return { error: 'Связывание выключено в проекте: Supabase → Authentication → Sign In / Providers → Manual linking. Пока впиши почту вручную.' }
+      }
+      return { error: raw || 'Не удалось открыть окно Google.' }
+    }
+  }
 
   const go = (id) => setScreen(id)
   const openApp = (id = 'auth') => { setScreen(id); setMode('app') }
@@ -218,9 +277,9 @@ export default function App() {
       case 'wizard':
         return <WizardScreen profile={profile} setProfile={setProfile} gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
-        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
+        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
       case 'profile':
-        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
+        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
         return <DraftScreen supabase={supabase} userId={session?.user?.id || null} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
       case 'match':

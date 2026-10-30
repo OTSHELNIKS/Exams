@@ -574,13 +574,17 @@ const SOCIAL_ICONS = { telegram: 'telegram', vk: 'vk', google: 'google' }
    привязана». Теперь открывается выбор соцсети + поле ника, и запись
    появляется в профиле лишь после сохранения. Занятые соцсети в выборе
    помечены: одну и ту же нельзя привязать дважды. */
-export function SocialRow({ profile, onAddSocial, onRemoveSocial }) {
+export function SocialRow({ profile, onAddSocial, onRemoveSocial, googleAccount = '', onLinkGoogle }) {
   const [toast, setToast] = useState('')
   const [open, setOpen] = useState(false)
   const [view, setView] = useState(null)
   const [provider, setProvider] = useState('')
   const [handle, setHandle] = useState('')
   const [error, setError] = useState('')
+  // Google привязывается только через окно выбора аккаунта. Поле для ручного
+  // ввода остаётся лишь как аварийный путь, если связывание в проекте выключено.
+  const [manual, setManual] = useState(false)
+  const [linking, setLinking] = useState(false)
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(''), 2200)
@@ -595,15 +599,25 @@ export function SocialRow({ profile, onAddSocial, onRemoveSocial }) {
     setProvider(free[0]?.id || '')
     setHandle('')
     setError('')
+    setManual(false)
     setOpen(true)
   }
+  const startGoogle = async () => {
+    if (!onLinkGoogle) { setManual(true); setError('Окно Google недоступно — впиши почту вручную.'); return }
+    setLinking(true)
+    setError('')
+    const result = await onLinkGoogle()
+    setLinking(false)
+    if (result && result.error) { setError(result.error); setManual(true) }
+  }
   const save = () => {
-    const nick = handle.trim()
+    const nick = provider === 'google' && googleAccount ? googleAccount : handle.trim()
     if (!provider) { setError('Выбери соцсеть.'); return }
     if (!nick) { setError('Укажи ник или ссылку — без них привязка ничего не значит.'); return }
     if (nick.length > 80) { setError('Слишком длинная строка — до 80 символов.'); return }
     if (!onAddSocial(provider, nick)) { setError('Эта соцсеть уже привязана.'); return }
     setOpen(false)
+    setManual(false)
     setToast(`${socialLabel(provider)} привязан: ${nick}`)
   }
 
@@ -654,22 +668,50 @@ export function SocialRow({ profile, onAddSocial, onRemoveSocial }) {
             )
           })}
         </div>
-        <label className="field">
-          <span>{current ? current.label.toUpperCase() : 'НИК'}</span>
-          <input
-            value={handle}
-            onChange={(e) => { setHandle(e.target.value); setError('') }}
-            placeholder={current ? current.placeholder : '@nickname'}
-            autoComplete="off"
-            maxLength={80}
-            aria-label="Ник или ссылка на профиль в соцсети"
-          />
-        </label>
-        <p className="field-hint">{current ? current.hint : 'Ник или ссылка на профиль.'}</p>
+        {provider === 'google' && !manual ? (
+          googleAccount ? (
+            <div className="social-account">
+              <BrandMark type="google" />
+              <div>
+                <strong>{googleAccount}</strong>
+                <small>аккаунт подтверждён Google</small>
+              </div>
+            </div>
+          ) : (
+            <div className="social-google">
+              <button type="button" className="btn btn--ghost social-google__btn" disabled={linking} onClick={startGoogle}>
+                <BrandMark type="google" /> {linking ? 'Открываю Google…' : 'Выбрать аккаунт Google'}
+              </button>
+              <p className="field-hint">Откроется окно Google со списком аккаунтов — почту вводить не нужно.</p>
+            </div>
+          )
+        ) : (
+          <>
+            <label className="field">
+              <span>{current ? current.label.toUpperCase() : 'НИК'}</span>
+              <input
+                value={provider === 'google' ? handle : handle}
+                onChange={(e) => { setHandle(e.target.value); setError('') }}
+                placeholder={current ? current.placeholder : '@nickname'}
+                autoComplete="off"
+                maxLength={80}
+                aria-label="Ник или ссылка на профиль в соцсети"
+              />
+            </label>
+            <p className="field-hint">{current ? current.hint : 'Ник или ссылка на профиль.'}</p>
+          </>
+        )}
+        {provider === 'google' && !manual && !googleAccount && (
+          <button type="button" className="link-btn social-google__manual" onClick={() => { setManual(true); setError('') }}>
+            вписать почту вручную
+          </button>
+        )}
         {error && <p className="social-error" role="alert">{error}</p>}
         <div className="social-modal__actions">
           <button type="button" className="btn btn--ghost" onClick={() => setOpen(false)}>Отмена</button>
-          <PrimaryButton onClick={save}>Привязать</PrimaryButton>
+          {provider === 'google' && !googleAccount && !manual
+            ? <PrimaryButton disabled={linking} onClick={startGoogle}>Выбрать аккаунт</PrimaryButton>
+            : <PrimaryButton onClick={save}>Привязать</PrimaryButton>}
         </div>
       </Modal>
 
@@ -693,7 +735,7 @@ export function SocialRow({ profile, onAddSocial, onRemoveSocial }) {
               <PrimaryButton onClick={() => {
                 // Старую запись снимаем сразу: привязать ту же сеть дважды нельзя.
                 if (onRemoveSocial) onRemoveSocial(view.provider)
-                setView(null); setProvider(view.provider); setHandle(view.handle || ''); setError(''); setOpen(true)
+                setView(null); setProvider(view.provider); setHandle(view.handle || ''); setError(''); setManual(false); setOpen(true)
               }}>Изменить</PrimaryButton>
             </div>
           </>
@@ -705,7 +747,7 @@ export function SocialRow({ profile, onAddSocial, onRemoveSocial }) {
   )
 }
 
-export function HomeScreen({ profile, actions, gameId, gameServer, onEdit, isAdmin, onAdmin, supabase, userId }) {
+export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, onEdit, isAdmin, onAdmin, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -746,7 +788,7 @@ export function HomeScreen({ profile, actions, gameId, gameServer, onEdit, isAdm
         {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
       </div>
 
-      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} />
 
       <div className="home__actions">
         {profile.nick
@@ -918,7 +960,7 @@ function TelegramLinkCard({ supabase, userId }) {
 }
 
 /* ============================================================= PROFILE ==== */
-export function ProfileScreen({ profile, actions, gameId, gameServer, onBack, onEdit, supabase, userId }) {
+export function ProfileScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, onBack, onEdit, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -960,7 +1002,7 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, onBack, on
         <Settings size={15} /> {(profile.heroes || []).length ? 'Изменить героев' : 'Выбрать героев'}
       </button>
 
-      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} />
       <TelegramLinkCard supabase={supabase} userId={userId} />
       <button type="button" className="btn btn--ghost profile__back" onClick={onBack}>На главную</button>
       </div>

@@ -96,5 +96,28 @@ test('T-SOC-10 стили выбора соцсети на месте', () => {
   }
 })
 
+test('T-SOC-11 Google привязывается окном выбора аккаунта, без ввода почты', () => {
+  assert.ok(app.includes('supabase.auth.linkIdentity'), 'нет связывания через linkIdentity')
+  assert.ok(/linkIdentity\(\{ provider: 'google'/.test(app), 'linkIdentity должен открывать Google')
+  assert.ok(app.includes('localStorage.setItem(LINK_GOOGLE_KEY, \'1\')'), 'нет метки возврата от Google')
+  assert.ok(social.includes('Выбрать аккаунт Google'), 'нет кнопки выбора аккаунта')
+  assert.ok(social.includes('startGoogle'), 'кнопка не запускает OAuth')
+  assert.ok(/provider === 'google' && !manual/.test(social), 'для Google всё ещё показывается поле ввода')
+})
+
+test('T-SOC-12 подтверждённый Google-аккаунт подставляется сам', () => {
+  assert.ok(/provider === 'google' && googleAccount \? googleAccount : handle.trim\(\)/.test(social), 'почта Google не подставляется в привязку')
+  assert.ok(social.includes('аккаунт подтверждён Google'), 'нет отметки, что аккаунт проверен')
+  assert.ok(app.includes('identity_data?.email'), 'почта не берётся из identity Google')
+  assert.ok(app.includes('LINK_GOOGLE_KEY'), 'нет авто-записи после возврата')
+  assert.ok(app.includes('googleEmailOf'), 'нет разбора identity Google')
+  assert.ok(/upsert\(profileToRow\(withGoogle/.test(app), 'подтверждённый Google не сохраняется в базу')
+})
+
+test('T-SOC-13 ручной ввод — только аварийный путь', () => {
+  assert.ok(social.includes('вписать почту вручную'), 'нет запасного варианта ввода')
+  assert.ok(/manual linking/i.test(app), 'нет понятного сообщения, если связывание выключено')
+}) 
+
 console.log(`\nsocials: ${passed}/${passed + failed}`)
 if (failed) process.exit(1)
