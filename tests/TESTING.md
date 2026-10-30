@@ -1,6 +1,6 @@
 # NAME MLBB — чек-лист и тест-кейсы
 
-Сайт: https://name-mlbb.netlify.app · Бот: @name_mlbb_bot (функция v13) · База: Supabase `yjedqdbwvjvikyixsduw`
+Сайт: https://otshelniks.github.io/Exams/ (GitHub Pages) · зеркало: https://name-mlbb.netlify.app · Бот: @name_mlbb_bot (функция v13) · База: Supabase `yjedqdbwvjvikyixsduw`
 
 ## Как запускать автотесты
 
