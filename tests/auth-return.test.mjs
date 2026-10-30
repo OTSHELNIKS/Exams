@@ -76,5 +76,11 @@ test('T-RET-06 экран входа показывает ошибку возв�
   assert.ok(landing.includes('callbackError={callbackError}'), 'лендинг не прокидывает ошибку')
 })
 
+test('T-RET-07 новый аккаунт после входа попадает в анкету, а не в пустую главную', () => {
+  const app = read('app/src/App.jsx')
+  assert.ok(/setScreen\(profileFilled \? 'home' : 'wizard'\)/.test(app), 'после входа нет развилки home/wizard')
+  assert.ok(app.includes('if (sessionLoading) return'), 'ждём загрузку профиля перед переходом')
+})
+
 console.log(`\nauth-return: ${passed}/${passed + failed}`)
 if (failed) process.exit(1)

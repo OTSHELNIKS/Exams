@@ -144,11 +144,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, sessionLoading, session, mode, profileFilled])
 
-  // Вошёл по ссылке из почты, стоя на экране входа — экран уже не в меню, уводим на главную.
+  // Вернулся после входа (почта, Google, Telegram) — экран входа больше не в меню:
+  // заполненный профиль ведём на главную, новый аккаунт — в анкету.
   useEffect(() => {
-    if (session && screen === 'auth') setScreen('home')
+    if (!session || screen !== 'auth') return
+    if (sessionLoading) return
+    setScreen(profileFilled ? 'home' : 'wizard')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, screen])
+  }, [session, screen, sessionLoading, profileFilled])
 
   const saveProfile = async () => {
     if (sessionLoading || saving) return
