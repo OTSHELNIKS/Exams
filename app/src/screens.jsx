@@ -460,6 +460,7 @@ export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin,
 
   return (
     <div className="screen home">
+      <div className="home__col home__col--main">
       {(gameId || isAdmin) ? (
         <div className="home__header">
           {gameId ? <span className="home__id">Game ID • {gameId}</span> : null}
@@ -483,12 +484,6 @@ export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin,
         {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
       </div>
 
-      {profile.nick ? <VerificationCard supabase={supabase} userId={userId} /> : null}
-
-      <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот добавлен'); }} onEdit={onEdit} />
-
-      <AdBanner compact />
-
       <SocialRow profile={profile} onAddSocial={actions.addSocial} />
 
       <div className="home__actions">
@@ -498,6 +493,15 @@ export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin,
         <button type="button" className="btn btn--ghost" onClick={actions.goLeaderboard}>
           <Trophy size={17} /> ТАБЛИЦА ЛИДЕРОВ
         </button>
+      </div>
+      </div>
+
+      <div className="home__col home__col--side">
+        {profile.nick ? <VerificationCard supabase={supabase} userId={userId} /> : null}
+
+        <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот добавлен'); }} onEdit={onEdit} />
+
+        <AdBanner compact />
       </div>
       {toast && <div className="toast toast--fixed">{toast}</div>}
     </div>
@@ -669,6 +673,7 @@ export function ProfileScreen({ profile, actions, gameId, onBack, onEdit, supaba
         <button type="button" className="icon-btn" onClick={onEdit} aria-label="Настройки"><Settings size={20} /></button>
       </div>
 
+      <div className="home__col home__col--main">
       <div className="profile__center">
         <Avatar src={profile.avatarUrl || profile.avatar || null} initials={(profile.nick?.[0] || '?').toUpperCase()} level={profile.level} size={128} />
         <h1>{profile.nick || 'Новый игрок'}</h1>
@@ -682,12 +687,16 @@ export function ProfileScreen({ profile, actions, gameId, onBack, onEdit, supaba
         {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
       </div>
 
-      {profile.nick ? <VerificationCard supabase={supabase} userId={userId} /> : null}
-      <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот добавлен'); }} onEdit={onEdit} />
       <SocialRow profile={profile} onAddSocial={actions.addSocial} />
       <TelegramLinkCard supabase={supabase} userId={userId} />
-      {toast && <div className="toast toast--fixed">{toast}</div>}
       <button type="button" className="btn btn--ghost profile__back" onClick={onBack}>На главную</button>
+      </div>
+
+      <div className="home__col home__col--side">
+        {profile.nick ? <VerificationCard supabase={supabase} userId={userId} /> : null}
+        <StatsGrid profile={profile} onAddSlot={() => { actions.addSlot(); setToast('Доп. слот добавлен'); }} onEdit={onEdit} />
+      </div>
+      {toast && <div className="toast toast--fixed">{toast}</div>}
     </div>
   )
 }
