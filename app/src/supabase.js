@@ -139,6 +139,20 @@ export function functionsUrl(path) {
   return `${url}/functions/v1/${path}`
 }
 
+/** Публичная карточка игрока: безопасные поля чужого профиля.
+ *  Источник — вьюха player_profiles_public: без Game ID, скриншотов, почты и бана. */
+export async function getPublicProfile(userId) {
+  if (!supabase) throw new Error('Нет подключения к серверу.')
+  if (!userId) return null
+  const { data, error } = await supabase
+    .from('player_profiles_public')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) throw error
+  return data || null
+}
+
 /** Issue a fresh 6-digit Telegram link code (valid 10 minutes). */
 export async function createTelegramLinkCode(userId) {
   const code = String(Math.floor(100000 + Math.random() * 900000))

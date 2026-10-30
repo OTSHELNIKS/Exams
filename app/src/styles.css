@@ -580,6 +580,14 @@ html.is-modal-open .rail { overflow: hidden !important; }
 }
 .voice-row__avatar.is-speaking { border-color: var(--green); box-shadow: 0 0 12px rgba(63,203,123,.4); }
 .voice-row div { flex: 1; }
+/* Ник в голосовом чате — кнопка: открывает профиль сокомандника. */
+.voice-row__who {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
+  border: 0; background: none; color: inherit; font: inherit;
+  text-align: left; padding: 0; cursor: pointer; border-radius: 10px;
+}
+.voice-row__who:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.voice-row__text { min-width: 0; }
 .voice-row strong { display: block; font-size: 13px; }
 .voice-row small { font-size: 10.5px; color: var(--dim); }
 .voice-row__mic { background: none; border: 0; color: var(--green); }
@@ -626,6 +634,40 @@ html.is-modal-open .rail { overflow: hidden !important; }
 .rank-row__elo span { font-size: 9px; color: var(--dim); letter-spacing: 1px; }
 .prize-note { display: flex; align-items: center; gap: 8px; color: #b9bcc8; font-size: 11px; margin-top: 18px; }
 .prize-note svg { color: var(--gold); flex: none; }
+
+/* Строка рейтинга — кнопка: открывает карточку игрока. */
+.rank-row--btn {
+  width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer;
+  transition: border-color .15s ease, transform .12s ease;
+}
+.rank-row--btn:hover { border-color: rgba(255,75,18,.45); }
+.rank-row--btn:active { transform: scale(.995); }
+.rank-row--btn:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+.rank-row--btn .rank-row__info { display: block; }
+.rank-row__more { display: flex; align-items: center; color: var(--dim); flex: none; }
+
+/* Карточка чужого профиля */
+.modal--player .section-head { margin-top: 16px; }
+.pub__bio { font-size: 12.5px; color: #b9bcc8; margin: 0 0 14px; text-align: left; }
+.pub__chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.pub__chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700;
+  color: #cfd2dc; background: var(--surface); border: 1px solid var(--line-soft);
+  border-radius: 999px; padding: 6px 11px;
+}
+.pub__socials { display: flex; flex-direction: column; gap: 7px; text-align: left; }
+.pub__social {
+  display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: #cfd2dc;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: 12px; padding: 9px 12px;
+}
+.pub__social .brand { flex: none; }
+.pub__note { font-size: 11px; color: var(--dim); margin: 16px 0 4px; }
+.pub__open { margin-top: 10px; width: 100%; }
+@media (min-width: 1024px) {
+  .pub__social, .pub__chip { font-size: 13px; }
+  .pub__bio { font-size: 13px; }
+  .pub__note { font-size: 12px; }
+}
 
 /* ================================================================ LANDING */
 .landing { max-width: 1240px; margin: 0 auto; padding: 0 28px 80px; }

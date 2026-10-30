@@ -19,7 +19,7 @@ import { requestGameCode, signInWithGameCode, describeGameLoginError } from './g
 import {
   uploadAvatar, uploadScreenshot, deleteScreenshot, validateImage,
   TELEGRAM_BOT_USERNAME, createTelegramLinkCode, getTelegramLink,
-  deleteTelegramLink, notifyLobbyToTelegram,
+  deleteTelegramLink, notifyLobbyToTelegram, getPublicProfile,
   createSupportTicket, fetchSupportTickets, announceSupportTicket,
 } from './supabase.js'
 
@@ -1252,7 +1252,7 @@ function matchDraftRole(p, f) {
   return (p.roles || []).some((r) => (DRAFT_ROLE_MAP[f] || []).includes(r))
 }
 
-function PlayerPeek({ player, onClose, onPick }) {
+function PlayerPeek({ player, onClose, onPick, onOpenProfile }) {
   const roles = (player.roles || []).join(', ')
   return (
     <Modal open={Boolean(player)} onClose={onClose}>
@@ -1267,6 +1267,11 @@ function PlayerPeek({ player, onClose, onPick }) {
           <div><b>{(player.roles || []).length || '—'}</b><span>Роли</span></div>
         </div>
         <PrimaryButton glow={false} onClick={() => { onPick(); onClose() }}>ВЫБРАТЬ В КОМАНДУ</PrimaryButton>
+        {onOpenProfile && (
+          <button type="button" className="btn btn--ghost pub__open" onClick={() => onOpenProfile(player.user_id)}>
+            <UserRound size={15} /> Открыть профиль
+          </button>
+        )}
         </>
       )}
     </Modal>
@@ -1280,6 +1285,7 @@ export function DraftScreen({ supabase, userId, onReady, onBack }) {
   const [timer, setTimer] = useState(30)
   const [filter, setFilter] = useState('ВСЕ')
   const [peek, setPeek] = useState(null)
+  const [openProfile, setOpenProfile] = useState(null)
   const [coin, setCoin] = useState(null)
   const [toast, setToast] = useState('')
   const [players, setPlayers] = useState(null)
@@ -1466,7 +1472,24 @@ export function DraftScreen({ supabase, userId, onReady, onBack }) {
           : <button type="button" className="btn btn--ghost" onClick={onBack}>Отменить поиск</button>}
       </div>
 
-      {peek && <PlayerPeek player={peek} onClose={() => setPeek(null)} onPick={() => pick(peek)} />}
+      {peek && (
+        <PlayerPeek
+          player={peek}
+          onClose={() => setPeek(null)}
+          onPick={() => pick(peek)}
+          onOpenProfile={(id) => { setPeek(null); setOpenProfile(id) }}
+        />
+      )}
+      <PublicProfileModal
+        userId={openProfile}
+        isMe={openProfile === userId}
+        supabase={supabase}
+        onClose={() => setOpenProfile(null)}
+        onPick={openProfile && openProfile !== userId ? () => {
+          const target = ranked.find((p) => p.user_id === openProfile)
+          if (target) pick(target)
+        } : undefined}
+      />
       {toast && <div className="toast toast--fixed">{toast}</div>}
     </div>
   )
@@ -1481,6 +1504,7 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase, teams,
   const [sending, setSending] = useState(false)
   const [needLink, setNeedLink] = useState(false)
   const [toast, setToast] = useState('')
+  const [openProfile, setOpenProfile] = useState(null)
   const teamA = (teams && teams.teamA) || []
   const teamB = (teams && teams.teamB) || []
   const inB = userId ? teamB.some((m) => m && m.user_id === userId) : false
@@ -1564,8 +1588,16 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase, teams,
         </div>
         {members.map((m) => (
           <div key={m.user_id} className="voice-row">
-            <span className={`voice-row__avatar ${speaking.includes(m.user_id) ? 'is-speaking' : ''}`}>{(m.nick?.[0] || '?').toUpperCase()}</span>
-            <div><strong>{m.nick}{m.user_id === userId ? ' (вы)' : ''}</strong><small>{(m.roles || []).join(', ') || m.rank || 'Игрок'}</small></div>
+            <button
+              type="button"
+              className="voice-row__who"
+              onClick={() => setOpenProfile(m.user_id)}
+              title={`Открыть профиль ${m.nick}`}
+              aria-label={`Открыть профиль ${m.nick}`}
+            >
+              <span className={`voice-row__avatar ${speaking.includes(m.user_id) ? 'is-speaking' : ''}`}>{(m.nick?.[0] || '?').toUpperCase()}</span>
+              <span className="voice-row__text"><strong>{m.nick}{m.user_id === userId ? ' (вы)' : ''}</strong><small>{(m.roles || []).join(', ') || m.rank || 'Игрок'}</small></span>
+            </button>
             <button
               type="button"
               className={`voice-row__mic ${muted[m.user_id] ? 'is-muted' : ''}`}
@@ -1590,8 +1622,107 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase, teams,
       </div>
       <p className="match__hint">Бот сам посчитает статистику и начислит PTS.</p>
       <button type="button" className="link-btn" onClick={onLeaderboard}>Смотреть таблицу лидеров <ArrowRight size={15} /></button>
+      <PublicProfileModal
+        userId={openProfile}
+        isMe={openProfile === userId}
+        supabase={supabase}
+        onClose={() => setOpenProfile(null)}
+      />
       {toast && <div className="toast toast--fixed">{toast}</div>}
     </div>
+  )
+}
+
+/* ===================================================== PUBLIC PROFILE ==== */
+/* Карточка другого игрока. Данные приходят из вьюхи player_profiles_public:
+   только публичные поля (ник, PTS, ранг, роли, серверы, герои, био, соцсети).
+   Game ID, скриншоты, почта и причина бана сюда не попадают — приватность. */
+export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pickLabel }) {
+  const [row, setRow] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!userId) return undefined
+    let alive = true
+    setRow(null); setError(''); setLoading(true)
+    getPublicProfile(userId)
+      .then((data) => { if (alive) { if (data) setRow(data); else setError('Профиль закрыт: игрок скрыл данные или забанен.') } })
+      .catch((e) => { if (alive) setError('Не удалось открыть профиль: ' + (e.message || e)) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [userId])
+
+  const heroes = (row && row.heroes) || []
+  const regions = (row && row.regions) || []
+  const roles = (row && row.roles) || []
+  const socials = ((row && row.socials) || [])
+    .map(parseSocial)
+    .filter((x) => SOCIAL_IDS.includes(x.provider))
+
+  return (
+    <Modal open={Boolean(userId)} onClose={onClose} className="modal--player" labelledBy="public-profile-title">
+      {loading && <div className="empty">Загружаем профиль…</div>}
+      {!loading && error && (
+        <div className="empty-block">
+          <p>{error}</p>
+          <button type="button" className="btn btn--ghost" onClick={onClose}>Закрыть</button>
+        </div>
+      )}
+      {!loading && !error && row && (
+        <>
+          <Avatar src={row.avatar_url || null} initials={(row.nick?.[0] || '?').toUpperCase()} size={88} />
+          <h3 id="public-profile-title">{row.nick}{isMe ? ' (вы)' : ''}</h3>
+          <p className="modal__role">
+            {roles.length ? roles.join(' · ') : 'Роли не указаны'} · {row.rank || 'ранг не указан'}
+          </p>
+
+          <div className="modal__stats">
+            <div><b>{row.pts ?? 0}</b><span>PTS</span></div>
+            <div><b>{heroes.length || '—'}</b><span>ГЕРОИ</span></div>
+            <div><b>{socials.length || '—'}</b><span>СОЦСЕТИ</span></div>
+          </div>
+
+          {row.bio ? <p className="pub__bio">{row.bio}</p> : null}
+
+          {regions.length > 0 && (
+            <>
+              <div className="section-head"><span>ИГРОВЫЕ СЕРВЕРЫ</span></div>
+              <div className="pub__chips">
+                {regions.map((r) => <span key={r} className="pub__chip"><Server size={13} /> {r}</span>)}
+              </div>
+            </>
+          )}
+
+          <div className="section-head"><span>ЛЮБИМЫЕ ГЕРОИ</span><b>{heroes.length}/6</b></div>
+          <HeroStrip names={heroes} empty="Игрок пока не выбрал героев." />
+
+          {socials.length > 0 && (
+            <>
+              <div className="section-head"><span>СОЦСЕТИ</span></div>
+              <div className="pub__socials">
+                {socials.map((s) => (
+                  <span key={s.provider} className="pub__social" title={s.handle ? socialCaption(`${s.provider}:${s.handle}`) : socialLabel(s.provider)}>
+                    <BrandMark type={s.provider} />
+                    <span>
+                      {socialLabel(s.provider)}
+                      {s.provider === 'google' ? ' · подтверждён' : (s.handle ? ` · ${s.handle}` : '')}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+
+          <p className="pub__note">Game ID, скриншоты и почта видны только владельцу профиля.</p>
+
+          <div className="social-modal__actions">
+            <button type="button" className="btn btn--ghost" onClick={onClose}>Закрыть</button>
+            {onPick && <PrimaryButton glow={false} onClick={() => { onPick(); onClose() }}>{pickLabel || 'ВЫБРАТЬ В КОМАНДУ'}</PrimaryButton>}
+          </div>
+        </>
+      )}
+    </Modal>
   )
 }
 
@@ -1600,6 +1731,7 @@ const LEAGUE_PRIZES = ['20 000 ₽ / мес', '15 000 ₽ / мес', '10 000 ₽
 
 export function LeaderboardScreen({ supabase, userId }) {
   const [league, setLeague] = useState('Обычная лига')
+  const [openPlayer, setOpenPlayer] = useState(null)
   const [players, setPlayers] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -1632,7 +1764,7 @@ export function LeaderboardScreen({ supabase, userId }) {
         <Trophy size={22} color="#ff5722" />
       </div>
 
-      <p className="leaderboard__note">Призы топ-3 выплачиваются ежемесячно</p>
+      <p className="leaderboard__note">Призы топ-3 выплачиваются ежемесячно · нажми на игрока, чтобы открыть профиль</p>
 
       <div className="league-switch">
         <button type="button" className={league === 'Обычная лига' ? 'is-active' : ''} onClick={() => setLeague('Обычная лига')}>Обычная лига · до 4000 ({lowCount})</button>
@@ -1651,21 +1783,34 @@ export function LeaderboardScreen({ supabase, userId }) {
           <div className="empty">{league === 'Про лига' ? 'В про-лиге пока никого нет — набери 4000 PTS.' : 'Игроков пока нет — стань первым!'}</div>
         )}
         {rows.map((r, i) => (
-          <div key={r.user_id} className={`rank-row ${i === 0 ? 'rank-row--first' : ''} ${r.user_id === userId ? 'rank-row--me' : ''}`}>
+          <button
+            key={r.user_id}
+            type="button"
+            className={`rank-row rank-row--btn ${i === 0 ? 'rank-row--first' : ''} ${r.user_id === userId ? 'rank-row--me' : ''}`}
+            onClick={() => setOpenPlayer(r.user_id)}
+            aria-label={`Открыть профиль ${r.nick}`}
+          >
             <span className="rank-row__num">#{i + 1}</span>
             <span className="rank-row__avatar">{r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}</span>
-            <div className="rank-row__info">
+            <span className="rank-row__info">
               <strong>{r.nick}{r.user_id === userId ? ' (вы)' : ''}</strong>
               {i < 3 && <span className="prize">{LEAGUE_PRIZES[i]}</span>}
-            </div>
-            <div className="rank-row__elo"><b>{r.pts ?? 0}</b><span>PTS</span></div>
-          </div>
+            </span>
+            <span className="rank-row__elo"><b>{r.pts ?? 0}</b><span>PTS</span></span>
+            <span className="rank-row__more"><ArrowRight size={15} /></span>
+          </button>
         ))}
       </div>
 
       <div className="prize-note">
         <Coins size={17} /> 1 место — 20 000 ₽ · 2 место — 15 000 ₽ · 3 место — 10 000 ₽
       </div>
+      <PublicProfileModal
+        userId={openPlayer}
+        isMe={openPlayer === userId}
+        supabase={supabase}
+        onClose={() => setOpenPlayer(null)}
+      />
       <AdBanner compact />
     </div>
   )
