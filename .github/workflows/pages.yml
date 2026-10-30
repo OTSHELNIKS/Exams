@@ -70,9 +70,9 @@ jobs:
     needs: build
     if: needs.build.outputs.pages_ready == 'true'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    # Окружение github-pages намеренно не указано: у него стоит правило
+    # «деплой только с main», а мы публикуем с рабочей ветки. Деплой идёт
+    # через OIDC-токен (permissions: pages/id-token), окружение не требуется.
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
