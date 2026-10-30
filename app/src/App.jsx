@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
-  Home, UserRound, Swords, Gamepad2, Trophy, Globe, ChevronLeft, ChevronRight, Sparkles,
-  ClipboardList, LogIn, ShieldCheck, LifeBuoy, Send,
+  Home, UserRound, Swords, Gamepad2, Trophy, Globe, ChevronLeft, Sparkles,
+  ClipboardList, LogIn, ShieldCheck, LifeBuoy, LogOut,
 } from 'lucide-react'
 import { AppFrame, Logo } from './ui.jsx'
 import { Landing } from './landing.jsx'
@@ -13,54 +13,17 @@ import { AdminScreen } from './admin.jsx'
 import { DEFAULT_PROFILE } from './data.js'
 import { supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews } from './supabase.js'
 
-const BOT_URL = 'https://t.me/name_mlbb_bot'
-
+// Экраны онбординга (auth, wizard) видны в меню только до регистрации — см. hideEntry.
 const SCREENS = [
-  {
-    id: 'auth', label: 'Вход / привязка ID', short: 'Вход', icon: LogIn,
-    desc: 'Точка входа в приложение: почта без пароля, затем Game ID и Telegram-бот.',
-    points: ['Ссылка для входа приходит на почту', 'Game ID привязывается к аккаунту', 'Код для бота живёт 10 минут'],
-  },
-  {
-    id: 'wizard', label: 'Заполните профиль', short: 'Анкета', icon: ClipboardList,
-    desc: 'Анкета игрока: ник, ранг, роли, серверы и скриншоты статистики.',
-    points: ['Ник и фото уходят на проверку админу', 'Серверы выбираются по пингу', 'До 4 скриншотов статистики'],
-  },
-  {
-    id: 'home', label: 'Главная игрока', short: 'Главная', icon: Home,
-    desc: 'Карточка игрока: аватар, PTS, ранг и статус проверки статистики.',
-    points: ['PTS стартуют с 1000', 'Статус модерации виден сразу', 'Отсюда переход в драфт и рейтинг'],
-  },
-  {
-    id: 'profile', label: 'Профиль игрока', short: 'Профиль', icon: UserRound,
-    desc: 'Полный профиль: серверы, роли, соцсети и привязка Telegram.',
-    points: ['Публичные данные для драфта', 'Привязка и отвязка бота', 'Доп. слоты под фото'],
-  },
-  {
-    id: 'draft', label: "Captain's Draft", short: 'Драфт', icon: Swords,
-    desc: 'Два капитана с лучшим MMR по очереди собирают команды из общего пула.',
-    points: ['Пул из 10 игроков', 'Капитаны выбираются по рейтингу', 'Порядок пиков виден всем'],
-  },
-  {
-    id: 'match', label: 'Матч готов', short: 'Матч', icon: Gamepad2,
-    desc: 'Составы собраны: бот отдаёт ID лобби и напоминает зайти в игру.',
-    points: ['ID лобби приходит в Telegram', 'Кнопка «Отправить в бота»', 'После матча — начисление PTS'],
-  },
-  {
-    id: 'leaderboard', label: 'Таблица лидеров', short: 'Рейтинг', icon: Trophy,
-    desc: 'Сезонный топ-10 по PTS с призовыми местами и своей позицией.',
-    points: ['Топ-3 получают призы', 'Свой результат виден в списке', 'Рейтинг обновляется после матча'],
-  },
-  {
-    id: 'support', label: 'Поддержка', short: 'Помощь', icon: LifeBuoy,
-    desc: 'Заявка из приложения сразу уходит админу в Telegram, ответ — сюда же.',
-    points: ['Один экран вместо переписки', 'Статус заявки обновляется сам', 'Тот же чат работает в боте'],
-  },
-  {
-    id: 'admin', label: 'Админка', short: 'Админ', icon: ShieldCheck, admin: true,
-    desc: 'Рабочее место админа: аналитика, заявки, проверка анкет и баны.',
-    points: ['Сводка по игрокам и заявкам', 'Очередь проверки анкет', 'Модерация в один тап'],
-  },
+  { id: 'auth', label: 'Вход / привязка ID', short: 'Вход', icon: LogIn },
+  { id: 'wizard', label: 'Заполните профиль', short: 'Анкета', icon: ClipboardList },
+  { id: 'home', label: 'Главная игрока', short: 'Главная', icon: Home },
+  { id: 'profile', label: 'Профиль игрока', short: 'Профиль', icon: UserRound },
+  { id: 'draft', label: "Captain's Draft", short: 'Драфт', icon: Swords },
+  { id: 'match', label: 'Матч готов', short: 'Матч', icon: Gamepad2 },
+  { id: 'leaderboard', label: 'Таблица лидеров', short: 'Рейтинг', icon: Trophy },
+  { id: 'support', label: 'Поддержка', short: 'Помощь', icon: LifeBuoy },
+  { id: 'admin', label: 'Админка', short: 'Админ', icon: ShieldCheck, admin: true },
 ]
 
 const STORAGE_KEY = 'name-mlbb-profile:v2'
@@ -137,6 +100,9 @@ export default function App() {
   const openApp = (id = 'auth') => { setScreen(id); setMode('app') }
 
   const profileFilled = Boolean(profile.nick && profile.nick.trim())
+  // Онбординг пройден: вошёл в аккаунт — «Вход» больше не раздел меню,
+  // заполнил анкету — из меню уходит и мастер анкеты (правится из профиля).
+  const hideEntry = (id) => (id === 'auth' && Boolean(session)) || (id === 'wizard' && profileFilled)
   const autoEntered = useRef(false)
 
   // Return visits: skip landing once per load — home for filled profiles, wizard for new ones.
@@ -147,6 +113,12 @@ export default function App() {
     openApp(profileFilled ? 'home' : 'wizard')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, sessionLoading, session, mode, profileFilled])
+
+  // Вошёл по ссылке из почты, стоя на экране входа — экран уже не в меню, уводим на главную.
+  useEffect(() => {
+    if (session && screen === 'auth') setScreen('home')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, screen])
 
   const saveProfile = async () => {
     if (sessionLoading || saving) return
@@ -242,8 +214,11 @@ export default function App() {
   }
 
   const current = SCREENS.find((s) => s.id === screen)
-  const visibleScreens = SCREENS.filter((s) => !s.admin || isAdmin)
-  const currentIndex = Math.max(visibleScreens.findIndex((s) => s.id === screen), 0)
+  const visibleScreens = SCREENS.filter((s) => {
+    if (s.admin && !isAdmin) return false
+    if (hideEntry(s.id)) return false
+    return true
+  })
 
   return (
     <div className="app-shell">
@@ -263,9 +238,16 @@ export default function App() {
             )
           })}
         </nav>
-        <button type="button" className="rail__back" onClick={() => setMode('landing')}>
-          <Globe size={16} /> Промо-сайт
-        </button>
+        <div className="rail__foot">
+          {session && (
+            <button type="button" className="rail__back" onClick={() => supabase.auth.signOut()}>
+              <LogOut size={16} /> Выйти
+            </button>
+          )}
+          <button type="button" className="rail__back" onClick={() => setMode('landing')}>
+            <Globe size={16} /> Промо-сайт
+          </button>
+        </div>
       </aside>
 
       <main className="app-main">
@@ -306,52 +288,6 @@ export default function App() {
           </p>
         </div>
 
-        <aside className="app-side">
-          <div className="app-side__card">
-            <div className="app-side__top">
-              <span className="app-side__kicker">ЭКРАН {String(currentIndex + 1).padStart(2, '0')} / {String(visibleScreens.length).padStart(2, '0')}</span>
-              <span className="app-side__dots">
-                {visibleScreens.map((s, i) => (
-                  <i key={s.id} className={i <= currentIndex ? 'is-on' : ''} />
-                ))}
-              </span>
-            </div>
-            <h2 className="app-side__title">{current?.label}</h2>
-            <p className="app-side__desc">{current?.desc}</p>
-            <ul className="app-side__points">
-              {(current?.points || []).map((point) => <li key={point}>{point}</li>)}
-            </ul>
-            <div className="app-side__nav">
-              <button type="button" onClick={() => go(visibleScreens[Math.max(currentIndex - 1, 0)].id)} disabled={currentIndex === 0}>
-                <ChevronLeft size={15} /> Назад
-              </button>
-              <button type="button" onClick={() => go(visibleScreens[Math.min(currentIndex + 1, visibleScreens.length - 1)].id)} disabled={currentIndex >= visibleScreens.length - 1}>
-                Дальше <ChevronRight size={15} />
-              </button>
-            </div>
-          </div>
-
-          <div className="app-side__card app-side__card--flat">
-            <span className="app-side__kicker">ЖИВОЙ ПРОДУКТ</span>
-            <div className="app-side__actions">
-              <a className="btn btn--primary btn--glow" href={BOT_URL} target="_blank" rel="noreferrer">
-                <Send size={15} /> Telegram-бот
-              </a>
-              <button type="button" className="btn btn--ghost" onClick={() => setMode('landing')}>
-                <Globe size={15} /> Промо-сайт
-              </button>
-            </div>
-            <p className="app-side__note">
-              Бот присылает ID лобби, ответы поддержки и уведомления о матчах. Привязка — в профиле игрока.
-            </p>
-          </div>
-
-          <div className="app-side__facts">
-            <span><b>10</b> игроков в лобби</span>
-            <span><b>2</b> капитана драфтят</span>
-            <span><b>20 000 ₽</b> за первое место</span>
-          </div>
-        </aside>
       </main>
     </div>
   )
