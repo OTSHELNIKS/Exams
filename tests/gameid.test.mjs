@@ -68,7 +68,11 @@ test('T-ID-04 в форме регистрации два отдельных п�
   assert.ok(/aria-label="Сервер \(зона\)"/.test(auth), 'нет поля сервера')
   assert.ok(auth.includes('setGameId(normalizeGameId'), 'ID не нормализуется')
   assert.ok(auth.includes('setGameServer(normalizeServerId'), 'сервер не нормализуется')
-  assert.equal((auth.match(/inputMode="numeric"/g) || []).length, 2, 'оба поля должны быть цифровыми')
+  // Модалка входа через игру тоже содержит цифровые поля — считаем только форму.
+  const form = auth.slice(0, auth.indexOf('<Modal open={gameOpen}'))
+  assert.equal((form.match(/inputMode="numeric"/g) || []).length, 2, 'оба поля должны быть цифровыми')
+  const modal = auth.slice(auth.indexOf('<Modal open={gameOpen}'))
+  assert.equal((modal.match(/inputMode="numeric"/g) || []).length, 3, 'в модалке входа ID, сервер и код — цифровые')
 })
 
 test('T-ID-05 при регистрации Game ID обязателен, сервер опционален', () => {

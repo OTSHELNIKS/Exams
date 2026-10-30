@@ -15,6 +15,7 @@ import {
   SOCIAL_PROVIDERS, SOCIAL_IDS, SOCIAL_ACTIVE, SOCIAL_ACTIVE_IDS, socialLabel, socialCaption, parseSocial,
 } from './data.js'
 import { AvatarCropModal } from './crop.jsx'
+import { requestGameCode, signInWithGameCode, describeGameLoginError } from './game-login.js'
 import {
   uploadAvatar, uploadScreenshot, deleteScreenshot, validateImage,
   TELEGRAM_BOT_USERNAME, createTelegramLinkCode, getTelegramLink,
@@ -48,6 +49,39 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
   }
   const [notice, setNotice] = useState('')
   const [methodNote, setMethodNote] = useState(callbackError || '')
+  // Вход через саму игру: Game ID + сервер -> код в Telegram -> сессия.
+  const [gameOpen, setGameOpen] = useState(false)
+  const [gameStep, setGameStep] = useState('id')   // id | code
+  const [gameCode, setGameCode] = useState('')
+  const [gameBusy, setGameBusy] = useState(false)
+  const [gameError, setGameError] = useState('')
+  const [gameTtl, setGameTtl] = useState(300)
+  const [gameNick, setGameNick] = useState('')
+
+  const askGameCode = async () => {
+    if (!/^\d{6,12}$/.test(gameId)) { setGameError('Game ID — это 6–12 цифр из профиля MLBB.'); return }
+    setGameBusy(true); setGameError('')
+    try {
+      const res = await requestGameCode({ gameId, gameServer })
+      setGameTtl(res.ttl); setGameNick(res.nick || '')
+      setGameStep('code'); setGameCode('')
+    } catch (e) {
+      setGameError(describeGameLoginError(e))
+    } finally { setGameBusy(false) }
+  }
+  const confirmGameCode = async () => {
+    if (!/^\d{6}$/.test(gameCode)) { setGameError('В коде ровно 6 цифр — проверь сообщение бота.'); return }
+    setGameBusy(true); setGameError('')
+    try {
+      await signInWithGameCode({ gameId, gameServer, code: gameCode })
+      setGameOpen(false)
+    } catch (e) {
+      setGameError(describeGameLoginError(e))
+    } finally { setGameBusy(false) }
+  }
+  const openGameLogin = () => {
+    setGameStep('id'); setGameCode(''); setGameError(''); setGameOpen(true)
+  }
   // Включён ли Google в проекте: спрашиваем у Supabase один раз при открытии
   // экрана. Пока ответа нет — плитка активна (fail-open), если провайдер
   // выключен — показываем честный бейдж «скоро» вместо мёртвой кнопки.
@@ -147,8 +181,8 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
         <a className="method" href={`https://t.me/${TELEGRAM_BOT_USERNAME}`} target="_blank" rel="noreferrer" aria-label="Войти через Telegram-бота" title="Откроется бот: привязка по коду из Профиля">
           <BrandMark type="telegram" /><span>Telegram</span>
         </a>
-        <button type="button" className="method method--soon" onClick={() => setMethodNote('Вход по игровому аккаунту: укажи Game ID и сервер выше, а подтверждение привязки придёт от бота @' + TELEGRAM_BOT_USERNAME + '. Почта нужна один раз — для создания аккаунта.')} aria-label="Вход через игру — скоро">
-          <BrandMark type="mlbb" /><span>MLBB</span><em className="method__soon">скоро</em>
+        <button type="button" className="method" disabled={busy} onClick={openGameLogin} aria-label="Войти через игровой аккаунт MLBB">
+          <BrandMark type="mlbb" /><span>MLBB</span>
         </button>
         <button type="button" className="method method--soon" onClick={() => setMethodNote('TikTok подключается через TikTok Login Kit — нужен аккаунт разработчика. Пока почта, Google или Telegram-бот.')} aria-label="Вход через TikTok — скоро">
           <BrandMark type="tiktok" /><span>TikTok</span><em className="method__soon">скоро</em>
@@ -156,7 +190,7 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
       </div>
       <p className="auth-methods__note">
         Google входит сразу, Telegram — привязка через бота @{TELEGRAM_BOT_USERNAME}.
-        Игровой аккаунт привязывается по Game ID и серверу выше. TikTok подключим позже.
+        Игровой аккаунт — по Game ID и серверу: код придёт в Telegram от бота. TikTok подключим позже.
       </p>
       {methodNote && <p className="auth-methods__note auth-methods__note--warn" role="status">{methodNote}</p>}
 
@@ -183,6 +217,71 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
           <BrandMark type="telegram" /><span>Открыть @{TELEGRAM_BOT_USERNAME}</span>
         </a>
       </div>
+
+      <Modal open={gameOpen} onClose={() => setGameOpen(false)} labelledBy="game-login-title">
+        <h3 id="game-login-title">Вход через игру</h3>
+        <p className="modal__role">
+          {gameStep === 'id'
+            ? 'Укажи свой Game ID и сервер — код придёт в Telegram, привязанный к профилю.'
+            : `Код отправлен в Telegram${gameNick ? ` · ${gameNick}` : ''}. Он живёт ${Math.round(gameTtl / 60)} мин.`}
+        </p>
+
+        {gameStep === 'id' ? (
+          <>
+            <div className="id-fields">
+              <label className="input-wrap">
+                <GameIdIcon />
+                <input
+                  value={gameId}
+                  onChange={(e) => { setGameId(normalizeGameId(e.target.value)); setGameError('') }}
+                  placeholder="123456789"
+                  inputMode="numeric"
+                  aria-label="Game ID"
+                  maxLength={GAME_ID_MAX}
+                />
+                <span className="input-wrap__tag">ID</span>
+              </label>
+              <label className="input-wrap">
+                <Server size={17} className="gameid-icon" />
+                <input
+                  value={gameServer}
+                  onChange={(e) => { setGameServer(normalizeServerId(e.target.value)); setGameError('') }}
+                  placeholder="1234"
+                  inputMode="numeric"
+                  aria-label="Сервер (зона)"
+                  maxLength={GAME_SERVER_MAX}
+                />
+                <span className="input-wrap__tag">СЕРВЕР</span>
+              </label>
+            </div>
+            <div className="social-modal__actions">
+              <button type="button" className="btn btn--ghost" onClick={() => setGameOpen(false)}>Отмена</button>
+              <PrimaryButton disabled={gameBusy} onClick={askGameCode}>{gameBusy ? 'Отправляю…' : 'Получить код'}</PrimaryButton>
+            </div>
+          </>
+        ) : (
+          <>
+            <label className="field">
+              <span>КОД ИЗ TELEGRAM</span>
+              <input
+                value={gameCode}
+                onChange={(e) => { setGameCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6)); setGameError('') }}
+                placeholder="123456"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                aria-label="Код из Telegram"
+                className="game-code-input"
+              />
+            </label>
+            <p className="field-hint">Кода нет? Открой бота @{TELEGRAM_BOT_USERNAME} — сообщение приходит сразу.</p>
+            <div className="social-modal__actions">
+              <button type="button" className="btn btn--ghost" disabled={gameBusy} onClick={() => { setGameStep('id'); setGameCode(''); setGameError('') }}>Назад</button>
+              <PrimaryButton disabled={gameBusy || gameCode.length !== 6} onClick={confirmGameCode}>{gameBusy ? 'Проверяю…' : 'Войти'}</PrimaryButton>
+            </div>
+          </>
+        )}
+        {gameError && <p className="social-error" role="alert">{gameError}</p>}
+      </Modal>
 
       {notice && <div className="toast">{notice}</div>}
 
