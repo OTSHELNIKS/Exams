@@ -4,9 +4,12 @@ const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
 export const supabase = url && key ? createClient(url, key) : null
 
-export function profileToRow(profile, gameId, userId) {
+export function profileToRow(profile, gameId, gameServer, userId) {
   return {
-    user_id: userId, game_id: String(gameId || '').trim(), nick: String(profile.nick || '').trim(),
+    user_id: userId,
+    game_id: String(gameId || '').trim(),
+    game_server: String(gameServer || '').trim(),
+    nick: String(profile.nick || '').trim(),
     age: String(profile.age || ''), gender: profile.gender || '', rank: profile.rank || '',
     roles: profile.roles || [], regions: profile.regions || [], bio: profile.bio || '',
     heroes: profile.heroes || [], hero_classes: profile.heroClasses || [],

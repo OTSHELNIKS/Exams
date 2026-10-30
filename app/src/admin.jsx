@@ -173,9 +173,14 @@ function AdminDetail({ row, onClose }) {
             : (row.nick?.[0] || '?').toUpperCase()}
         </div>
         <h3 id="admin-detail-title">{row.nick || 'Без ника'}</h3>
-        <p className="modal__role">Game ID • {row.game_id || '—'}</p>
+        <p className="modal__role">
+          Game ID • {row.game_id || '—'}
+          <span className="admin-server">· сервер {row.game_server || '—'}</span>
+        </p>
         <div className="admin-detail">
           {[
+            ['Game ID', row.game_id],
+            ['Сервер', row.game_server],
             ['Ранг', row.rank],
             ['PTS', row.pts],
             ['Роли', (row.roles || []).join(', ')],
@@ -257,7 +262,8 @@ export function AdminScreen({ supabase, isAdmin, onBack }) {
   const profilesTotal = totals?.profiles ?? 0
   const q = query.trim().toLowerCase()
   const filtered = (rows || []).filter((r) =>
-    !q || (r.nick || '').toLowerCase().includes(q) || (r.game_id || '').toLowerCase().includes(q))
+    !q || (r.nick || '').toLowerCase().includes(q) || (r.game_id || '').toLowerCase().includes(q)
+      || (r.game_server || '').toLowerCase().includes(q))
 
   const signups30 = (stats?.series || []).reduce((sum, d) => sum + (Number(d.signups) || 0), 0)
   const active30 = (stats?.series || []).reduce((sum, d) => sum + (Number(d.active) || 0), 0)
@@ -431,7 +437,11 @@ export function AdminScreen({ supabase, isAdmin, onBack }) {
             </span>
             <span className="admin-row__info">
               <strong>{r.nick || 'Без ника'}</strong>
-              <small>{r.game_id ? `Game ID • ${r.game_id}` : 'Game ID не привязан'}{r.rank ? ` · ${r.rank}` : ''}</small>
+              <small>
+                {r.game_id ? `ID • ${r.game_id}` : 'Game ID не привязан'}
+                {r.game_server ? ` · сервер ${r.game_server}` : ''}
+                {r.rank ? ` · ${r.rank}` : ''}
+              </small>
             </span>
             <span className="admin-row__meta">{fmtDate(r.updated_at)}</span>
           </button>

@@ -165,6 +165,37 @@ export const HERO_ROLE_FILTERS = [
 export const HERO_BY_NAME = Object.fromEntries(HEROES.map((h) => [h.name, h]))
 export const HERO_ROLE_LABEL = Object.fromEntries(HERO_ROLE_FILTERS.map((r) => [r.id, r.label]))
 
+// ------------------------------------------------------------------ game id
+// В MLBB аккаунт = ID + сервер (зона). Раньше их писали одной строкой
+// «123456789 (1234)», теперь это два отдельных поля — и в базе тоже.
+export const GAME_ID_MAX = 12
+export const GAME_SERVER_MAX = 6
+
+export function normalizeGameId(value) {
+  return String(value || '').replace(/[^0-9]/g, '').slice(0, GAME_ID_MAX)
+}
+
+export function normalizeServerId(value) {
+  return String(value || '').replace(/[^0-9]/g, '').slice(0, GAME_SERVER_MAX)
+}
+
+// Разбирает составную строку из старых профилей: «123456789 (1234)».
+export function splitCombinedGameId(value) {
+  const raw = String(value || '').trim()
+  const m = raw.match(/^([0-9]+)\s*[\(\s]\s*([0-9]{1,6})\)?$/)
+  if (!m) return { gameId: normalizeGameId(raw), server: '' }
+  return { gameId: normalizeGameId(m[1]), server: normalizeServerId(m[2]) }
+}
+
+// Как это видит игрок в самой игре и в боте.
+export function formatGameId(gameId, server) {
+  const id = String(gameId || '').trim()
+  const zone = String(server || '').trim()
+  if (!id) return ''
+  if (!zone) return id
+  return `${id} (${zone})`
+}
+
 export const DRAFT_FILTERS = ['ВСЕ', 'МИД', 'ЛЕС', 'РОУМ', 'БОЕЦ', 'СТРЕЛОК', 'ТАНК']
 
 export const FEATURES = [
@@ -222,6 +253,7 @@ export const DEFAULT_PROFILE = {
   elo: null,
   level: null,
   gameId: '',
+  gameServer: '',
   extraSlots: 0,
   socials: [],
   avatar: null,

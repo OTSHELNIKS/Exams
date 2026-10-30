@@ -10,7 +10,7 @@ import {
   MatchScreen, LeaderboardScreen, BannedScreen, SupportScreen,
 } from './screens.jsx'
 import { AdminScreen } from './admin.jsx'
-import { DEFAULT_PROFILE } from './data.js'
+import { DEFAULT_PROFILE, splitCombinedGameId } from './data.js'
 import { supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews } from './supabase.js'
 
 // Экраны онбординга (auth, wizard) видны в меню только до регистрации — см. hideEntry.
@@ -32,7 +32,18 @@ const LEGACY_STORAGE_KEY = 'name-mlbb-profile'
 export default function App() {
   const [mode, setMode] = useState('landing')
   const [screen, setScreen] = useState('auth')
-  const [gameId, setGameId] = useState('')
+  // Гость: возвращаем ID и сервер из localStorage. Старые записи хранили
+  // «123456789 (1234)» одной строкой — разбираем на две части.
+  const [gameId, setGameId] = useState(() => {
+    try { return splitCombinedGameId(localStorage.getItem(STORAGE_KEY + ':gameId') || '').gameId } catch { return '' }
+  })
+  const [gameServer, setGameServer] = useState(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY + ':gameServer') || ''
+      if (stored) return stored
+      return splitCombinedGameId(localStorage.getItem(STORAGE_KEY + ':gameId') || '').server
+    } catch { return '' }
+  })
   const [session, setSession] = useState(null)
   const [sessionLoading, setSessionLoading] = useState(Boolean(supabase))
   const [saving, setSaving] = useState(false)
@@ -54,9 +65,10 @@ export default function App() {
         void avatar
         localStorage.setItem(STORAGE_KEY, JSON.stringify(rest))
         localStorage.setItem(STORAGE_KEY + ':gameId', gameId)
+        localStorage.setItem(STORAGE_KEY + ':gameServer', gameServer)
       } catch { /* noop */ }
     }
-  }, [profile, gameId, session, sessionLoading])
+  }, [profile, gameId, gameServer, session, sessionLoading])
 
   useEffect(() => {
     if (!supabase) return
@@ -79,12 +91,15 @@ export default function App() {
           if (!active || current !== generation) return
           if (error) { setSaveError('Не удалось загрузить профиль: ' + error.message); setSessionLoading(false); return }
           setProfile(data ? rowToProfile(data, DEFAULT_PROFILE) : { ...DEFAULT_PROFILE })
-          setGameId(data?.game_id || '')
+          // Старые профили хранили «123456789 (1234)» одной строкой — разбираем.
+          const legacy = splitCombinedGameId(data?.game_id || '')
+          setGameId(legacy.gameId)
+          setGameServer(data?.game_server || legacy.server)
           const { data: adminRow } = await supabase.from('admins').select('user_id').eq('user_id', next.user.id).maybeSingle()
           if (!active || current !== generation) return
           setIsAdmin(!!adminRow)
         } else if (previousUserId) {
-          setProfile({ ...DEFAULT_PROFILE }); setGameId(''); setIsAdmin(false)
+          setProfile({ ...DEFAULT_PROFILE }); setGameId(''); setGameServer(''); setIsAdmin(false)
         }
         setSaveError(''); setSessionLoading(false)
       }, 0)
@@ -124,10 +139,10 @@ export default function App() {
     if (sessionLoading || saving) return
     if (!session || !supabase) { go('home'); return }
     setSaving(true); setSaveError('')
-    const { error } = await supabase.from('player_profiles').upsert(profileToRow(profile, gameId, session.user.id))
+    const { error } = await supabase.from('player_profiles').upsert(profileToRow(profile, gameId, gameServer, session.user.id))
     setSaving(false)
     if (error) { setSaveError('Не удалось сохранить профиль: ' + error.message); return }
-    const savedRow = profileToRow(profile, gameId, session.user.id)
+    const savedRow = profileToRow(profile, gameId, gameServer, session.user.id)
     try { await syncModerationReviews(session.user.id, { nick: savedRow.nick, avatarUrl: savedRow.avatar_url, screenshots: savedRow.screenshot_urls }) } catch { /* review queue is best-effort */ }
     go('home')
   }
@@ -135,15 +150,16 @@ export default function App() {
   const resetProfile = async () => {
     if (sessionLoading || saving) return false
     const fresh = { ...DEFAULT_PROFILE }
-    setProfile(fresh); setGameId('')
+    setProfile(fresh); setGameId(''); setGameServer('')
     try {
       localStorage.removeItem(STORAGE_KEY)
       localStorage.removeItem(STORAGE_KEY + ':gameId')
+      localStorage.removeItem(STORAGE_KEY + ':gameServer')
     } catch { /* noop */ }
     if (!session || !supabase) return true
     try { await clearPendingReviews(session.user.id) } catch { /* noop */ }
     setSaving(true); setSaveError('')
-    const { error } = await supabase.from('player_profiles').upsert(profileToRow(fresh, '', session.user.id))
+    const { error } = await supabase.from('player_profiles').upsert(profileToRow(fresh, '', '', session.user.id))
     setSaving(false)
     if (error) { setSaveError('Не удалось очистить профиль: ' + error.message); return false }
     return true
@@ -166,13 +182,13 @@ export default function App() {
   const renderScreen = () => {
     switch (screen) {
       case 'auth':
-        return <AuthScreen gameId={gameId} setGameId={setGameId} onLogin={() => go(profileFilled ? 'home' : 'wizard')} onPreview={() => go('home')} supabase={supabase} session={session} authReady={!sessionLoading} onSignOut={() => supabase.auth.signOut()} />
+        return <AuthScreen gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onLogin={() => go(profileFilled ? 'home' : 'wizard')} onPreview={() => go('home')} supabase={supabase} session={session} authReady={!sessionLoading} onSignOut={() => supabase.auth.signOut()} />
       case 'wizard':
-        return <WizardScreen profile={profile} setProfile={setProfile} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
+        return <WizardScreen profile={profile} setProfile={setProfile} gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
-        return <HomeScreen profile={profile} actions={actions} gameId={gameId} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
+        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
       case 'profile':
-        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
+        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
         return <DraftScreen supabase={supabase} userId={session?.user?.id || null} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
       case 'match':
@@ -208,6 +224,8 @@ export default function App() {
         onOpenScreen={() => openApp('home')}
         gameId={gameId}
         setGameId={setGameId}
+        gameServer={gameServer}
+        setGameServer={setGameServer}
         screensCount={SCREENS.filter((s) => !s.admin).length}
       />
     )

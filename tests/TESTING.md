@@ -9,6 +9,7 @@ node tests/bot.test.mjs     # 48 тестов логики бота, ноль з
 node tests/admin.test.mjs   # 11 проверок админки и оверлея карточки (статические)
 node tests/avatar.test.mjs  # 7 проверок геометрии обрезки аватарки
 node tests/heroes.test.mjs  # 9 проверок каталога героев и иконок
+node tests/gameid.test.mjs  # 10 проверок раздельного хранения Game ID и сервера
 ```
 
 Тест грузит **настоящий** `supabase/functions/telegram-bot/index.ts`, подменяет `Deno`/`fetch`

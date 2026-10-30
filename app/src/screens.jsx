@@ -11,6 +11,7 @@ import {
 } from './ui.jsx'
 import {
   RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, DRAFT_FILTERS, HERO_ROLE_FILTERS, HERO_ROLE_LABEL,
+  GAME_ID_MAX, GAME_SERVER_MAX, normalizeGameId, normalizeServerId, formatGameId,
 } from './data.js'
 import { AvatarCropModal } from './crop.jsx'
 import {
@@ -21,7 +22,7 @@ import {
 } from './supabase.js'
 
 /* ================================================================ AUTH ==== */
-export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, session, onSignOut, authReady }) {
+export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, onLogin, onPreview, supabase, session, onSignOut, authReady }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -29,6 +30,9 @@ export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, se
   const auth = async (register) => {
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 6) {
       setAuthError('Укажите корректную почту и пароль не короче 6 символов.'); return
+    }
+    if (register && !/^\d{6,12}$/.test(gameId)) {
+      setAuthError('Укажите Game ID — 6–12 цифр из профиля MLBB.'); return
     }
     setBusy(true); setAuthError(''); setNotice('')
     try {
@@ -53,17 +57,40 @@ export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, se
       </h1>
       <p className="auth__subtitle">Соревновательный матчмейкинг MLBB</p>
 
-      <Label>БЫСТРАЯ ПРИВЯЗКА GAME ID</Label>
-      <div className="input-wrap">
-        <GameIdIcon />
-        <input
-          value={gameId}
-          onChange={(e) => setGameId(e.target.value)}
-          placeholder="123456789 (1234)"
-          inputMode="numeric"
-          aria-label="Game ID"
-        />
+      <Label hint="два поля — как в игре">БЫСТРАЯ ПРИВЯЗКА АККАУНТА MLBB</Label>
+      <div className="id-fields">
+        <label className="input-wrap">
+          <GameIdIcon />
+          <input
+            value={gameId}
+            onChange={(e) => setGameId(normalizeGameId(e.target.value))}
+            placeholder="123456789"
+            inputMode="numeric"
+            autoComplete="off"
+            aria-label="Game ID"
+            maxLength={GAME_ID_MAX}
+          />
+          <span className="input-wrap__tag">ID</span>
+        </label>
+        <label className="input-wrap">
+          <Server size={17} className="gameid-icon" />
+          <input
+            value={gameServer}
+            onChange={(e) => setGameServer(normalizeServerId(e.target.value))}
+            placeholder="1234"
+            inputMode="numeric"
+            autoComplete="off"
+            aria-label="Сервер (зона)"
+            maxLength={GAME_SERVER_MAX}
+          />
+          <span className="input-wrap__tag">СЕРВЕР</span>
+        </label>
       </div>
+      <p className="field-hint">
+        {gameId || gameServer
+          ? `В игре это выглядит так: ${formatGameId(gameId, gameServer) || '—'}`
+          : 'Game ID и сервер видны в профиле MLBB рядом с ником.'}
+      </p>
 
       {supabase && (session ? (
         <div className="account-box">
@@ -105,7 +132,7 @@ export function AuthScreen({ gameId, setGameId, onLogin, onPreview, supabase, se
 }
 
 /* ============================================================== WIZARD ==== */
-export function WizardScreen({ profile, setProfile, onDone, onBack, saveError, saving, supabase, userId, onReset }) {
+export function WizardScreen({ profile, setProfile, gameId, setGameId, gameServer, setGameServer, onDone, onBack, saveError, saving, supabase, userId, onReset }) {
   const [step, setStep] = useState(1)
   const [toast, setToast] = useState('')
   const [uploading, setUploading] = useState('')
@@ -267,6 +294,35 @@ export function WizardScreen({ profile, setProfile, onDone, onBack, saveError, s
               </label>
             </div>
           </div>
+
+          <Label hint="как в игре">GAME ID И СЕРВЕР</Label>
+          <div className="wizard__ids">
+            <label className="field">
+              <span>GAME ID</span>
+              <input
+                value={gameId}
+                onChange={(e) => setGameId(normalizeGameId(e.target.value))}
+                placeholder="123456789"
+                inputMode="numeric"
+                maxLength={GAME_ID_MAX}
+              />
+            </label>
+            <label className="field">
+              <span>СЕРВЕР (ЗОНА)</span>
+              <input
+                value={gameServer}
+                onChange={(e) => setGameServer(normalizeServerId(e.target.value))}
+                placeholder="1234"
+                inputMode="numeric"
+                maxLength={GAME_SERVER_MAX}
+              />
+            </label>
+          </div>
+          <p className="field-hint">
+            {gameId || gameServer
+              ? `В игре это выглядит так: ${formatGameId(gameId, gameServer) || '—'}`
+              : 'Оба числа есть в профиле MLBB — они нужны, чтобы бот нашёл твой аккаунт.'}
+          </p>
 
           <Label>ПОЛ</Label>
           <div className="segmented">
@@ -475,7 +531,7 @@ export function SocialRow({ profile, onAddSocial }) {
   )
 }
 
-export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin, supabase, userId }) {
+export function HomeScreen({ profile, actions, gameId, gameServer, onEdit, isAdmin, onAdmin, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -490,7 +546,12 @@ export function HomeScreen({ profile, actions, gameId, onEdit, isAdmin, onAdmin,
       <div className="home__col home__col--main">
       {(gameId || isAdmin) ? (
         <div className="home__header">
-          {gameId ? <span className="home__id">Game ID • {gameId}</span> : null}
+          {gameId ? (
+            <span className="home__id">
+              ID • {gameId}
+              {gameServer ? <em className="home__id-server">сервер {gameServer}</em> : null}
+            </span>
+          ) : null}
           {isAdmin ? (
             <button type="button" className="home__admin" onClick={onAdmin}>
               <CrownIcon /> ADMIN
@@ -683,7 +744,7 @@ function TelegramLinkCard({ supabase, userId }) {
 }
 
 /* ============================================================= PROFILE ==== */
-export function ProfileScreen({ profile, actions, gameId, onBack, onEdit, supabase, userId }) {
+export function ProfileScreen({ profile, actions, gameId, gameServer, onBack, onEdit, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -704,7 +765,12 @@ export function ProfileScreen({ profile, actions, gameId, onBack, onEdit, supaba
       <div className="profile__center">
         <Avatar src={profile.avatarUrl || profile.avatar || null} initials={(profile.nick?.[0] || '?').toUpperCase()} level={profile.level} size={128} />
         <h1>{profile.nick || 'Новый игрок'}</h1>
-        {gameId ? <p className="profile__gameid">Game ID • {gameId}</p> : null}
+        {gameId || gameServer ? (
+          <p className="profile__gameid">
+            Game ID • {gameId || '—'}
+            <span className="profile__server"> · сервер {gameServer || '—'}</span>
+          </p>
+        ) : null}
         {hasBadges && (
           <div className="home__badges">
             {profile.elo != null && <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>}
