@@ -9,7 +9,7 @@ import { FEATURES, STEPS } from './data.js'
 
 const ICONS = { swords: Swords, server: Server, bot: Bot, mic: Mic, shield: ShieldCheck, trophy: Trophy }
 
-export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId, gameServer, setGameServer, screensCount = 8 }) {
+export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId, gameServer, setGameServer, callbackError, screensCount = 8 }) {
   const scroll = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   return (
@@ -60,7 +60,7 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId, game
         <div className="hero-site__phone">
           <div className="hero-site__glow" />
           <AppFrame className="appframe--hero">
-            <AuthScreen gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onLogin={onLogin || onOpen} />
+            <AuthScreen gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} callbackError={callbackError} onLogin={onLogin || onOpen} />
           </AppFrame>
           <button type="button" className="hero-site__hint" onClick={onOpenScreen}>
             <ChevronRight size={15} /> Все {screensCount} экранов приложения — в интерактивном режиме

@@ -50,11 +50,16 @@ MLBB. Файлы лежат в репозитории, поэтому `node test
 
 На экране входа пять плиток: **Google, Telegram, VK, MLBB, TikTok**.
 
-- **Google** — настоящий OAuth через Supabase (`signInWithOAuth`). Чтобы включить,
-  в Google Cloud Console создаётся OAuth-клиент, а в Supabase →
-  Authentication → Providers → Google вставляются Client ID и Secret;
-  redirect URI для Google: `https://yjedqdbwvjvikyixsduw.supabase.co/auth/v1/callback`.
-  Пока провайдер не включён, кнопка честно пишет, чего не хватает, и предлагает почту.
+- **Google** — настоящий OAuth через Supabase (`signInWithOAuth`).
+  OAuth-клиент создан в проекте Google Cloud `name-mlbb`:
+  Client ID `47362210395-42ah6umjitqa9elmc51hg1kfu6u1mlbl.apps.googleusercontent.com`,
+  redirect URI `https://yjedqdbwvjvikyixsduw.supabase.co/auth/v1/callback`.
+  Client Secret хранится **только** в Supabase (Authentication → Providers → Google) —
+  в репозиторий и чаты его не кладём. Включение провайдера, статус «Testing»
+  и список тестовых пользователей настраиваются в Google Auth Platform.
+  Пока провайдер не включён, плитка получает бейдж «скоро» автоматически
+  (экран входа спрашивает `/auth/v1/authorize?skip_http_redirect=true`),
+  а ошибки возврата с OAuth разбирает `app/src/auth-return.js`.
 - **Telegram** — открывает бота `@name_mlbb_bot`: привязка по шестизначному коду
   из Профиля (бот уже работает, вход по нему — следующим шагом).
 - **VK, MLBB, TikTok** — помечены «скоро»: у VK и TikTok нет провайдера в Supabase

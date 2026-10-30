@@ -22,7 +22,7 @@ import {
 } from './supabase.js'
 
 /* ================================================================ AUTH ==== */
-export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, onLogin, onPreview, supabase, session, onSignOut, authReady }) {
+export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callbackError, onLogin, onPreview, supabase, session, onSignOut, authReady }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -46,7 +46,23 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, onLog
     finally { setBusy(false) }
   }
   const [notice, setNotice] = useState('')
-  const [methodNote, setMethodNote] = useState('')
+  const [methodNote, setMethodNote] = useState(callbackError || '')
+  // Включён ли Google в проекте: спрашиваем у Supabase один раз при открытии
+  // экрана. Пока ответа нет — плитка активна (fail-open), если провайдер
+  // выключен — показываем честный бейдж «скоро» вместо мёртвой кнопки.
+  const [googleReady, setGoogleReady] = useState(null)
+  useEffect(() => {
+    if (!supabase) { setGoogleReady(false); return undefined }
+    const base = import.meta.env.VITE_SUPABASE_URL
+    if (!base) { setGoogleReady(false); return undefined }
+    let alive = true
+    const redirect = encodeURIComponent(window.location.origin + window.location.pathname)
+    fetch(`${base}/auth/v1/authorize?provider=google&skip_http_redirect=true&redirect_to=${redirect}`)
+      .then((r) => r.json())
+      .then((d) => { if (alive) setGoogleReady(!(d && (d.error_code || d.msg))) })
+      .catch(() => { if (alive) setGoogleReady(null) })
+    return () => { alive = false }
+  }, [supabase])
   const oauth = async (provider, label) => {
     setMethodNote('')
     if (!supabase) {
@@ -117,8 +133,15 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, onLog
 
       <Label hint="одним нажатием">СПОСОБЫ РЕГИСТРАЦИИ</Label>
       <div className="methods">
-        <button type="button" className="method" disabled={busy} onClick={() => oauth('google', 'Google')} aria-label="Зарегистрироваться через Google">
+        <button
+          type="button"
+          className={`method${googleReady === false ? ' method--soon' : ''}`}
+          disabled={busy}
+          onClick={() => oauth('google', 'Google')}
+          aria-label="Зарегистрироваться через Google"
+        >
           <BrandMark type="google" /><span>Google</span>
+          {googleReady === false && <em className="method__soon">скоро</em>}
         </button>
         <a className="method" href={`https://t.me/${TELEGRAM_BOT_USERNAME}`} target="_blank" rel="noreferrer" aria-label="Войти через Telegram-бота" title="Откроется бот: привязка по коду из Профиля">
           <BrandMark type="telegram" /><span>Telegram</span>

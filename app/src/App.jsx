@@ -12,6 +12,21 @@ import {
 import { AdminScreen } from './admin.jsx'
 import { DEFAULT_PROFILE, splitCombinedGameId } from './data.js'
 import { supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews } from './supabase.js'
+import { parseAuthReturn, cleanAuthUrl, describeAuthError } from './auth-return.js'
+
+// Ошибку внешнего входа (Google и т.п.) читаем один раз при загрузке страницы:
+// Supabase кладёт её в hash после редиректа. Чистим адрес, чтобы F5 не повторял.
+const AUTH_RETURN = typeof window === 'undefined'
+  ? { message: '' }
+  : (() => {
+    const parsed = parseAuthReturn(window.location.href)
+    const message = describeAuthError(parsed)
+    if (message) {
+      const cleaned = cleanAuthUrl(window.location.href)
+      if (cleaned) window.history.replaceState({}, '', cleaned)
+    }
+    return { message }
+  })()
 
 // Экраны онбординга (auth, wizard) видны в меню только до регистрации — см. hideEntry.
 const SCREENS = [
@@ -182,7 +197,7 @@ export default function App() {
   const renderScreen = () => {
     switch (screen) {
       case 'auth':
-        return <AuthScreen gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onLogin={() => go(profileFilled ? 'home' : 'wizard')} onPreview={() => go('home')} supabase={supabase} session={session} authReady={!sessionLoading} onSignOut={() => supabase.auth.signOut()} />
+        return <AuthScreen gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} callbackError={AUTH_RETURN.message} onLogin={() => go(profileFilled ? 'home' : 'wizard')} onPreview={() => go('home')} supabase={supabase} session={session} authReady={!sessionLoading} onSignOut={() => supabase.auth.signOut()} />
       case 'wizard':
         return <WizardScreen profile={profile} setProfile={setProfile} gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
@@ -226,6 +241,7 @@ export default function App() {
         setGameId={setGameId}
         gameServer={gameServer}
         setGameServer={setGameServer}
+        callbackError={AUTH_RETURN.message}
         screensCount={SCREENS.filter((s) => !s.admin).length}
       />
     )
