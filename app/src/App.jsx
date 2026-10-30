@@ -11,8 +11,28 @@ import {
 } from './screens.jsx'
 import { AdminScreen } from './admin.jsx'
 import { DEFAULT_PROFILE, splitCombinedGameId, SOCIAL_IDS, parseSocial, formatSocial } from './data.js'
-import { supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews, getTelegramLink, deleteTelegramLink } from './supabase.js'
+import {
+  supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews,
+  getTelegramLink, deleteTelegramLink, createTelegramLinkCode,
+} from './supabase.js'
+import { parseVkReturn, completeVkAuth, startVkAuth, describeVkError, vkConfigured } from './vk-auth.js'
 import { parseAuthReturn, cleanAuthUrl, describeAuthError } from './auth-return.js'
+
+// Возврат с VK: код и device_id приходят в query. Запоминаем адрес и сразу
+// вычищаем параметры, чтобы F5 не пытался обменять код повторно.
+const VK_RETURN = typeof window === 'undefined'
+  ? null
+  : (() => {
+    const parsed = parseVkReturn(window.location.href)
+    if (!parsed) return null
+    const href = window.location.href
+    try {
+      const url = new URL(href)
+      ;['code', 'device_id', 'state'].forEach((key) => url.searchParams.delete(key))
+      window.history.replaceState({}, '', url.toString())
+    } catch { /* noop */ }
+    return { href }
+  })()
 
 // Ошибку внешнего входа (Google и т.п.) читаем один раз при загрузке страницы:
 // Supabase кладёт её в hash после редиректа. Чистим адрес, чтобы F5 не повторял.
@@ -57,6 +77,7 @@ const LEGACY_STORAGE_KEY = 'name-mlbb-profile'
 
 export default function App() {
   const [mode, setMode] = useState('landing')
+  const MARKER_TEXT = 'МАРКЕР-APP-NEW'
   const [screen, setScreen] = useState('auth')
   // Гость: возвращаем ID и сервер из localStorage. Старые записи хранили
   // «123456789 (1234)» одной строкой — разбираем на две части.
@@ -193,6 +214,60 @@ export default function App() {
     }
   }
 
+  // Актуальный профиль для отложенных колбэков (возврат с VK).
+  const profileRef = useRef(profile)
+  useEffect(() => { profileRef.current = profile }, [profile])
+
+  // Вернулись с VK после «Войти через VK»: меняем код на токен и пишем ник.
+  const vkHandled = useRef(false)
+  useEffect(() => {
+    if (!VK_RETURN || vkHandled.current || !supabase || sessionLoading || !session) return
+    vkHandled.current = true
+    ;(async () => {
+      try {
+        const linked = await completeVkAuth(VK_RETURN.href)
+        if (!linked) return
+        const base = profileRef.current
+        const list = (base.socials || []).map(parseSocial)
+        if (list.some((x) => x.provider === 'vk')) return
+        const nextProfile = { ...base, socials: [...(base.socials || []), formatSocial('vk', linked.handle)] }
+        setProfile(nextProfile)
+        const { error } = await supabase
+          .from('player_profiles')
+          .upsert(profileToRow(nextProfile, gameId, gameServer, session.user.id))
+        if (error) setSaveError('VK привязан, но сохранить не удалось: ' + error.message)
+      } catch (error) {
+        setSaveError(describeVkError(error))
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, sessionLoading])
+
+  // Кнопка «Войти через VK»: готовим PKCE и уходим на экран разрешения VK.
+  const linkVk = async () => {
+    if (!supabase) return { error: 'Проект не подключён к Supabase.' }
+    if (!session) return { error: 'Сначала войди в аккаунт, потом привязывай соцсети.' }
+    if (!vkConfigured) return { error: describeVkError(new Error('VK_ID_NOT_CONFIGURED')) }
+    try {
+      await startVkAuth()
+      return { redirected: true }
+    } catch (error) {
+      return { error: describeVkError(error) }
+    }
+  }
+
+  // Telegram: свежий код для бота и проверка, привязал ли бот.
+  const startTelegramLink = async () => {
+    if (!supabase || !session) throw new Error('Войди в аккаунт, чтобы получить код.')
+    return createTelegramLinkCode(session.user.id)
+  }
+  const refreshTelegramLink = async () => {
+    if (!supabase || !session) return null
+    const row = await getTelegramLink(session.user.id)
+    if (row) setTelegramLink(row)
+    return row
+  }
+
   // Отвязка Telegram: удаляем строку в telegram_links — бот перестанет писать.
   const unlinkTelegram = async () => {
     if (!supabase || !session) { setTelegramLink(null); return }
@@ -292,9 +367,9 @@ export default function App() {
       case 'wizard':
         return <WizardScreen profile={profile} setProfile={setProfile} gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
-        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
+        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
       case 'profile':
-        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
+        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
         return <DraftScreen supabase={supabase} userId={session?.user?.id || null} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
       case 'match':

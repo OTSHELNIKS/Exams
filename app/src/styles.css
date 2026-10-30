@@ -375,6 +375,18 @@ a { color: inherit; }
   border-radius: 50%; background: var(--green); box-shadow: 0 0 0 2px var(--bg);
 }
 .social-modal__link { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+/* поток привязки: код для бота / кнопки OAuth */
+.social-flow { display: flex; flex-direction: column; gap: 10px; margin: 0 0 12px; }
+.social-flow__cta { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; text-decoration: none; }
+.social-flow__cta .brand { width: 26px; height: 26px; border-radius: 9px; font-size: 15px; }
+.social-flow__label { margin: 0; font-size: 10px; font-weight: 800; letter-spacing: 1.2px; color: #8b8e9c; text-transform: uppercase; }
+.social-flow__code {
+  margin: 0; font-family: var(--display); font-weight: 900; font-size: 34px; letter-spacing: 6px;
+  text-align: center; padding: 12px; border-radius: 16px; border: 1px dashed rgba(255,75,18,.5);
+  background: var(--surface); color: var(--text);
+}
+.social-flow__again { align-self: center; font-size: 12px; }
+.social-flow .field-hint { margin: 0; }
 .social-circle__dot {
   position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%;
   background: var(--gold); box-shadow: 0 0 0 2px var(--bg);
@@ -1254,5 +1266,7 @@ html.is-modal-open .rail { overflow: hidden !important; }
   .social-account strong { font-size: 15.5px; }
   .social-account small { font-size: 12.5px; }
   .social-google__manual { font-size: 13px; }
+  .social-flow__code { font-size: 40px; letter-spacing: 8px; }
+  .social-flow__again { font-size: 13px; }
   .home__id-server { font-size: 11.5px; }
 }

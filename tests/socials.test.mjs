@@ -62,11 +62,10 @@ test('T-SOC-04 без ника сохранить нельзя', () => {
 })
 
 test('T-SOC-05 тост появляется только после реального сохранения', () => {
-  const saveBlock = social.slice(social.indexOf('const save = () =>'), social.lastIndexOf('\n  return ('))
-  assert.ok(saveBlock.includes('onAddSocial(provider, nick)'), 'сохранение не вызывает onAddSocial')
-  assert.ok(saveBlock.includes('setOpen(false)'), 'после сохранения окно не закрывается')
-  assert.ok(/setToast\(`\$\{socialLabel\(provider\)\} привязан: \$\{nick\}`\)/.test(saveBlock), 'тост должен содержать ник')
+  assert.ok(/if \(!onAddSocial\(provider, nick\)\)/.test(social), 'сохранение не вызывает onAddSocial')
   assert.ok(!/setToast\('Соцсеть привязана'\)/.test(social), 'остался общий фальшивый тост')
+  assert.ok(social.includes('setToast(`Google привязан'), 'нет тоста с подтверждённым аккаунтом Google')
+  assert.ok(social.includes('onAddSocial(\'google\', googleAccount)'), 'аккаунт Google не записывается по кнопке «Привязать»')
 })
 
 test('T-SOC-06 в App привязка валидируется и умеет отвязывать', () => {
@@ -102,11 +101,12 @@ test('T-SOC-11 Google привязывается окном выбора акк�
   assert.ok(app.includes('localStorage.setItem(LINK_GOOGLE_KEY, \'1\')'), 'нет метки возврата от Google')
   assert.ok(social.includes('Выбрать аккаунт Google'), 'нет кнопки выбора аккаунта')
   assert.ok(social.includes('startGoogle'), 'кнопка не запускает OAuth')
-  assert.ok(/provider === 'google' && !manual/.test(social), 'для Google всё ещё показывается поле ввода')
+  assert.ok(/googleAccount \? \(\s*<div className="social-account">/.test(social), 'для Google показывается ввод вместо карточки аккаунта')
+  assert.ok(/provider === 'google' && manual/.test(social), 'ручной ввод Google должен быть только по ссылке')
 })
 
 test('T-SOC-12 подтверждённый Google-аккаунт подставляется сам', () => {
-  assert.ok(/provider === 'google' && googleAccount \? googleAccount : handle.trim\(\)/.test(social), 'почта Google не подставляется в привязку')
+  assert.ok(social.includes('onAddSocial(\'google\', googleAccount)'), 'почта Google не подставляется в привязку')
   assert.ok(social.includes('аккаунт подтверждён Google'), 'нет отметки, что аккаунт проверен')
   assert.ok(app.includes('identity_data?.email'), 'почта не берётся из identity Google')
   assert.ok(app.includes('LINK_GOOGLE_KEY'), 'нет авто-записи после возврата')
@@ -134,6 +134,31 @@ test('T-SOC-15 иконка Telegram не пропадает после пере
   assert.ok(social.includes('Telegram отвязан'), 'нет подтверждения отвязки')
   assert.ok(social.includes('через бота'), 'в выборе соцсети Telegram не помечен как «через бота»')
   assert.ok(styles.includes('.social-circle--bot'), 'нет отметки привязки через бота')
+})
+
+test('T-SOC-16 Telegram привязывается через бота, ник не вводится', () => {
+  assert.ok(social.includes('onStartTelegram'), 'нет получения кода у бота')
+  assert.ok(social.includes('https://t.me/${TELEGRAM_BOT_USERNAME}?start=${tgCode}'), 'бот не открывается с готовым кодом')
+  assert.ok(social.includes('onRefreshTelegram'), 'нет проверки, привязал ли бот')
+  assert.ok(/setInterval\(async \(\) =>/.test(social), 'нет опроса привязки')
+  assert.ok(social.includes('Получить код для бота'), 'нет кнопки получения кода')
+  assert.ok(app.includes('createTelegramLinkCode'), 'код не создаётся в App')
+  assert.ok(!/provider === 'telegram' && !manual/.test(social), 'у Telegram остался ручной ввод')
+})
+
+test('T-SOC-17 VK привязывается окном VK ID, а не ником', () => {
+  assert.ok(social.includes('startVk'), 'нет запуска VK OAuth')
+  assert.ok(social.includes('Войти через VK'), 'нет кнопки входа через VK')
+  assert.ok(app.includes('startVkAuth'), 'App не запускает VK OAuth')
+  assert.ok(app.includes('completeVkAuth'), 'App не завершает VK OAuth')
+  assert.ok(app.includes('describeVkError'), 'нет понятных ошибок VK')
+  assert.ok(!/provider === 'vk' \?/.test(social), 'у VK остался ручной ввод')
+})
+
+test('T-SOC-18 стили потока привязки и кода бота', () => {
+  for (const selector of ['.social-flow', '.social-flow__code', '.social-flow__cta', '.social-flow__again']) {
+    assert.ok(styles.includes(selector), 'нет стиля ' + selector)
+  }
 })
 
 console.log(`\nsocials: ${passed}/${passed + failed}`)
