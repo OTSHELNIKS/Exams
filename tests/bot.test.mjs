@@ -406,6 +406,71 @@ t('T-BOT-29 admin /close closes and notifies', async () => {
   assert.match(dm, /закрыта/)
 })
 
+t('T-BOT-30 /support announces the new ticket to admins', async () => {
+  reset({
+    telegram_links: ({ params }) => (params.get('user_id') && String(params.get('user_id')).startsWith('in.') ? [] : [{ user_id: 'user-1' }]),
+    admins: [{ user_id: 'admin-1' }],
+    player_profiles: [{ nick: 'Amy' }],
+    'POST support_tickets': [{ id: 'aaaaaaaa-1111-4111-8111-111111111111', num: 7, message: 'не приходит лобби' }],
+  })
+  // admins -> their chats
+  SCEN.telegram_links = ({ params }) => {
+    const u = params.get('user_id') || ''
+    if (u.startsWith('in.(')) return [{ tg_chat_id: 999 }]
+    return [{ user_id: 'user-1' }]
+  }
+  await post('', { headers: H, body: upd('/support не приходит лобби') })
+  const dm = tgTo(999).map((c) => c.payload.text).join(' ')
+  assert.match(dm, /Новая заявка поддержки #7/)
+  assert.match(dm, /Amy/)
+  assert.match(dm, /\/reply 7/)
+  const stamp = calls.db.find((c) => c.method === 'PATCH' && c.table === 'support_tickets')
+  assert.ok(stamp && stamp.body.notified_at, 'expected notified_at stamp')
+})
+
+t('T-BOT-31 notify support announces own ticket once', async () => {
+  const ticket = {
+    id: 'aaaaaaaa-1111-4111-8111-111111111111', num: 4, user_id: 'user-1',
+    message: 'Хочу сменить ник', status: 'open', created_at: '2026-10-30T10:00:00Z', notified_at: null,
+  }
+  reset({
+    admins: [{ user_id: 'admin-1' }],
+    telegram_links: () => [{ tg_chat_id: 999 }],
+    player_profiles: [{ nick: 'Amy' }],
+    support_tickets: [ticket],
+  })
+  const r = await post('?action=notify', { headers: { authorization: 'Bearer GOODJWT' }, body: { kind: 'support', ticketId: ticket.id } })
+  assert.equal(r.status, 200)
+  assert.equal(r.json.ok, true)
+  assert.equal(r.json.admins, 1)
+  assert.match(tgTo(999).map((c) => c.payload.text).join(' '), /Новая заявка поддержки #4/)
+})
+
+t('T-BOT-32 notify support rejects a foreign ticket', async () => {
+  const ticket = { id: 'bbbbbbbb-2222-4222-8222-222222222222', num: 5, user_id: 'someone-else', message: 'чужая', status: 'open', notified_at: null }
+  reset({ admins: [{ user_id: 'admin-1' }], telegram_links: () => [{ tg_chat_id: 999 }], support_tickets: [ticket] })
+  const r = await post('?action=notify', { headers: { authorization: 'Bearer GOODJWT' }, body: { kind: 'support', ticketId: ticket.id } })
+  assert.equal(r.status, 403)
+  assert.equal(tgTo(999).length, 0)
+})
+
+t('T-BOT-33 notify support does not repeat for an announced ticket', async () => {
+  const ticket = {
+    id: 'cccccccc-3333-4333-8333-333333333333', num: 6, user_id: 'user-1',
+    message: 'уже объявлена', status: 'open', notified_at: '2026-10-30T10:05:00Z',
+  }
+  reset({ admins: [{ user_id: 'admin-1' }], telegram_links: () => [{ tg_chat_id: 999 }], support_tickets: [ticket] })
+  const r = await post('?action=notify', { headers: { authorization: 'Bearer GOODJWT' }, body: { kind: 'support', ticketId: ticket.id } })
+  assert.equal(r.json.already, true)
+  assert.equal(tgTo(999).length, 0)
+})
+
+t('T-BOT-34 notify support rejects a malformed id', async () => {
+  reset({})
+  const r = await post('?action=notify', { headers: { authorization: 'Bearer GOODJWT' }, body: { kind: 'support', ticketId: 'nope' } })
+  assert.equal(r.status, 400)
+})
+
 let pass = 0
 let fail = 0
 for (const [name, fn] of tests) {

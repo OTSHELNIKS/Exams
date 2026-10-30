@@ -160,6 +160,42 @@ export async function clearPendingReviews(userId) {
   if (error) throw error
 }
 
+/** Create a support ticket for the signed-in player. Returns the created row. */
+export async function createSupportTicket(userId, message) {
+  const text = String(message || '').trim()
+  if (text.length < 5) throw new Error('too_short')
+  if (text.length > 2000) throw new Error('too_long')
+  const { data, error } = await withTimeout(supabase.from('support_tickets')
+    .insert({ user_id: userId, message: text })
+    .select('id, num, message, status, created_at').single())
+  if (error) throw error
+  return data
+}
+
+/** Own support tickets, newest first. */
+export async function fetchSupportTickets(userId) {
+  const { data, error } = await withTimeout(supabase.from('support_tickets')
+    .select('id, num, message, status, admin_reply, answered_at, created_at')
+    .eq('user_id', userId).order('created_at', { ascending: false }).limit(30))
+  if (error) throw error
+  return data || []
+}
+
+/** Ask the bot to announce a fresh ticket to the admins (best-effort, once). */
+export async function announceSupportTicket(ticketId) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return false
+    const r = await withTimeout(fetch(functionsUrl('telegram-bot?action=notify'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ kind: 'support', ticketId }),
+    }))
+    const j = await r.json().catch(() => ({}))
+    return Boolean(r.ok && j.ok)
+  } catch { return false }
+}
+
 /** Ask the bot to DM the lobby ID to the current user's linked Telegram. */
 export async function notifyLobbyToTelegram(lobbyId) {
   const { data: { session } } = await supabase.auth.getSession()

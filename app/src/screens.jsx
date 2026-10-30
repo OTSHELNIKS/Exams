@@ -3,7 +3,7 @@ import {
   Gamepad2, Send, ChevronLeft, Camera, Settings, Clock3, Lock, Plus, Copy, Mic,
   MicOff, Headphones, LogOut, Crown, RotateCcw, Check, ShieldCheck, Zap, Bot,
   Trophy, Sparkles, ArrowRight, X, UserRound, Upload, Coins, Server, Image as ImageIcon,
-  RefreshCw, Search, Ban,
+  RefreshCw, Search, Ban, LifeBuoy, MessageSquare,
 } from 'lucide-react'
 import {
   Logo, BrandMark, Chip, Label, PrimaryButton, BackHeader, Avatar, VerificationCard,
@@ -16,6 +16,7 @@ import {
   uploadAvatar, uploadScreenshot, deleteScreenshot, validateImage,
   TELEGRAM_BOT_USERNAME, createTelegramLinkCode, getTelegramLink,
   deleteTelegramLink, notifyLobbyToTelegram,
+  createSupportTicket, fetchSupportTickets, announceSupportTicket,
 } from './supabase.js'
 
 /* ================================================================ AUTH ==== */
@@ -1087,6 +1088,137 @@ export function LeaderboardScreen({ supabase, userId }) {
         <Coins size={17} /> 1 место — 20 000 ₽ · 2 место — 15 000 ₽ · 3 место — 10 000 ₽
       </div>
       <AdBanner compact />
+    </div>
+  )
+}
+
+/* ============================================================== SUPPORT ==== */
+const TICKET_STATUS = {
+  open: { label: 'Открыта', cls: 'ticket__status--open' },
+  answered: { label: 'Есть ответ', cls: 'ticket__status--answered' },
+  closed: { label: 'Закрыта', cls: 'ticket__status--closed' },
+}
+
+function ticketDate(iso) {
+  try {
+    return new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  } catch { return '—' }
+}
+
+export function SupportScreen({ supabase, userId, onBack, onAuth }) {
+  const [tickets, setTickets] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [flash, setFlash] = useState('')
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+
+  const load = async () => {
+    if (!supabase || !userId) { setTickets([]); setLoading(false); return }
+    setLoading(true); setError('')
+    try { setTickets(await fetchSupportTickets(userId)) }
+    catch (e) { setError('Не удалось загрузить заявки: ' + (e.message || e)) }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { load() }, [userId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submit = async () => {
+    const clean = text.trim()
+    if (clean.length < 5) { setError('Опиши проблему подробнее — хотя бы пару слов.'); return }
+    if (clean.length > 2000) { setError('Слишком длинно — до 2000 символов.'); return }
+    setSending(true); setError(''); setFlash('')
+    try {
+      const created = await createSupportTicket(userId, clean)
+      setText('')
+      setFlash('Заявка #' + created.num + ' отправлена админу в Telegram. Ответ придёт сюда и в бота.')
+      void announceSupportTicket(created.id)
+      await load()
+    } catch (e) {
+      setError('Не удалось отправить заявку: ' + (e.message || e))
+    } finally { setSending(false) }
+  }
+
+  if (!supabase || !userId) {
+    return (
+      <div className="screen support">
+        <BackHeader title="Поддержка" onBack={onBack} />
+        <div className="empty-block">
+          <p>{!supabase ? 'Нет подключения к серверу.' : 'Войди по почте, чтобы написать в поддержку — заявки привязаны к аккаунту.'}</p>
+          {onAuth && supabase && <button type="button" className="btn btn--ghost" onClick={onAuth}>Войти</button>}
+        </div>
+      </div>
+    )
+  }
+
+  const left = 2000 - text.length
+  const list = tickets || []
+
+  return (
+    <div className="screen support">
+      <BackHeader
+        title="Поддержка"
+        onBack={onBack}
+        right={<button type="button" className="icon-btn" onClick={load} title="Обновить"><RefreshCw size={18} /></button>}
+      />
+      <p className="screen-subtitle">Заявка уходит админу в Telegram, ответ появится здесь</p>
+
+      <div className="info-strip">
+        <Bot size={15} /> Отвечаем в боте @{TELEGRAM_BOT_USERNAME} — там же можно смотреть статус: /support
+      </div>
+
+      <Label hint={`${text.length}/2000`}>Опиши проблему</Label>
+      <textarea
+        className="textarea"
+        rows={5}
+        maxLength={2000}
+        value={text}
+        onChange={(e) => { setText(e.target.value); setFlash('') }}
+        placeholder="Например: не приходит ID лобби в Telegram, хотя аккаунт привязан"
+      />
+      <p className="field-hint">{left < 100 ? `Осталось символов: ${left}` : 'Чем точнее опишешь — тем быстрее решим.'}</p>
+
+      <PrimaryButton onClick={submit} disabled={sending || text.trim().length < 5} icon={Send}>
+        {sending ? 'Отправляем…' : 'Отправить заявку'}
+      </PrimaryButton>
+
+      {flash && <div className="support-flash"><Check size={16} /> <span>{flash}</span></div>}
+      {error && <p role="alert" className="field-hint support-error">{error}</p>}
+
+      <div className="support-list">
+        <div className="label-row">
+          <span className="label">Мои заявки</span>
+          {list.length > 0 && <span className="label-hint">{list.length}</span>}
+        </div>
+        {loading && <div className="empty">Загрузка заявок…</div>}
+        {!loading && list.length === 0 && (
+          <div className="empty">Заявок пока нет. Опиши проблему выше — админ получит её в боте.</div>
+        )}
+        {list.map((t) => {
+          const st = TICKET_STATUS[t.status] || { label: t.status, cls: '' }
+          return (
+            <div key={t.id} className={`ticket ticket--${t.status}`}>
+              <div className="ticket__head">
+                <span className="ticket__num"><MessageSquare size={14} /> #{t.num}</span>
+                <span className={`ticket__status ${st.cls}`}>{st.label}</span>
+                <span className="ticket__date">{ticketDate(t.created_at)}</span>
+              </div>
+              <p className="ticket__text">{t.message}</p>
+              {t.admin_reply && (
+                <div className="ticket__reply">
+                  <strong>Ответ поддержки</strong>
+                  <span>{t.admin_reply}</span>
+                  {t.answered_at && <small>{ticketDate(t.answered_at)}</small>}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="support-foot">
+        <LifeBuoy size={15} /> Срочно? Напиши боту /support — заявка попадёт к тому же админу.
+      </div>
     </div>
   )
 }

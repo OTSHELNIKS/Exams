@@ -3,7 +3,8 @@
 //
 // Routes:
 //   POST /                       Telegram update incl. callback buttons (needs webhook secret)
-//   POST /?action=notify         app -> user notify (needs user JWT, notifies SELF only)
+//   POST /?action=notify         app -> notify: kind=lobby (self DM) or kind=support
+//                                (announce own ticket to linked admins, once)
 //   GET  /?setup=<SETUP_SECRET>  one-time webhook wiring by owner
 //   GET  /?health=1              liveness probe
 //
@@ -20,6 +21,7 @@ const APP_URL = Deno.env.get('APP_PUBLIC_URL') || ''
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').replace(/\/+$/, '')
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const TG = 'https://api.telegram.org/bot' + BOT_TOKEN
+const BUILD = 'support-notify-v1'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -177,6 +179,36 @@ async function adminLink(chatId) {
 async function linkedChatOf(userId) {
   const rows = await dbSelect('telegram_links', { user_id: 'eq.' + userId, select: 'tg_chat_id' })
   return rows[0] ? rows[0].tg_chat_id : null
+}
+
+// Telegram chats of every admin that linked their account.
+async function adminChatIds() {
+  const admins = await dbSelect('admins', { select: 'user_id' })
+  if (admins.length === 0) return []
+  const ids = admins.map((a) => a.user_id)
+  const links = await dbSelect('telegram_links', { user_id: 'in.(' + ids.join(',') + ')', select: 'tg_chat_id' })
+  return [...new Set(links.map((l) => l.tg_chat_id).filter((c) => c !== null && c !== undefined))]
+}
+
+// DM the same text to all linked admins. Returns how many messages went out.
+async function notifyAdmins(text, exceptChatId) {
+  const chats = await adminChatIds()
+  let sent = 0
+  for (const chat of chats) {
+    if (exceptChatId !== undefined && String(chat) === String(exceptChatId)) continue
+    const res = await send(chat, text)
+    if (res && res.ok !== false) sent += 1
+  }
+  return sent
+}
+
+function ticketAnnounce(ticket, nick) {
+  const when = String(ticket.created_at || new Date().toISOString()).slice(0, 16).replace('T', ' ')
+  return '<b>Новая заявка поддержки #' + ticket.num + '</b>'
+    + '\n' + esc(nick || 'Без ника') + ' · ' + esc(when)
+    + '\n\n' + esc(String(ticket.message || '').slice(0, 500))
+    + '\n\nОтветить: <code>/reply ' + ticket.num + ' текст</code>'
+    + '\nЗакрыть: <code>/close ' + ticket.num + '</code>'
 }
 
 // Find profiles by nick (exact, case-insensitive) or game_id (substring).
@@ -494,6 +526,9 @@ async function handleUpdate(update) {
     const created = await dbInsert('support_tickets', { user_id: links[0].user_id, message: question })
     if (!created) { await send(chatId, 'Не получилось создать заявку. Попробуй позже.'); return }
     await send(chatId, 'Заявка <b>#' + created.num + '</b> создана. Админ ответит сюда, в этот чат.')
+    const profs = await dbSelect('player_profiles', { user_id: 'eq.' + links[0].user_id, select: 'nick' })
+    const sent = await notifyAdmins(ticketAnnounce(created, profs[0] && profs[0].nick))
+    if (sent > 0) await dbUpdate('support_tickets', { id: 'eq.' + created.id }, { notified_at: new Date().toISOString() })
     return
   }
 
@@ -519,7 +554,25 @@ async function handleNotify(req) {
   if (!user || !user.id) return json({ ok: false, error: 'bad_token' }, 401)
   let body = {}
   try { body = await req.json() } catch (e) { body = {} }
-  if (!body || body.kind !== 'lobby' || !/^[0-9]{4,12}$/.test(String(body.lobbyId === undefined ? '' : body.lobbyId))) {
+  if (!body || typeof body.kind !== 'string') return json({ ok: false, error: 'bad_request' }, 400)
+
+  if (body.kind === 'support') {
+    // Announce a ticket the caller owns to the admins' Telegram, exactly once.
+    const id = String(body.ticketId === undefined ? '' : body.ticketId)
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return json({ ok: false, error: 'bad_request' }, 400)
+    }
+    const rows = await dbSelect('support_tickets', { id: 'eq.' + id, select: '*' })
+    const ticket = rows[0]
+    if (!ticket || ticket.user_id !== user.id) return json({ ok: false, error: 'forbidden' }, 403)
+    if (ticket.notified_at) return json({ ok: true, already: true, admins: 0 })
+    const profs = await dbSelect('player_profiles', { user_id: 'eq.' + user.id, select: 'nick' })
+    const admins = await notifyAdmins(ticketAnnounce(ticket, profs[0] && profs[0].nick))
+    await dbUpdate('support_tickets', { id: 'eq.' + id }, { notified_at: new Date().toISOString() })
+    return json({ ok: true, admins })
+  }
+
+  if (body.kind !== 'lobby' || !/^[0-9]{4,12}$/.test(String(body.lobbyId === undefined ? '' : body.lobbyId))) {
     return json({ ok: false, error: 'bad_request' }, 400)
   }
   const links = await dbSelect('telegram_links', { user_id: 'eq.' + user.id, select: '*' })
@@ -575,7 +628,7 @@ Deno.serve(async (req) => {
   const url = new URL(req.url)
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method === 'GET' && url.searchParams.get('health') !== null) {
-    return json({ ok: true, time: new Date().toISOString() })
+    return json({ ok: true, build: BUILD, time: new Date().toISOString() })
   }
   if (req.method === 'GET' && url.searchParams.has('setup')) return handleSetup(url)
   if (req.method === 'POST' && url.searchParams.get('action') === 'notify') {

@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
   Home, UserRound, Swords, Gamepad2, Trophy, Globe, ChevronLeft, Sparkles,
-  ClipboardList, LogIn, ShieldCheck,
+  ClipboardList, LogIn, ShieldCheck, LifeBuoy,
 } from 'lucide-react'
 import { AppFrame, Logo } from './ui.jsx'
 import { Landing } from './landing.jsx'
 import {
   AuthScreen, WizardScreen, HomeScreen, ProfileScreen, DraftScreen,
-  MatchScreen, LeaderboardScreen, AdminScreen, BannedScreen,
+  MatchScreen, LeaderboardScreen, AdminScreen, BannedScreen, SupportScreen,
 } from './screens.jsx'
 import { DEFAULT_PROFILE } from './data.js'
 import { supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews } from './supabase.js'
@@ -20,6 +20,7 @@ const SCREENS = [
   { id: 'draft', label: "Captain's Draft", short: 'Драфт', icon: Swords },
   { id: 'match', label: 'Матч готов', short: 'Матч', icon: Gamepad2 },
   { id: 'leaderboard', label: 'Таблица лидеров', short: 'Рейтинг', icon: Trophy },
+  { id: 'support', label: 'Поддержка', short: 'Помощь', icon: LifeBuoy },
   { id: 'admin', label: 'Админка', short: 'Админ', icon: ShieldCheck, admin: true },
 ]
 
@@ -167,6 +168,8 @@ export default function App() {
         return <MatchScreen onBack={() => go('draft')} onLeaderboard={() => go('leaderboard')} onProfile={() => go('profile')} supabase={supabase} teams={draftTeams} userId={session?.user?.id || null} />
       case 'leaderboard':
         return <LeaderboardScreen supabase={supabase} userId={session?.user?.id || null} />
+      case 'support':
+        return <SupportScreen supabase={supabase} userId={session?.user?.id || null} onBack={() => go('home')} onAuth={() => go('auth')} />
       case 'admin':
         return <AdminScreen supabase={supabase} isAdmin={isAdmin} onBack={() => go('home')} />
       default:
@@ -237,7 +240,7 @@ export default function App() {
         <AppFrame>{renderScreen()}</AppFrame>
 
         <nav className="bottom-nav">
-          {SCREENS.filter((s) => ['home', 'profile', 'draft', 'match', 'leaderboard'].includes(s.id)).map((s) => {
+          {SCREENS.filter((s) => ['home', 'draft', 'leaderboard', 'support'].includes(s.id)).map((s) => {
             const Icon = s.icon
             return (
               <button key={s.id} type="button" className={screen === s.id ? 'is-active' : ''} onClick={() => go(s.id)}>
@@ -245,6 +248,9 @@ export default function App() {
               </button>
             )
           })}
+          <button key="profile" type="button" className={screen === 'profile' ? 'is-active' : ''} onClick={() => go('profile')}>
+            <UserRound size={20} /><span>Профиль</span>
+          </button>
           {isAdmin && (
             <button key="admin" type="button" className={screen === 'admin' ? 'is-active' : ''} onClick={() => go('admin')}>
               <ShieldCheck size={20} /><span>Админ</span>

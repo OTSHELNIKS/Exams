@@ -707,3 +707,27 @@ a { color: inherit; }
 .verify-card--bad { background: linear-gradient(120deg, rgba(255,80,80,.12), rgba(255,80,80,.04)); border-color: rgba(255,80,80,.35); }
 .verify-card--bad .verify-card__icon { background: rgba(255,80,80,.14); color: #ff6b6b; }
 .verify-card--bad strong { color: #ff8a7a; }
+
+/* --------------------------------------------------------------- support */
+.support .textarea { margin-bottom: 6px; }
+.support .btn--primary { margin-top: 10px; }
+.support-flash { display: flex; align-items: flex-start; gap: 9px; margin-top: 12px; padding: 11px 13px; border-radius: 12px; font-size: 12px; line-height: 1.45; color: #b9f5c8; background: rgba(52,199,89,.12); border: 1px solid rgba(52,199,89,.3); }
+.support-flash svg { flex: none; margin-top: 1px; }
+.support-error { color: #ff8a7a; }
+.support-list { margin-top: 22px; display: flex; flex-direction: column; gap: 10px; }
+.support-list .empty { padding: 14px; }
+.ticket { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 13px 14px; }
+.ticket--closed { opacity: .82; }
+.ticket__head { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+.ticket__num { display: inline-flex; align-items: center; gap: 5px; font-weight: 800; font-size: 12.5px; color: #c9ccd8; }
+.ticket__status { font-size: 9.5px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
+.ticket__status--open { color: #ffb266; background: rgba(255,140,40,.14); }
+.ticket__status--answered { color: #9be29b; background: rgba(80,200,120,.14); }
+.ticket__status--closed { color: #9a9db0; background: rgba(255,255,255,.06); }
+.ticket__date { margin-left: auto; font-size: 11px; color: var(--dim); }
+.ticket__text { margin: 0; font-size: 13px; line-height: 1.5; color: #d3d6e0; white-space: pre-wrap; word-break: break-word; }
+.ticket__reply { margin-top: 10px; padding: 10px 12px; border-radius: 12px; display: flex; flex-direction: column; gap: 3px; background: rgba(255,75,18,.07); border: 1px solid rgba(255,75,18,.22); }
+.ticket__reply strong { font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: var(--orange-2); }
+.ticket__reply span { font-size: 13px; color: #e6e8ef; white-space: pre-wrap; word-break: break-word; }
+.ticket__reply small { font-size: 10.5px; color: var(--dim); }
+.support-foot { display: flex; align-items: center; gap: 8px; margin-top: 18px; font-size: 11.5px; color: var(--dim); }
