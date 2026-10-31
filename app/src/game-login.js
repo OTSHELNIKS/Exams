@@ -79,7 +79,7 @@ export function describeGameLoginError(error) {
     case 'telegram_failed':
       return 'Telegram не принял сообщение. Проверь, что бот не заблокирован, и попробуй ещё раз.'
     case 'bad_request':
-      return 'Проверь Game ID и код: в коде ровно 6 цифр.'
+      return 'Проверь Game ID и код: код из письма в игре — 4 цифры.'
     case 'bad_code':
       return left !== undefined && left > 0
         ? `Код не подошёл. Осталось попыток: ${left}.`

@@ -263,7 +263,12 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
     } finally { setGameBusy(false) }
   }
   const confirmGameCode = async () => {
-    if (!/^\d{6}$/.test(gameCode)) { setGameError('В коде ровно 6 цифр — проверь письмо в игре или сообщение бота.'); return }
+    if (!/^\d{4,6}$/.test(gameCode)) {
+      setGameError(channel === 'ingame'
+        ? 'Код из письма — 4 цифры. Проверь внутриигровую почту MLBB.'
+        : 'В коде из бота 6 цифр. Проверь сообщение @' + TELEGRAM_BOT_USERNAME + '.')
+      return
+    }
     setGameBusy(true); setGameError('')
     try {
       const result = await signInWithGameCode({ gameId, gameServer, code: gameCode, channel, supabase })
@@ -379,6 +384,7 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
               <input
                 value={gameCode}
                 onChange={(e) => { setGameCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6)); setGameError('') }}
+                maxLength={6}
                 placeholder="123456"
                 inputMode="numeric"
                 autoComplete="one-time-code"
@@ -389,7 +395,7 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
             {channel === 'ingame' ? (
               <>
                 <p className="field-hint">
-                  Письмо лежит в MLBB: главный экран → значок конверта (Почта). Отправлено на аккаунт
+                  В письме 4 цифры. Письмо лежит в MLBB: главный экран → значок конверта (Почта). Отправлено на аккаунт
                   {' '}<b>{gameId}{gameServer ? ` (${gameServer})` : ''}</b>.
                 </p>
                 <button type="button" className="btn btn--ghost game-open-app" onClick={launchGame}>
@@ -414,7 +420,7 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
             {gameHelp && <p className="field-hint">{gameHelp}</p>}
             <div className="social-modal__actions">
               <button type="button" className="btn btn--ghost" disabled={gameBusy} onClick={() => { setGameStep('id'); setGameCode(''); setGameError('') }}>Назад</button>
-              <PrimaryButton disabled={gameBusy || gameCode.length !== 6} onClick={confirmGameCode}>{gameBusy ? 'Проверяю…' : 'Войти'}</PrimaryButton>
+              <PrimaryButton disabled={gameBusy || gameCode.length < 4} onClick={confirmGameCode}>{gameBusy ? 'Проверяю…' : 'Войти'}</PrimaryButton>
             </div>
           </>
         )}

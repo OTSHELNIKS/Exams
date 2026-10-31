@@ -21,7 +21,7 @@ const state = {
   profiles: [], links: [], codes: [], tg: [], deleted: [], admins: {},
   linkOk: true,
   // Игровой шлюз: что вернёт /send-vc и /login (код из письма в игре).
-  gameApi: { up: true, sendOk: true, acceptCode: '123456', zone: '6634' },
+  gameApi: { up: true, sendOk: true, acceptCode: '4821', zone: '6634' },
   gameCalls: [],
   profilePatches: [],
 }
@@ -152,7 +152,7 @@ const reset = () => {
   state.tg = []
   state.deleted = []
   state.linkOk = true
-  state.gameApi = { up: true, sendOk: true, acceptCode: '123456', zone: '6634' }
+  state.gameApi = { up: true, sendOk: true, acceptCode: '4821', zone: '6634' }
   state.gameCalls = []
   state.profilePatches = []
   state.admins = { u1: { id: 'u1', email: 'player@example.test' } }
@@ -164,7 +164,7 @@ await test('T-GL-01 health отдаёт build функции', async () => {
   const data = await res.json()
   assert.equal(res.status, 200)
   assert.equal(data.ok, true)
-  assert.equal(data.build, 'game-login-v3')
+  assert.equal(data.build, 'game-login-v4')
 })
 
 // ---------- шаг 1: код ----------
@@ -394,14 +394,14 @@ await test('T-GL-24 предупреждение в Telegram, если бот п
 await test('T-GL-25 код из письма в игре даёт сессию', async () => {
   reset()
   await post('code', { gameId: '1340937090', gameServer: '6634' })
-  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '123456' })
+  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
   const data = await res.json()
   assert.equal(res.status, 200, JSON.stringify(data))
   assert.equal(data.ok, true)
   assert.equal(data.tokenHash, 'HASH-player@example.test')
   const verify = state.gameCalls[state.gameCalls.length - 1]
   assert.match(verify.url, /\/user\/auth\/login$/)
-  assert.deepEqual(verify.body, { role_id: 1340937090, zone_id: 6634, vc: '123456' })
+  assert.deepEqual(verify.body, { role_id: 1340937090, zone_id: 6634, vc: '4821' })
   assert.equal(state.codes.length, 0, 'попытка одноразовая')
 })
 
@@ -409,7 +409,7 @@ await test('T-GL-26 JWT игры наружу не отдаётся', async () =
   reset()
   state.gameApi = { ...state.gameApi }
   await post('code', { gameId: '1340937090', gameServer: '6634' })
-  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '123456' })
+  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
   const text = JSON.stringify(await res.json())
   assert.doesNotMatch(text, /jwt|"token"|roleid/i, 'в ответе нет данных игры: ' + text)
 })
@@ -433,7 +433,7 @@ await test('T-GL-28 после 5 неверных попыток код сгор
     last = await post('session', { gameId: '1340937090', gameServer: '6634', code: '000000' })
   }
   assert.equal((await last.json()).error, 'bad_code')
-  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '123456' })
+  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
   assert.equal(res.status, 429, 'верный код больше не принимается')
   assert.equal((await res.json()).error, 'too_many_attempts')
   assert.equal(state.codes.length, 0)
@@ -467,7 +467,7 @@ await test('T-GL-31 канал в запросе и в подтверждени�
 
 await test('T-GL-32 на шаге проверки профиль не раскрывается', async () => {
   reset()
-  const res = await post('session', { gameId: '999999999', code: '123456' })
+  const res = await post('session', { gameId: '999999999', code: '4821' })
   assert.equal(res.status, 401)
   assert.equal((await res.json()).error, 'bad_code', 'не отвечаем profile_not_found')
 })
@@ -552,7 +552,7 @@ await test('T-GL-38 тексты каналов без пароля Moonton', ()
 await test('T-GL-39 код из игры ставит отметку подтверждения', async () => {
   reset()
   await post('code', { gameId: '1340937090', gameServer: '6634' })
-  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '123456' })
+  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
   const data = await res.json()
   assert.equal(data.ok, true)
   assert.equal(data.verified, true)
@@ -599,6 +599,41 @@ await test('T-GL-44 в привязке из профиля только код 
   assert.match(src, /onlyIngame/, 'нет режима «только код из игры»')
   const profile = src.slice(src.indexOf('export function ProfileScreen'), src.indexOf('/* =============================================================== DRAFT'))
   assert.match(profile, /onlyIngame/, 'профиль не включает режим «только из игры»')
+})
+
+
+// ---------- длина кода: в игре 4 цифры ----------
+await test('T-GL-45 четырёхзначный код из письма принимается', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
+  const data = await res.json()
+  assert.equal(res.status, 200, JSON.stringify(data))
+  assert.equal(data.ok, true)
+  assert.equal(data.verified, true)
+  const verify = state.gameCalls[state.gameCalls.length - 1]
+  assert.equal(verify.body.vc, '4821', 'в шлюз уходит код как есть')
+})
+
+await test('T-GL-46 код из 3 цифр — bad_request, лишние символы отбрасываются', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  const short = await post('session', { gameId: '1340937090', gameServer: '6634', code: '482' })
+  assert.equal(short.status, 400)
+  assert.equal((await short.json()).error, 'bad_request')
+  assert.equal(state.codes[0].attempts, 0, 'мусорный ввод не тратит попытку')
+  // Нецифры вырезаются: «4-8 2 1» всё равно идут как 4-значный код.
+  const messy = await post('session', { gameId: '1340937090', gameServer: '6634', code: '4-8 2 1' })
+  assert.equal(messy.status, 200, JSON.stringify(await messy.json()))
+  assert.equal(state.gameCalls[state.gameCalls.length - 1].body.vc, '4821')
+})
+
+await test('T-GL-47 интерфейс ждёт 4 цифры, а не 6', () => {
+  const src = read('app/src/screens.jsx')
+  assert.match(src, /Код из письма — 4 цифры/)
+  assert.match(src, /gameCode\.length < 4/, 'кнопка «Войти» не разблокируется на 4 цифрах')
+  assert.doesNotMatch(src, /gameCode\.length !== 6/, 'старое требование ровно 6 цифр')
+  assert.match(src, /В письме 4 цифры/)
 })
 
 console.log(`\n${passed}/${passed + failed} game-login tests passed`)

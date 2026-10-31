@@ -37,7 +37,7 @@
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').replace(/\/+$/, '')
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') || ''
-const BUILD = 'game-login-v3'
+const BUILD = 'game-login-v4'
 const CODE_TTL_MS = 5 * 60 * 1000
 const COOLDOWN_MS = 30 * 1000
 const MAX_ATTEMPTS = 5
@@ -296,7 +296,9 @@ async function handleSession(req) {
   const gameServer = digits(body.gameServer, 6)
   const code = digits(body.code, 6)
   const channel = body.channel === 'telegram' ? 'telegram' : 'ingame'
-  if (!/^[0-9]{6,12}$/.test(gameId) || !/^[0-9]{6}$/.test(code)) {
+  // В письме на внутриигровую почту MLBB приходит 4-значный код, в Telegram —
+  // 6-значный. Принимаем 4–6 цифр, точную длину проверяет сам шлюз/бот.
+  if (!/^[0-9]{6,12}$/.test(gameId) || !/^[0-9]{4,6}$/.test(code)) {
     return json({ ok: false, error: 'bad_request' }, 400)
   }
 
