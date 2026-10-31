@@ -28,16 +28,18 @@
 - `.github/workflows/android.yml` — сборка APK на каждый пуш и AAB для Play,
   если добавлен ключ подписи.
 
-## Один раз настроить Supabase
+## Supabase (уже настроено)
 
-Supabase → **Authentication → URL Configuration → Redirect URLs** → добавить:
+В проекте `yjedqdbwvjvikyixsduw` → **Authentication → URL Configuration →
+Redirect URLs** добавлены:
 
 ```
 com.namemlbb.app://auth
+com.namemlbb.app://**
 ```
 
-Без этой строки провайдер вернёт ошибку `redirect_uri not allowed`, и вход в
-приложении не завершится.
+Если переносишь проект в другой Supabase — добавь эти две строки заново, иначе
+провайдер вернёт `redirect_uri not allowed` и вход в приложении не завершится.
 
 ## Сборка APK (без своего компьютера)
 

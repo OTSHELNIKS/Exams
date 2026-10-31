@@ -11,6 +11,21 @@ production-деплои ставятся на паузу, когда закан�
 После регистрации по почте подтвердите email по письму и вернитесь по ссылке,
 чтобы войти.
 
+## Мобильное приложение (Android, iOS — позже)
+
+Тот же код в нативной оболочке Capacitor: `appId com.namemlbb.app`, вход через
+Google открывается в системном браузере и возвращается по deep link
+`com.namemlbb.app://auth`.
+
+**Скачать APK (свежая сборка на каждый пуш):**
+https://github.com/OTSHELNIKS/Exams/releases/download/android-latest/NAME-5.apk
+— или открой [Releases → Android APK](https://github.com/OTSHELNIKS/Exams/releases/tag/android-latest)
+и возьми последний файл (номер в имени растёт с каждой сборкой).
+
+Сборка, подпись для Google Play, чек-лист публикации и тексты листинга —
+[`app/NATIVE.md`](./app/NATIVE.md) и [`app/STORE.md`](./app/STORE.md).
+iOS-проект лежит в `app/ios` и собирается на Mac, когда дойдём до App Store.
+
 Реализация проекта по презентации заказчика:
 [папка с видео на Google Диске](https://drive.google.com/drive/folders/1NkWbVfC0ya0yPKKve7BPyAK1mQ0dG8x1)
 (`VID_20261027_190901_779.mp4`, 7 минут).
