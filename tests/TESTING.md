@@ -17,11 +17,11 @@ node tests/socials.test.mjs  # 22 проверки привязки соцсет
 node tests/vk-auth.test.mjs  # 9 проверок VK ID (OAuth + PKCE)
 node tests/game-login.test.mjs  # 21 проверка входа через игру (Game ID + код в Telegram)
 node tests/public-profile.test.mjs  # 15 проверок публичной карточки игрока
-node tests/tiktok-auth.test.mjs  # 24 проверки привязки TikTok (Login Kit)
+node tests/tiktok-auth.test.mjs  # 25 проверок привязки TikTok (Login Kit)
 node tests/legal.test.mjs  # 9 проверок страниц «Политика» и «Условия» (нужны для ревью TikTok)
 ```
 
-Всего на 2026-10-31: **206 автотестов** (21 — вход через игру, 24 — TikTok, 9 — юридические страницы и подтверждение домена, 15 — просмотр чужих профилей).
+Всего на 2026-10-31: **207 автотестов** (21 — вход через игру, 25 — TikTok, 9 — юридические страницы и подтверждение домена, 15 — просмотр чужих профилей).
 
 Тест грузит **настоящий** `supabase/functions/telegram-bot/index.ts`, подменяет `Deno`/`fetch`
 и гоняет фейковые апдейты Telegram + вызовы `?action=notify` / `?setup` / `?health`.
@@ -47,7 +47,7 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 | T-DB (база, RLS, ограничения) | 00–18 | ✅ 19/19 PASS |
 | T-GL (вход через игру) | 01–21 | ✅ 21/21 PASS |
 | T-PUB (профиль другого игрока) | 01–15 | ✅ 15/15 PASS |
-| T-TT (привязка TikTok) | 01–24 | ✅ 24/24 PASS |
+| T-TT (привязка TikTok) | 01–25 | ✅ 25/25 PASS |
 | T-LGL (документы для ревью) | 01–09 | ✅ 9/9 PASS |
 | T-FE (фронт: сборка, бандл) | 01–04 | ✅ 4/4 PASS |
 | T-LIVE (прод: сайт, health) | 01–02 | ✅ 2/2 PASS |
@@ -237,6 +237,7 @@ edge-функции `tiktok-auth` (`build: tiktok-auth-v1`); браузер по
 |---|---|---|---|
 | 01 | Ссылка авторизации | `tiktok.com/v2/auth/authorize/`, client_key, scope `user.info.basic`, redirect_uri, state | ✅ |
 | 02 | Client key | Берётся из `VITE_TIKTOK_CLIENT_KEY` / `window`, не пустой | ✅ |
+| 02b | Ключ в сборке | Client key зашит по умолчанию, workflow его подставляет, секрета в сборке нет | ✅ |
 | 03 | Старт привязки | State сохранён в sessionStorage (≥20 символов) | ✅ |
 | 04 | Нет client key | `TIKTOK_NOT_CONFIGURED`, на TikTok не уходим | ✅ |
 | 05 | Возврат с кодом | `{code, state}` разобраны | ✅ |

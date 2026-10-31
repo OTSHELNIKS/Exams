@@ -15,7 +15,10 @@ const TIKTOK_AUTH = 'https://www.tiktok.com/v2/auth/authorize/'
 const STATE_KEY = 'name-mlbb:tiktok-state'
 const SCOPE = 'user.info.basic'
 
-export const DEFAULT_TIKTOK_CLIENT_KEY = ''
+// Client key приложения «NAME MLBB» в TikTok for Developers (Login Kit).
+// Это публичный идентификатор: он и так уходит в браузер. Секрет приложения
+// живёт только в Supabase (TIKTOK_CLIENT_SECRET) и в бандл не попадает.
+export const DEFAULT_TIKTOK_CLIENT_KEY = 'awyj2tttpian4x4v'
 
 // Читаем через window намеренно: иначе бандлер подставит пустую строку и
 // вырежет модуль как мёртвый код (так уже было с VK).

@@ -65,6 +65,17 @@ await test('T-TT-02 client key берётся из window/env и не пусто
   assert.equal(tiktok.tiktokConfigured, true)
 })
 
+await test('T-TT-02b client key приложения зашит по умолчанию и собирается в бандл', () => {
+  // Публичный идентификатор: без него плитка TikTok не показывается вовсе.
+  assert.match(tiktok.DEFAULT_TIKTOK_CLIENT_KEY, /^[a-z0-9]{16,}$/, 'ключ по умолчанию пустой или битый')
+  const workflow = read('.github/workflows/pages.yml')
+  assert.ok(workflow.includes(tiktok.DEFAULT_TIKTOK_CLIENT_KEY), 'сборка на Pages не получает client key')
+  assert.ok(workflow.includes('VITE_TIKTOK_CLIENT_KEY'), 'в workflow нет переменной сборки')
+  // Секрет в репозиторий и в сборку попадать не должен.
+  assert.ok(!/^\s*TIKTOK_CLIENT_SECRET\s*:/m.test(workflow), 'секрет попал в переменные сборки')
+  assert.ok(!/client_secret\s*[:=]\s*['"]/.test(read('app/src/tiktok-auth.js')), 'секрет попал во фронтенд')
+})
+
 await test('T-TT-03 старт привязки сохраняет state для проверки на возврате', async () => {
   const url = await tiktok.startTikTokAuth({ clientKey: 'ck123', redirect: REDIRECT })
   const state = new URL(url).searchParams.get('state')

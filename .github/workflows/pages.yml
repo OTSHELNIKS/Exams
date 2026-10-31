@@ -64,7 +64,7 @@ jobs:
           VITE_VK_CLIENT_ID: ${{ vars.VITE_VK_CLIENT_ID || '54867424' }}
           # Client key приложения TikTok for Developers (Login Kit). Публичный
           # идентификатор, секрет живёт только в Supabase: TIKTOK_CLIENT_SECRET.
-          VITE_TIKTOK_CLIENT_KEY: ${{ vars.VITE_TIKTOK_CLIENT_KEY || '' }}
+          VITE_TIKTOK_CLIENT_KEY: ${{ vars.VITE_TIKTOK_CLIENT_KEY || 'awyj2tttpian4x4v' }}
         run: npm --prefix app run build
       - name: SPA fallback
         run: cp app/dist/index.html app/dist/404.html
