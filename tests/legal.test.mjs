@@ -3,7 +3,7 @@
 // их живыми, честными (описан реальный scope user.info.basic) и доступными из сайта.
 // Run: node tests/legal.test.mjs   (zero dependencies)
 import assert from 'node:assert/strict'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -82,6 +82,19 @@ test('T-LGL-08 документы не противоречат коду TikTok'
   assert.match(fn, /open_id,display_name,avatar_url/, 'сервер запрашивает не только базовый профиль')
   assert.ok(!fn.includes('video.list') && !fn.includes('video.publish'), 'функция просит лишние права')
   assert.ok(!/access_token/i.test(privacy.split('Summary in English')[0].replace(/токен/gi, '')), 'в политике упомянут токен как хранимый')
+})
+
+test('T-LGL-09 файл подтверждения URL от TikTok лежит в корне сайта', () => {
+  // Имя файла выдаёт TikTok: tiktok<key>.txt, внутри строка
+  // "tiktok-developers-site-verification=<key>". Лежит в app/public — значит
+  // попадает в корень https://otshelniks.github.io/Exams/.
+  const dir = join(root, 'app/public')
+  const files = readdirSync(dir).filter((f) => /^tiktok.*\.txt$/.test(f))
+  assert.equal(files.length, 1, 'файла подтверждения нет (или их несколько)')
+  const content = readFileSync(join(dir, files[0]), 'utf8').trim()
+  assert.match(content, /^tiktok-developers-site-verification=.+$/, 'неверный формат файла')
+  const key = files[0].replace(/^tiktok/, '').replace(/\.txt$/, '')
+  assert.ok(content.endsWith(key), 'ключ в имени файла и в содержимом не совпадают')
 })
 
 console.log(`\nlegal: ${passed}/${passed + failed}`)

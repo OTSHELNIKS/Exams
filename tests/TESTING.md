@@ -18,10 +18,10 @@ node tests/vk-auth.test.mjs  # 9 проверок VK ID (OAuth + PKCE)
 node tests/game-login.test.mjs  # 21 проверка входа через игру (Game ID + код в Telegram)
 node tests/public-profile.test.mjs  # 15 проверок публичной карточки игрока
 node tests/tiktok-auth.test.mjs  # 24 проверки привязки TikTok (Login Kit)
-node tests/legal.test.mjs  # 8 проверок страниц «Политика» и «Условия» (нужны для ревью TikTok)
+node tests/legal.test.mjs  # 9 проверок страниц «Политика» и «Условия» (нужны для ревью TikTok)
 ```
 
-Всего на 2026-10-31: **205 автотестов** (21 — вход через игру, 24 — TikTok, 8 — юридические страницы, 15 — просмотр чужих профилей).
+Всего на 2026-10-31: **206 автотестов** (21 — вход через игру, 24 — TikTok, 9 — юридические страницы и подтверждение домена, 15 — просмотр чужих профилей).
 
 Тест грузит **настоящий** `supabase/functions/telegram-bot/index.ts`, подменяет `Deno`/`fetch`
 и гоняет фейковые апдейты Telegram + вызовы `?action=notify` / `?setup` / `?health`.
@@ -48,7 +48,7 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 | T-GL (вход через игру) | 01–21 | ✅ 21/21 PASS |
 | T-PUB (профиль другого игрока) | 01–15 | ✅ 15/15 PASS |
 | T-TT (привязка TikTok) | 01–24 | ✅ 24/24 PASS |
-| T-LGL (документы для ревью) | 01–08 | ✅ 8/8 PASS |
+| T-LGL (документы для ревью) | 01–09 | ✅ 9/9 PASS |
 | T-FE (фронт: сборка, бандл) | 01–04 | ✅ 4/4 PASS |
 | T-LIVE (прод: сайт, health) | 01–02 | ✅ 2/2 PASS |
 | M (ручные, на устройстве) | 01–15 | ⏳ к выполнению |
@@ -283,6 +283,16 @@ TikTok Login Kit требует публичные Terms of Service и Privacy P
 | 06 | Английский блок | «Summary in English» и контакт в обоих документах | ✅ |
 | 07 | Навигация | Документы связаны между собой и с приложением | ✅ |
 | 08 | Честность | Запрашиваем только базовый профиль, лишних прав нет | ✅ |
+| 09 | Подтверждение URL | `tiktok<key>.txt` в `app/public`, имя и содержимое совпадают | ✅ |
+
+Подтверждение владения адресом (TikTok → URL properties → **URL prefix**):
+файл `https://otshelniks.github.io/Exams/tiktokOdUndK3a1I8gHCy17ppWPoi4LZTPWapJ.txt`
+кладётся в `app/public` и попадает в корень сайта вместе с остальной статикой.
+| 09 | Подтверждение URL | `tiktok<key>.txt` лежит в `app/public`, формат и ключ совпадают | ✅ |
+
+Подтверждение владения адресом (TikTok → URL properties → **URL prefix**):
+файл `https://otshelniks.github.io/Exams/tiktokOdUndK3a1I8gHCy17ppWPoi4LZTPWapJ.txt`
+попадает в корень сайта вместе с остальной статикой.
 
 ## T-FE — фронт (авто)
 
