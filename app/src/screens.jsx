@@ -447,7 +447,7 @@ export function GameAccountCard({ gameId, gameServer, verified, onConfirm, onRef
   // Заполненные в анкете Game ID и сервер сами по себе ничего не подтверждают.
   const status = verified ? 'подтверждён' : filled ? 'не подтверждён' : 'не привязан'
   const defaultHint = verified
-    ? 'Аккаунт подтверждён кодом из внутриигровой почты MLBB — этим входом и восстанавливается доступ. КДА и винрейт обновляются одной кнопкой, без кода.'
+    ? 'Аккаунт подтверждён кодом из внутриигровой почты MLBB — этим входом и восстанавливается доступ. КДА и винрейт обновляются без кода, как только игра снова их отдаёт.'
     : filled
       ? 'Game ID и сервер из анкеты — просто цифры. Подтверди владение: код придёт на внутриигровую почту MLBB.'
       : 'Привяжи аккаунт: код придёт на внутриигровую почту MLBB, пароль от игры не нужен.'
@@ -1477,7 +1477,7 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
             const result = await refreshGameStats({ supabase })
             setToast(result.stats
               ? `КДА и винрейт обновлены${result.winrate === null ? '' : ` · винрейт ${result.winrate}%`}`
-              : 'Игра не отдала цифры — попробуй позже')
+              : 'Игра сейчас не отдаёт статистику — попробуй позже')
             if (onGameVerified) onGameVerified({ verified: true })
           } catch (e) {
             const raw = String(e?.message || e)
@@ -1503,7 +1503,7 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
         refreshOnly={gameRefresh}
         onVerified={(result) => { if (onGameVerified) onGameVerified(result) }}
         onStats={(result) => {
-          setToast(result && result.stats ? 'КДА и винрейт обновлены' : 'Код принят, но игра не отдала цифры — попробуй позже')
+          setToast(result && result.stats ? 'КДА и винрейт обновлены' : 'Код принят, но игра сейчас не отдаёт статистику — попробуй позже')
           if (onGameVerified) onGameVerified({ verified: true })
         }}
       />
@@ -1970,7 +1970,7 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
             {winrate || kda
               ? `Данные игры${matches ? ` · ${matches} матчей` : ''}${row.game_stats_at ? ` · обновлено ${new Date(row.game_stats_at).toLocaleDateString('ru-RU')}` : ''}.`
               : row.game_verified
-                ? 'Аккаунт подтверждён, но цифры игры ещё не загрузились — подтвердите его кодом из внутриигровой почты ещё раз.'
+                ? 'Аккаунт подтверждён. Игра сейчас не отдаёт статистику — цифры появятся, как только шлюз MLBB снова её откроет.'
                 : 'КДА и винрейт появятся после подтверждения аккаунта через внутриигровую почту MLBB.'}
           </p>
 

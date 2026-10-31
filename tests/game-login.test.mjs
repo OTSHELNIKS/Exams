@@ -30,6 +30,7 @@ const state = {
   tokens: [],
   sessions: { 'USER-JWT': 'u1' },
   gameTokenExpired: false,
+  gameStatsOffline: false,
 }
 
 function J(status, json) {
@@ -122,6 +123,8 @@ globalThis.fetch = async (input, init) => {
     const auth = (init.headers && (init.headers.Authorization || init.headers.authorization)) || ''
     if (!/^Bearer GJWT/.test(auth)) return J(401, { code: 401, message: 'unauthorized' })
     if (state.gameTokenExpired) return J(401, { code: 401, message: 'token expired' })
+    // Игра сняла эндпоинт статистики: код 10407 «接口下线».
+    if (state.gameStatsOffline) return J(200, { code: 10407, data: null, message: '接口下线' })
     if (url.includes('/user/stats')) {
       return state.statsUp ? J(200, { code: 0, data: { wc: 188, tc: 308, as: 762.35 } }) : J(502, {})
     }
@@ -210,6 +213,7 @@ const reset = () => {
   state.tokens = []
   state.sessions = { 'USER-JWT': 'u1' }
   state.gameTokenExpired = false
+  state.gameStatsOffline = false
   state.admins = { u1: { id: 'u1', email: 'player@example.test' } }
 }
 
