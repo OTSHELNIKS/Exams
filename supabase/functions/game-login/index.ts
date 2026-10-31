@@ -10,6 +10,7 @@
 //
 //   POST /?action=code     { gameId, gameServer, channel } -> код отправлен
 //   POST /?action=session  { gameId, gameServer, code, channel } -> { tokenHash }
+//   POST /?action=stats    { gameId, gameServer, code } -> обновление КДА/винрейта
 //
 // Клиент меняет tokenHash на сессию через supabase.auth.verifyOtp({ type:
 // 'magiclink', token_hash }), то есть пароль не нужен вообще.
@@ -37,7 +38,7 @@
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').replace(/\/+$/, '')
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') || ''
-const BUILD = 'game-login-v5'
+const BUILD = 'game-login-v6'
 const CODE_TTL_MS = 5 * 60 * 1000
 const COOLDOWN_MS = 30 * 1000
 const MAX_ATTEMPTS = 5
@@ -207,21 +208,51 @@ function statsFromGame(stats, matches) {
   return Object.keys(patch).length ? patch : null
 }
 
-async function fetchGameStats(jwt) {
-  if (!jwt) return null
+// Ответы шлюза бывают разной вложенности: `data.wc`, `data.stats.wc`, иногда
+// массив прямо в `data`. Достаём и то, и другое, чтобы не терять цифры.
+function pickStats(j) {
+  const d = j && j.data
+  if (!d) return null
+  if (d.stats && typeof d.stats === 'object') return d.stats
+  if (typeof d === 'object' && !Array.isArray(d)) return d
+  return null
+}
+
+function pickMatches(j) {
+  const d = j && j.data
+  if (!d) return null
+  if (Array.isArray(d)) return d
+  if (Array.isArray(d.result)) return d.result
+  if (d.data && Array.isArray(d.data.result)) return d.data.result
+  if (d.matches && Array.isArray(d.matches)) return d.matches
+  return null
+}
+
+async function gameGet(base, path, jwt) {
   const headers = { Authorization: 'Bearer ' + jwt, Accept: 'application/json' }
+  const r = await fetch(base + path, { headers })
+  const j = await r.json().catch(() => null)
+  if (!r.ok || !j || j.code !== 0) {
+    console.error('game get failed', base + path, r.status, String((j && j.msg) || '').slice(0, 120))
+    return null
+  }
+  return j
+}
+
+async function fetchGameStats(jwt) {
+  if (!jwt) { console.error('no game jwt — статистика не запрашивается'); return null }
   for (const base of GAME_API_BASES) {
     let stats = null
     let matches = null
     try {
-      const r = await fetch(base + '/user/stats', { headers })
-      const j = await r.json().catch(() => null)
-      if (r.ok && j && j.code === 0 && j.data) stats = j.data
+      const j = await gameGet(base, '/user/stats', jwt)
+      stats = pickStats(j)
+      if (stats) console.error('stats ok', base, JSON.stringify(stats).slice(0, 200))
     } catch (e) { console.error('stats threw', base, String(e)) }
     try {
-      const r = await fetch(base + '/user/matches?limit=20', { headers })
-      const j = await r.json().catch(() => null)
-      if (r.ok && j && j.code === 0 && j.data && Array.isArray(j.data.result)) matches = j.data.result
+      const j = await gameGet(base, '/user/matches?limit=20', jwt)
+      matches = pickMatches(j)
+      if (matches) console.error('matches ok', base, matches.length)
     } catch (e) { console.error('matches threw', base, String(e)) }
     if (stats || matches) return { stats, matches }
   }
@@ -341,6 +372,59 @@ async function magicLinkToken(userId) {
   } catch (e) { console.error('magicLinkToken threw', String(e)); return null }
 }
 
+// Проверка кода и запись статистики. Используется и входом (session), и
+// отдельным обновлением цифр (stats) для уже подтверждённых профилей.
+async function applyCode(profile, gameId, gameServer, code, channel) {
+  const attempt = await latestAttempt(profile.user_id)
+  if (!attempt || attempt.channel !== channel) return { error: 'bad_code', status: 401 }
+  if (new Date(attempt.expires_at).getTime() < Date.now()) {
+    await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
+    return { error: 'code_expired', status: 401 }
+  }
+  if (String(attempt.game_id) !== gameId) return { error: 'bad_code', status: 401 }
+  if (gameServer && attempt.game_server && String(attempt.game_server) !== gameServer) {
+    return { error: 'bad_code', status: 401 }
+  }
+  if ((attempt.attempts || 0) >= MAX_ATTEMPTS) {
+    await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
+    return { error: 'too_many_attempts', status: 429 }
+  }
+
+  let valid = false
+  let gameJwt = ''
+  if (channel === 'telegram') {
+    valid = String(attempt.code) === String(code) && attempt.game_id === gameId
+  } else {
+    const check = await verifyInGameCode(gameId, gameServer || attempt.game_server || '', code)
+    if (check.error === 'ingame_unavailable') return { error: 'ingame_unavailable', status: 503 }
+    valid = !check.error
+    gameJwt = check.jwt || ''
+  }
+
+  if (!valid) {
+    const used = (attempt.attempts || 0) + 1
+    await dbPatch('game_login_codes', { user_id: 'eq.' + profile.user_id }, { attempts: used })
+    return { error: 'bad_code', status: 401, attemptsLeft: Math.max(0, MAX_ATTEMPTS - used) }
+  }
+
+  await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
+  return { ok: true, jwt: gameJwt }
+}
+
+// Пишем отметку «подтверждён» и цифры игры одним PATCH.
+async function saveGameData(profile, gameId, jwt) {
+  const patch = {
+    game_verified_at: new Date().toISOString(),
+    game_verified_id: gameId,
+  }
+  const fetched = await fetchGameStats(jwt)
+  const stats = fetched ? statsFromGame(fetched.stats, fetched.matches) : null
+  if (stats) Object.assign(patch, stats, { game_stats_at: new Date().toISOString() })
+  const marked = await dbPatch('player_profiles', { user_id: 'eq.' + profile.user_id }, patch)
+  if (!marked) console.error('game data mark failed', profile.user_id)
+  return Boolean(stats)
+}
+
 async function handleSession(req) {
   const body = await readJson(req)
   const gameId = digits(body.gameId, 12)
@@ -358,59 +442,41 @@ async function handleSession(req) {
   const profile = await findProfile(gameId, gameServer)
   if (!profile) return json({ ok: false, error: 'bad_code' }, 401)
 
-  const attempt = await latestAttempt(profile.user_id)
-  if (!attempt || attempt.channel !== channel) return json({ ok: false, error: 'bad_code' }, 401)
-  if (new Date(attempt.expires_at).getTime() < Date.now()) {
-    await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
-    return json({ ok: false, error: 'code_expired' }, 401)
+  const checked = await applyCode(profile, gameId, gameServer, code, channel)
+  if (!checked.ok) {
+    return json({ ok: false, error: checked.error, attemptsLeft: checked.attemptsLeft }, checked.status)
   }
-  if (String(attempt.game_id) !== gameId) return json({ ok: false, error: 'bad_code' }, 401)
-  if (gameServer && attempt.game_server && String(attempt.game_server) !== gameServer) {
-    return json({ ok: false, error: 'bad_code' }, 401)
-  }
-  if ((attempt.attempts || 0) >= MAX_ATTEMPTS) {
-    await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
-    return json({ ok: false, error: 'too_many_attempts' }, 429)
-  }
-
-  let valid = false
-  let gameJwt = ''
-  if (channel === 'telegram') {
-    valid = String(attempt.code) === String(code) && attempt.game_id === gameId
-  } else {
-    const check = await verifyInGameCode(gameId, gameServer || attempt.game_server || '', code)
-    if (check.error === 'ingame_unavailable') return json({ ok: false, error: 'ingame_unavailable' }, 503)
-    valid = !check.error
-    gameJwt = check.jwt || ''
-  }
-
-  if (!valid) {
-    const used = (attempt.attempts || 0) + 1
-    await dbPatch('game_login_codes', { user_id: 'eq.' + profile.user_id }, { attempts: used })
-    return json({ ok: false, error: 'bad_code', attemptsLeft: Math.max(0, MAX_ATTEMPTS - used) }, 401)
-  }
-
-  await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
 
   // Владение аккаунтом доказано кодом из игры — только теперь ставим отметку
   // «подтверждён». Код в Telegram доказывает лишь доступ к боту, поэтому
   // статус не меняет.
-  if (channel === 'ingame') {
-    const patch = {
-      game_verified_at: new Date().toISOString(),
-      game_verified_id: gameId,
-    }
-    // Заодно забираем КДА и винрейт: другой возможности получить игровой JWT нет.
-    const fetched = await fetchGameStats(gameJwt)
-    const stats = fetched ? statsFromGame(fetched.stats, fetched.matches) : null
-    if (stats) Object.assign(patch, stats, { game_stats_at: new Date().toISOString() })
-    const marked = await dbPatch('player_profiles', { user_id: 'eq.' + profile.user_id }, patch)
-    if (!marked) console.error('verify mark failed', profile.user_id)
-  }
+  let stats = false
+  if (channel === 'ingame') stats = await saveGameData(profile, gameId, checked.jwt)
 
   const tokenHash = await magicLinkToken(profile.user_id)
   if (!tokenHash) return json({ ok: false, error: 'no_email' }, 409)
-  return json({ ok: true, tokenHash: tokenHash, verified: channel === 'ingame' })
+  return json({ ok: true, tokenHash: tokenHash, verified: channel === 'ingame', stats })
+}
+
+// Обновление КДА и винрейта для уже подтверждённого профиля: тот же код из
+// внутриигровой почты, но новая сессия не создаётся — только цифры.
+async function handleStats(req) {
+  const body = await readJson(req)
+  const gameId = digits(body.gameId, 12)
+  const gameServer = digits(body.gameServer, 6)
+  const code = digits(body.code, 6)
+  if (!/^[0-9]{6,12}$/.test(gameId) || !/^[0-9]{4,6}$/.test(code)) {
+    return json({ ok: false, error: 'bad_request' }, 400)
+  }
+  const profile = await findProfile(gameId, gameServer)
+  if (!profile) return json({ ok: false, error: 'bad_code' }, 401)
+
+  const checked = await applyCode(profile, gameId, gameServer, code, 'ingame')
+  if (!checked.ok) {
+    return json({ ok: false, error: checked.error, attemptsLeft: checked.attemptsLeft }, checked.status)
+  }
+  const stats = await saveGameData(profile, gameId, checked.jwt)
+  return json({ ok: true, stats })
 }
 
 Deno.serve(async (req) => {
@@ -424,6 +490,7 @@ Deno.serve(async (req) => {
   try {
     if (action === 'code') return await handleCode(req)
     if (action === 'session') return await handleSession(req)
+    if (action === 'stats') return await handleStats(req)
   } catch (e) {
     console.error('game-login failed', String(e))
     return json({ ok: false, error: 'internal' }, 500)

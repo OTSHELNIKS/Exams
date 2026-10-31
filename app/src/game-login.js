@@ -57,6 +57,18 @@ export async function signInWithGameCode({ gameId, gameServer, code, channel = '
   return { verified: data.verified === true }
 }
 
+// Обновление КДА и винрейта для уже подтверждённого аккаунта: тот же код из
+// внутриигровой почты, но новая сессия не выдаётся — только цифры.
+export async function refreshGameStats({ gameId, gameServer, code }) {
+  const { data } = await post('stats', { gameId, gameServer, code })
+  if (!data.ok) {
+    const error = new Error(data.error || 'internal')
+    if (data.attemptsLeft !== undefined) error.attemptsLeft = data.attemptsLeft
+    throw error
+  }
+  return { stats: data.stats === true }
+}
+
 // Технический код -> фраза для игрока.
 export function describeGameLoginError(error) {
   const raw = String(error?.message || error || '')

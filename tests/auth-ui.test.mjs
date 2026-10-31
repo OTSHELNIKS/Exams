@@ -252,6 +252,21 @@ await test('T-AU-09 в окне подтверждения поля Game ID в �
   assert.equal(dom.window.getComputedStyle(wrap).minWidth, '0px')
 })
 
+await test('T-AU-12 у подтверждённого аккаунта кнопка обновляет КДА и винрейт', async () => {
+  mountProfile({ gameVerified: true })
+  await settle()
+  const btn = Array.from(document.querySelectorAll('.game-account__btn'))
+    .find((b) => /Обновить КДА и винрейт/.test(b.textContent))
+  assert.ok(btn, 'нет кнопки обновления цифр')
+  click(btn)
+  await settle()
+  const html = document.body.innerHTML
+  assert.match(html, /Обновить данные игры/, 'окно обновления не открылось')
+  // Обновление цифр — не вход: выбора канала Telegram быть не должно.
+  assert.doesNotMatch(html, /Telegram-бот/, 'в обновлении цифр не должно быть Telegram-канала')
+  assert.match(html, /Отправить код в игру/)
+})
+
 rmSync(bundle, { force: true })
 console.log(`\n${passed}/${passed + failed} auth-ui tests passed`)
 if (failed) process.exit(1)

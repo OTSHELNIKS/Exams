@@ -185,7 +185,7 @@ await test('T-GL-01 health отдаёт build функции', async () => {
   const data = await res.json()
   assert.equal(res.status, 200)
   assert.equal(data.ok, true)
-  assert.equal(data.build, 'game-login-v5')
+  assert.equal(data.build, 'game-login-v6')
 })
 
 // ---------- шаг 1: код ----------
@@ -701,6 +701,28 @@ await test('T-GL-51 вход через Telegram не тянет статист�
   await post('session', { gameId: '1340937090', gameServer: '6634', code, channel: 'telegram' })
   assert.equal(state.statsCalls.length, 0)
   assert.equal(state.profilePatches.length, 0)
+})
+
+await test('T-GL-53 обновление цифр не выдаёт новую сессию', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  const res = await post('stats', { gameId: '1340937090', gameServer: '6634', code: '4821' })
+  const data = await res.json()
+  assert.equal(res.status, 200, JSON.stringify(data))
+  assert.equal(data.ok, true)
+  assert.equal(data.stats, true, 'статистика не записалась')
+  assert.equal(data.tokenHash, undefined, 'обновление цифр не должно выдавать сессию')
+  const mark = state.profilePatches.find((p) => p.patch.game_winrate)
+  assert.ok(mark, 'винрейт не сохранён')
+  assert.equal(mark.patch.game_kda, 7.67)
+})
+
+await test('T-GL-54 обновление цифр без верного кода ничего не пишет', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  const res = await post('stats', { gameId: '1340937090', gameServer: '6634', code: '0000' })
+  assert.equal(res.status, 401)
+  assert.equal(state.statsCalls.length, 0, 'статистику запрашивали без доказанного кода')
 })
 
 await test('T-GL-52 миграция статистики и публичной вьюхи', () => {

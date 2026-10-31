@@ -15,7 +15,7 @@ import {
   SOCIAL_PROVIDERS, SOCIAL_IDS, SOCIAL_ACTIVE, SOCIAL_ACTIVE_IDS, socialLabel, socialCaption, parseSocial,
 } from './data.js'
 import { AvatarCropModal } from './crop.jsx'
-import { requestGameCode, signInWithGameCode, describeGameLoginError } from './game-login.js'
+import { requestGameCode, signInWithGameCode, refreshGameStats, describeGameLoginError } from './game-login.js'
 import { openGame, gameHelpText, detectPlatform } from './game-link.js'
 import { tiktokConfigured } from './tiktok-auth.js'
 import {
@@ -228,7 +228,10 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
 
    Каналы: ingame — письмо на внутриигровую почту MLBB (основной);
    telegram — код в привязанный бот (запасной). */
-export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, setGameId, setGameServer, onlyIngame = false, onVerified }) {
+// refreshOnly — не вход, а обновление КДА и винрейта у уже подтверждённого
+// аккаунта: код из внутриигровой почты проверяется тем же способом, но
+// новая сессия не выдаётся и отметка «подтверждён» не переписывается.
+export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, setGameId, setGameServer, onlyIngame = false, refreshOnly = false, onVerified, onStats }) {
   const [gameStep, setGameStep] = useState('id')   // id | code
   const [gameCode, setGameCode] = useState('')
   const [gameBusy, setGameBusy] = useState(false)
@@ -271,8 +274,13 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
     }
     setGameBusy(true); setGameError('')
     try {
-      const result = await signInWithGameCode({ gameId, gameServer, code: gameCode, channel, supabase })
-      if (onVerified) onVerified(result)
+      if (refreshOnly) {
+        const result = await refreshGameStats({ gameId, gameServer, code: gameCode })
+        if (onStats) onStats(result)
+      } else {
+        const result = await signInWithGameCode({ gameId, gameServer, code: gameCode, channel, supabase })
+        if (onVerified) onVerified(result)
+      }
       onClose()
     } catch (e) {
       setGameError(describeGameLoginError(e))
@@ -300,7 +308,7 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
 
   return (
     <Modal open={open} onClose={onClose} labelledBy="game-login-title">
-        <h3 id="game-login-title">Вход через игру</h3>
+        <h3 id="game-login-title">{refreshOnly ? 'Обновить данные игры' : 'Вход через игру'}</h3>
         <p className="modal__role">
           {gameStep === 'id'
             ? onlyIngame
@@ -433,13 +441,13 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
 /* Игровой аккаунт — не соцсеть, поэтому он не входит в SocialRow (там счётчик
    «привязано N из M»). Показываем его отдельной карточкой сразу под разделом
    «СОЦСЕТИ»: тот же фирменный стиль, но своя логика и своя кнопка проверки. */
-export function GameAccountCard({ gameId, gameServer, verified, onConfirm, onOpenGame, hint, busy }) {
+export function GameAccountCard({ gameId, gameServer, verified, onConfirm, onRefresh, onOpenGame, hint, busy }) {
   const filled = Boolean(gameId)
   // Статус «привязан» = владение доказано кодом из внутриигровой почты.
   // Заполненные в анкете Game ID и сервер сами по себе ничего не подтверждают.
   const status = verified ? 'подтверждён' : filled ? 'не подтверждён' : 'не привязан'
   const defaultHint = verified
-    ? 'Аккаунт подтверждён кодом из внутриигровой почты MLBB — этим входом и восстанавливается доступ.'
+    ? 'Аккаунт подтверждён кодом из внутриигровой почты MLBB — этим входом и восстанавливается доступ. Подтверди ещё раз, чтобы обновить КДА и винрейт.'
     : filled
       ? 'Game ID и сервер из анкеты — просто цифры. Подтверди владение: код придёт на внутриигровую почту MLBB.'
       : 'Привяжи аккаунт: код придёт на внутриигровую почту MLBB, пароль от игры не нужен.'
@@ -458,8 +466,13 @@ export function GameAccountCard({ gameId, gameServer, verified, onConfirm, onOpe
       </div>
       <p className="social-hint">{hint || defaultHint}</p>
       <div className="game-account__actions">
-        <button type="button" className="btn btn--primary game-account__btn" disabled={busy} onClick={onConfirm}>
-          <Gamepad2 size={16} /> {verified ? 'Подтвердить снова' : filled ? 'Подтвердить кодом из игры' : 'Привязать игровой аккаунт'}
+        <button
+          type="button"
+          className="btn btn--primary game-account__btn"
+          disabled={busy}
+          onClick={verified && onRefresh ? onRefresh : onConfirm}
+        >
+          <RefreshCw size={16} /> {verified ? 'Обновить КДА и винрейт' : filled ? 'Подтвердить кодом из игры' : 'Привязать игровой аккаунт'}
         </button>
         {onOpenGame && (
           <button type="button" className="btn btn--ghost game-account__btn" onClick={onOpenGame}>
@@ -1403,6 +1416,8 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
   // Вход через игру прямо из профиля: поля Game ID подставляются из анкеты,
   // но их можно поправить — например, если в профиле опечатка.
   const [gameOpen, setGameOpen] = useState(false)
+  // true — окно открыто из «Обновить КДА и винрейт»: код проверяется, но входа нет.
+  const [gameRefresh, setGameRefresh] = useState(false)
   const [gameIdDraft, setGameIdDraft] = useState(gameId || '')
   const [gameServerDraft, setGameServerDraft] = useState(gameServer || '')
   useEffect(() => { setGameIdDraft(gameId || '') }, [gameId])
@@ -1453,19 +1468,25 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
         gameServer={gameServer}
         verified={Boolean(gameVerified)}
         hint={gameHelp || undefined}
-        onConfirm={() => { setGameHelp(''); setGameOpen(true) }}
+        onConfirm={() => { setGameHelp(''); setGameRefresh(false); setGameOpen(true) }}
+        onRefresh={() => { setGameHelp(''); setGameRefresh(true); setGameOpen(true) }}
         onOpenGame={openGameFromProfile}
       />
       <GameLoginModal
         open={gameOpen}
-        onClose={() => setGameOpen(false)}
+        onClose={() => { setGameOpen(false); setGameRefresh(false) }}
         supabase={supabase}
         gameId={gameIdDraft}
         gameServer={gameServerDraft}
         setGameId={setGameIdDraft}
         setGameServer={setGameServerDraft}
         onlyIngame
+        refreshOnly={gameRefresh}
         onVerified={(result) => { if (onGameVerified) onGameVerified(result) }}
+        onStats={(result) => {
+          setToast(result && result.stats ? 'КДА и винрейт обновлены' : 'Код принят, но игра не отдала цифры — попробуй позже')
+          if (onGameVerified) onGameVerified({ verified: true })
+        }}
       />
       <TelegramLinkCard supabase={supabase} userId={userId} />
       <button type="button" className="btn btn--ghost profile__back" onClick={onBack}>На главную</button>
