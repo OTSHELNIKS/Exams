@@ -136,7 +136,13 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId, game
 
       <footer className="site-foot">
         <Logo />
-        <p>NAME · Соревновательный матчмейкинг MLBB.</p>
+        <p>
+          NAME · Соревновательный матчмейкинг MLBB.
+          <span className="site-foot__legal">
+            <a href="./privacy.html">Политика конфиденциальности</a>
+            <a href="./terms.html">Условия использования</a>
+          </span>
+        </p>
         <button type="button" className="site-head__cta" onClick={onOpen}><Download size={16} /> Открыть приложение</button>
       </footer>
     </div>

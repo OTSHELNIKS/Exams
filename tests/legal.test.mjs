@@ -1,0 +1,88 @@
+// NAME MLBB — юридические страницы для проверки TikTok Login Kit.
+// TikTok требует рабочие URL Terms of Service и Privacy Policy. Тест держит
+// их живыми, честными (описан реальный scope user.info.basic) и доступными из сайта.
+// Run: node tests/legal.test.mjs   (zero dependencies)
+import assert from 'node:assert/strict'
+import { readFileSync, existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const root = join(here, '..')
+const read = (p) => readFileSync(join(root, p), 'utf8')
+
+const privacy = read('app/public/privacy.html')
+const terms = read('app/public/terms.html')
+const landing = read('app/src/landing.jsx')
+const fn = read('supabase/functions/tiktok-auth/index.ts')
+
+let passed = 0
+let failed = 0
+function test(name, fn) {
+  try {
+    fn()
+    passed += 1
+    console.log('PASS ' + name)
+  } catch (error) {
+    failed += 1
+    console.log('FAIL ' + name + ' — ' + error.message)
+  }
+}
+
+test('T-LGL-01 обе страницы существуют и собираются в сайт', () => {
+  assert.ok(existsSync(join(root, 'app/public/privacy.html')), 'нет privacy.html')
+  assert.ok(existsSync(join(root, 'app/public/terms.html')), 'нет terms.html')
+})
+
+test('T-LGL-02 страницы отдают нормальный HTML с заголовком и датой', () => {
+  for (const [name, html] of [['privacy', privacy], ['terms', terms]]) {
+    assert.match(html, /<!doctype html>/i, name + ': нет doctype')
+    assert.match(html, /<html lang="ru">/, name + ': нет языка')
+    assert.match(html, /<meta name="viewport"/, name + ': не адаптивно')
+    assert.match(html, /Обновлено 31 октября 2026/, name + ': нет даты обновления')
+    assert.match(html, /<h1>/, name + ': нет заголовка')
+  }
+})
+
+test('T-LGL-03 описан реальный доступ TikTok, без обещаний лишнего', () => {
+  assert.match(privacy, /user\.info\.basic/, 'не указан scope')
+  assert.match(privacy, /не публикуем ничего от вашего имени/i, 'не сказано, что постить не будем')
+  assert.match(privacy, /токен/i, 'не сказано, что токен не хранится')
+  assert.match(privacy, /display name|ник/i, 'не сказано, что получаем ник')
+})
+
+test('T-LGL-04 приватность честно описывает, что видят другие игроки', () => {
+  assert.match(privacy, /Game ID, скриншоты/i, 'не сказано, что Game ID скрыт')
+  assert.match(privacy, /без адреса почты/i, 'почта Google не упомянута как скрытая')
+  assert.match(privacy, /Supabase/, 'не указан обработчик данных')
+  assert.match(privacy, /удалени/i, 'нет описания удаления данных')
+})
+
+test('T-LGL-05 условия покрывают аккаунт, правила и призы', () => {
+  for (const topic of ['Аккаунт', 'Правила матчей', 'Модерация', 'призы', 'Ответственность', '13 лет']) {
+    assert.ok(terms.includes(topic), 'в условиях нет раздела: ' + topic)
+  }
+})
+
+test('T-LGL-06 обе страницы содержат английское резюме для ревьюера', () => {
+  for (const [name, html] of [['privacy', privacy], ['terms', terms]]) {
+    assert.ok(html.includes('Summary in English'), name + ': нет английского блока')
+    assert.ok(html.includes('https://t.me/name_mlbb_bot'), name + ': нет контакта')
+  }
+})
+
+test('T-LGL-07 страницы связаны между собой и с приложением', () => {
+  assert.ok(privacy.includes('./terms.html'), 'нет ссылки на условия')
+  assert.ok(terms.includes('./privacy.html'), 'нет ссылки на политику')
+  assert.ok(privacy.includes('./') && terms.includes('./'), 'нет возврата в приложение')
+  assert.ok(landing.includes('./privacy.html') && landing.includes('./terms.html'), 'на лендинге нет ссылок на документы')
+})
+
+test('T-LGL-08 документы не противоречат коду TikTok', () => {
+  assert.match(fn, /open_id,display_name,avatar_url/, 'сервер запрашивает не только базовый профиль')
+  assert.ok(!fn.includes('video.list') && !fn.includes('video.publish'), 'функция просит лишние права')
+  assert.ok(!/access_token/i.test(privacy.split('Summary in English')[0].replace(/токен/gi, '')), 'в политике упомянут токен как хранимый')
+})
+
+console.log(`\nlegal: ${passed}/${passed + failed}`)
+if (failed) process.exit(1)

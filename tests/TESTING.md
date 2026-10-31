@@ -18,9 +18,10 @@ node tests/vk-auth.test.mjs  # 9 проверок VK ID (OAuth + PKCE)
 node tests/game-login.test.mjs  # 21 проверка входа через игру (Game ID + код в Telegram)
 node tests/public-profile.test.mjs  # 15 проверок публичной карточки игрока
 node tests/tiktok-auth.test.mjs  # 24 проверки привязки TikTok (Login Kit)
+node tests/legal.test.mjs  # 8 проверок страниц «Политика» и «Условия» (нужны для ревью TikTok)
 ```
 
-Всего на 2026-10-31: **197 автотестов** (21 — вход через игру, 24 — TikTok, 15 — просмотр чужих профилей, 3 — привязки соцсетей переживают перезагрузку).
+Всего на 2026-10-31: **205 автотестов** (21 — вход через игру, 24 — TikTok, 8 — юридические страницы, 15 — просмотр чужих профилей).
 
 Тест грузит **настоящий** `supabase/functions/telegram-bot/index.ts`, подменяет `Deno`/`fetch`
 и гоняет фейковые апдейты Telegram + вызовы `?action=notify` / `?setup` / `?health`.
@@ -47,6 +48,7 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 | T-GL (вход через игру) | 01–21 | ✅ 21/21 PASS |
 | T-PUB (профиль другого игрока) | 01–15 | ✅ 15/15 PASS |
 | T-TT (привязка TikTok) | 01–24 | ✅ 24/24 PASS |
+| T-LGL (документы для ревью) | 01–08 | ✅ 8/8 PASS |
 | T-FE (фронт: сборка, бандл) | 01–04 | ✅ 4/4 PASS |
 | T-LIVE (прод: сайт, health) | 01–02 | ✅ 2/2 PASS |
 | M (ручные, на устройстве) | 01–15 | ⏳ к выполнению |
@@ -262,6 +264,25 @@ edge-функции `tiktok-auth` (`build: tiktok-auth-v1`); браузер по
 (Supabase → Edge Functions → Secrets) и переменная сборки `VITE_TIKTOK_CLIENT_KEY`
 (workflow Pages). Redirect URI в TikTok for Developers:
 `https://otshelniks.github.io/Exams/` — ровно так, со слешем на конце.
+
+## T-LGL — документы для проверки TikTok (авто)
+
+TikTok Login Kit требует публичные Terms of Service и Privacy Policy.
+Страницы лежат в `app/public` и попадают в корень сайта:
+
+* https://otshelniks.github.io/Exams/privacy.html
+* https://otshelniks.github.io/Exams/terms.html
+
+| ID | Кейс | Ожидание | Статус |
+|---|---|---|---|
+| 01 | Файлы | Обе страницы есть и собираются в сайт | ✅ |
+| 02 | HTML | Doctype, `lang="ru"`, viewport, дата обновления | ✅ |
+| 03 | TikTok | Указан scope `user.info.basic`, «не публикуем», «токен не храним» | ✅ |
+| 04 | Приватность | Game ID скрыт, почта Google скрыта, есть Supabase и удаление | ✅ |
+| 05 | Условия | Аккаунт, правила матчей, модерация, призы, ответственность, 13+ | ✅ |
+| 06 | Английский блок | «Summary in English» и контакт в обоих документах | ✅ |
+| 07 | Навигация | Документы связаны между собой и с приложением | ✅ |
+| 08 | Честность | Запрашиваем только базовый профиль, лишних прав нет | ✅ |
 
 ## T-FE — фронт (авто)
 

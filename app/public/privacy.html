@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Политика конфиденциальности — NAME MLBB</title>
+<meta name="description" content="Какие данные собирает NAME MLBB, зачем они нужны и как их удалить." />
+<style>
+  :root {
+    --bg: #0b0b10; --surface: #15161d; --line: #23252f; --text: #eef0f5;
+    --muted: #9a9daa; --dim: #6f7280; --orange: #ff4b12; --orange-2: #ff7a45;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 28px 20px 64px; }
+  .top { display: flex; align-items: center; gap: 12px; padding: 18px 0 8px; }
+  .mark {
+    width: 40px; height: 40px; border-radius: 50%; flex: none;
+    background: linear-gradient(145deg, #ff6a2b, #ff3d00);
+    display: flex; align-items: center; justify-content: center; gap: 2px;
+    box-shadow: 0 0 22px rgba(255, 75, 18, .35);
+  }
+  .mark i { display: block; width: 3px; height: 16px; border-radius: 2px; background: #1a0a04; transform: skewX(-24deg); }
+  .wordmark { font-weight: 900; font-size: 20px; letter-spacing: -.5px; }
+  .wordmark span { color: var(--orange-2); }
+  h1 { font-size: 27px; line-height: 1.2; margin: 18px 0 6px; letter-spacing: -.6px; }
+  .updated { color: var(--dim); font-size: 12.5px; margin: 0 0 24px; }
+  h2 { font-size: 16px; margin: 30px 0 8px; letter-spacing: -.2px; }
+  p, li { color: #cfd2dc; font-size: 14.5px; }
+  ul { padding-left: 20px; }
+  li { margin: 4px 0; }
+  a { color: var(--orange-2); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin: 18px 0; }
+  .card p { margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 700; font-size: 12px; letter-spacing: .4px; text-transform: uppercase; }
+  code { background: #1d1f27; border-radius: 6px; padding: 1px 6px; font-size: 13px; }
+  .nav { display: flex; gap: 14px; flex-wrap: wrap; margin: 22px 0 0; font-size: 13.5px; }
+  .en { margin-top: 40px; border-top: 1px solid var(--line); padding-top: 22px; }
+  .en h2 { margin-top: 22px; }
+  footer { margin-top: 40px; color: var(--dim); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="mark"><i></i><i></i><i></i><i></i><i></i></span>
+    <span class="wordmark">NAME<span>.</span></span>
+  </div>
+
+  <h1>Политика конфиденциальности</h1>
+  <p class="updated">Обновлено 31 октября 2026 года · применяется к сайту https://otshelniks.github.io/Exams/ и Telegram-боту @name_mlbb_bot</p>
+
+  <div class="card">
+    <p><strong>Коротко:</strong> мы собираем только то, что нужно для матчмейкинга MLBB: почту для входа, игровой профиль, аватар и скриншоты статистики. Мы не продаём данные, не читаем переписку и не публикуем ваш Game ID другим игрокам.</p>
+  </div>
+
+  <h2>1. Кто мы</h2>
+  <p>NAME — платформа соревновательного матчмейкинга для игроков Mobile Legends: Bang Bang. Сервис не связан с Moonton и не является официальным продуктом игры. Связаться с нами можно через Telegram-бот <a href="https://t.me/name_mlbb_bot">@name_mlbb_bot</a> или раздел «Поддержка» в приложении.</p>
+
+  <h2>2. Какие данные мы собираем</h2>
+  <table>
+    <tr><th>Данные</th><th>Зачем</th></tr>
+    <tr><td>Адрес электронной почты и пароль</td><td>Вход в аккаунт. Пароль хранится только в виде хеша на стороне Supabase — мы его не видим.</td></tr>
+    <tr><td>Game ID и игровой сервер MLBB</td><td>Проверка, что аккаунт принадлежит игроку, подбор лобби.</td></tr>
+    <tr><td>Ник, аватар, возраст, пол, ранг, роли, серверы, «о себе», любимые герои</td><td>Профиль игрока в приложении.</td></tr>
+    <tr><td>Скриншоты статистики MLBB</td><td>Верификация и античит до публикации профиля.</td></tr>
+    <tr><td>Telegram chat id и username</td><td>Уведомления о матчах, поддержка, вход по коду через бота.</td></tr>
+    <tr><td>Привязанные соцсети (Telegram, Google, VK, TikTok) — публичный ник</td><td>Показать в вашем профиле, что аккаунт подтверждён.</td></tr>
+    <tr><td>Заявки в поддержку</td><td>Ответ на обращение.</td></tr>
+    <tr><td>Технические данные: тип устройства, браузер, время запроса</td><td>Работа сайта и защита от злоупотреблений.</td></tr>
+  </table>
+  <p>Мы <strong>не</strong> собираем: содержимое ваших сообщений в соцсетях, контакты, геолокацию, данные банковских карт и пароли от сторонних сервисов.</p>
+
+  <h2>3. Что происходит при привязке TikTok</h2>
+  <p>При нажатии «Войти через TikTok» открывается окно авторизации TikTok. Вы разрешаете доступ только к базовым данным профиля (<code>user.info.basic</code>): отображаемое имя (ник) и, если TikTok его отдаёт, аватар.</p>
+  <p>Мы не получаем доступ к вашим видео, подписчикам и переписке, не публикуем ничего от вашего имени и не запрашиваем пароль от TikTok. OAuth-код обменивается на токен на нашем сервере, токен используется один раз для получения ника и не сохраняется в базе. В профиле NAME остаётся только ник TikTok.</p>
+  <p>Аналогично работает привязка Google и VK: мы сохраняем только публичный идентификатор (адрес почты для Google, ник для VK), чтобы показать подтверждение в профиле.</p>
+
+  <h2>4. Кто обрабатывает данные вместе с нами</h2>
+  <ul>
+    <li><strong>Supabase</strong> — база данных, авторизация и файлы (аватары, скриншоты).</li>
+    <li><strong>GitHub Pages</strong> — раздача сайта.</li>
+    <li><strong>Telegram</strong> — бот @name_mlbb_bot: уведомления и поддержка.</li>
+    <li><strong>Google, VK, TikTok</strong> — только если вы сами привязываете эти аккаунты.</li>
+  </ul>
+  <p>Мы не продаём и не передаём данные третьим лицам в рекламных целях.</p>
+
+  <h2>5. Кто что видит</h2>
+  <p>Ваш профиль видят другие игроки: ник, PTS, ранг, роли, серверы, любимые герои, «о себе», аватар и привязанные соцсети (для Google — только отметка о подтверждении, без адреса почты).</p>
+  <p>Game ID, скриншоты статистики, возраст, пол и причина блокировки видны только вам и администраторам — по Game ID нельзя получить доступ к вашему аккаунту.</p>
+
+  <h2>6. Cookies и локальное хранилище</h2>
+  <p>Мы не используем рекламные трекеры. В браузере хранятся: токен сессии Supabase (чтобы не входить заново), черновик профиля и служебные метки привязки соцсетей. Их можно удалить, очистив данные сайта.</p>
+
+  <h2>7. Сколько храним</h2>
+  <p>Данные профиля — пока существует аккаунт. Одноразовые коды входа и привязки — не дольше 10 минут. Заявки в поддержку — до 12 месяцев после закрытия. Логи запросов — не дольше 30 дней.</p>
+
+  <h2>8. Ваши права</h2>
+  <p>Вы можете посмотреть свои данные в приложении, исправить их в анкете, отвязать соцсети и Telegram, а также запросить удаление аккаунта. Для удаления напишите в бот @name_mlbb_bot командой <code>/support удалить аккаунт</code> — мы удалим профиль, аватар, скриншоты и привязки в течение 30 дней и подтвердим это в ответе.</p>
+
+  <h2>9. Дети</h2>
+  <p>Сервис не предназначен для детей младше 13 лет. Если вы считаете, что ребёнок создал аккаунт, напишите нам — удалим данные.</p>
+
+  <h2>10. Безопасность и изменения</h2>
+  <p>Доступ к базе ограничен правилами на уровне строк: чужой профиль нельзя прочитать или изменить напрямую. Служебные ключи хранятся на сервере и не попадают в браузер. При изменении политики мы обновим дату в начале страницы и сообщим в боте, если изменения существенные.</p>
+
+  <div class="nav">
+    <a href="./">Открыть приложение</a>
+    <a href="./terms.html">Условия использования</a>
+  </div>
+
+  <div class="en">
+    <h2>Summary in English</h2>
+    <p>NAME is a matchmaking platform for Mobile Legends: Bang Bang players. We collect the email used to sign in, the MLBB game profile data (nickname, rank, roles, servers, favourite heroes), avatar and statistics screenshots for verification, and the linked social accounts.</p>
+    <p><strong>TikTok integration:</strong> we use TikTok Login Kit with the <code>user.info.basic</code> scope only. When a player taps “Sign in with TikTok”, we receive the display name (and avatar URL if provided), show it in the player's profile as a verified social link, and then discard the TikTok access token. We do not post content, do not access videos, followers or messages, and never store TikTok credentials.</p>
+    <p><strong>Public vs private:</strong> other players can see nickname, PTS, rank, roles, servers, heroes, bio, avatar and linked socials (for Google only a “verified” mark, never the email address). Game ID, screenshots, age, gender and ban reasons are visible only to the account owner and our administrators.</p>
+    <p><strong>Processors:</strong> Supabase (database, auth, storage), GitHub Pages (hosting), Telegram (bot), and Google/VK/TikTok when the player links them. We do not sell personal data.</p>
+    <p><strong>Deletion:</strong> request account deletion via the Telegram bot <a href="https://t.me/name_mlbb_bot">@name_mlbb_bot</a> (<code>/support delete account</code>); data is removed within 30 days.</p>
+    <p>Contact: <a href="https://t.me/name_mlbb_bot">@name_mlbb_bot</a></p>
+  </div>
+
+  <footer>© 2026 NAME · Соревновательный матчмейкинг MLBB. Сервис не связан с Moonton.</footer>
+</div>
+</body>
+</html>
