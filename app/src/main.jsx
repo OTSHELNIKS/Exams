@@ -9,5 +9,10 @@ import '@fontsource/unbounded/700.css'
 import '@fontsource/unbounded/900.css'
 import './styles.css'
 import App from './App.jsx'
+import { initNative } from './native.js'
+
+// В мобильном приложении (Capacitor) включаем системный статус-бар, кнопку
+// «назад» и открытие внешних ссылок в браузере. В вебе функция сразу выходит.
+initNative()
 
 createRoot(document.getElementById('root')).render(<App />)

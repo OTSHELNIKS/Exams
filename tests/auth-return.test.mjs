@@ -71,7 +71,9 @@ test('T-RET-06 экран входа показывает ошибку возв�
   assert.ok(screens.includes('skip_http_redirect=true'), 'проверка провайдера без редиректа')
   const app = read('app/src/App.jsx')
   assert.ok(app.includes('parseAuthReturn(window.location.href)'), 'App не разбирает возврат')
-  assert.ok(app.includes('callbackError={AUTH_RETURN.message}'), 'сообщение не доходит до экрана')
+  // Текст ошибки возврата идёт на экран входа; в приложении к нему добавляется
+  // ошибка обмена deep-link кода, поэтому допускаем префикс.
+  assert.ok(/callbackError=\{(?:\w+ \|\| )?AUTH_RETURN\.message\}/.test(app), 'сообщение не доходит до экрана')
   const landing = read('app/src/landing.jsx')
   assert.ok(landing.includes('callbackError={callbackError}'), 'лендинг не прокидывает ошибку')
 })

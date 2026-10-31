@@ -16,6 +16,8 @@ import {
 } from './data.js'
 import { AvatarCropModal } from './crop.jsx'
 import { requestGameCode, signInWithGameCode, refreshGameStats, describeGameLoginError } from './game-login.js'
+import { startOAuth } from './native-auth.js'
+import { isNativeApp, openGameApp } from './native.js'
 import { openGame, gameHelpText, detectPlatform } from './game-link.js'
 import { tiktokConfigured } from './tiktok-auth.js'
 import {
@@ -82,11 +84,9 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
     }
     setBusy(true)
     try {
-      const redirectTo = window.location.protocol.startsWith('http')
-        ? window.location.origin + window.location.pathname
-        : undefined
-      const { error } = await supabase.auth.signInWithOAuth({ provider, options: redirectTo ? { redirectTo } : {} })
-      if (error) throw error
+      // В приложении провайдер открывается в системном браузере, поэтому
+      // возврат идёт по deep link (com.namemlbb.app://auth) — см. native-auth.js.
+      await startOAuth(supabase, { provider })
     } catch (error) {
       const raw = String(error?.message || '')
       setMethodNote(
@@ -289,7 +289,7 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
   // Кнопка «Открыть игру»: уводит в MLBB, чтобы посмотреть Game ID и прочитать письмо.
   const launchGame = async () => {
     setGameHelp('')
-    const result = await openGame({ platform: gamePlatform })
+    const result = await openGame({ platform: gamePlatform, launcher: isNativeApp() ? openGameApp : null })
     if (!result.opened) setGameHelp(gameHelpText(gamePlatform))
   }
   // Смена канала прямо на шаге ввода кода: перезапрашиваем код в другом канале.

@@ -17,6 +17,8 @@ import {
 } from './supabase.js'
 import { parseVkReturn, completeVkAuth, startVkAuth, describeVkError, vkConfigured } from './vk-auth.js'
 import { parseTikTokReturn, completeTikTokAuth, startTikTokAuth, describeTikTokError } from './tiktok-auth.js'
+import { startOAuth, completeNativeAuth } from './native-auth.js'
+import { isNativeApp } from './native.js'
 import { parseAuthReturn, cleanAuthUrl, describeAuthError } from './auth-return.js'
 
 // Возврат с VK: код и device_id приходят в query. Запоминаем адрес и сразу
@@ -112,6 +114,8 @@ export default function App() {
   const [sessionLoading, setSessionLoading] = useState(Boolean(supabase))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  // Ошибка возврата из системного браузера после OAuth в приложении.
+  const [nativeAuthError, setNativeAuthError] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   // Реальная привязка Telegram (таблица telegram_links, её пишет бот).
   const [telegramLink, setTelegramLink] = useState(null)
@@ -224,10 +228,7 @@ export default function App() {
       localStorage.setItem(LINK_GOOGLE_KEY, '1')
     } catch { /* noop */ }
     try {
-      const redirectTo = window.location.origin + window.location.pathname
-      const { error } = await supabase.auth.linkIdentity({ provider: 'google', options: { redirectTo } })
-      if (error) throw error
-      return { redirected: true }
+      return await startOAuth(supabase, { provider: 'google', link: true })
     } catch (error) {
       try { localStorage.removeItem(LINK_GOOGLE_KEY) } catch { /* noop */ }
       const raw = String(error?.message || '')
@@ -237,6 +238,37 @@ export default function App() {
       return { error: raw || 'Не удалось открыть окно Google.' }
     }
   }
+
+  // Возврат из системного браузера после OAuth (только в приложении):
+  // com.namemlbb.app://auth?code=… -> обмен кода на сессию Supabase.
+  useEffect(() => {
+    if (!isNativeApp()) return undefined
+    let alive = true
+    const onUrl = async (event) => {
+      const url = event?.detail
+      if (!url) return
+      const result = await completeNativeAuth(url, supabase)
+      if (!alive) return
+      if (!result.ok) setNativeAuthError(result.error)
+      else setNativeAuthError('')
+    }
+    window.addEventListener('name:app-url', onUrl)
+    return () => { alive = false; window.removeEventListener('name:app-url', onUrl) }
+  }, [supabase])
+
+  // Аппаратная кнопка «назад» на Android: с любого экрана — на главную,
+  // с главной событие не отменяем и система закрывает приложение.
+  useEffect(() => {
+    if (!isNativeApp()) return undefined
+    const onBack = (event) => {
+      if (screen !== 'home' && screen !== 'auth') {
+        event.preventDefault()
+        setScreen('home')
+      }
+    }
+    window.addEventListener('name:back', onBack)
+    return () => window.removeEventListener('name:back', onBack)
+  }, [screen])
 
   // Актуальный профиль для отложенных колбэков (возврат с VK).
   const profileRef = useRef(profile)
@@ -485,7 +517,7 @@ export default function App() {
   const renderScreen = () => {
     switch (screen) {
       case 'auth':
-        return <AuthScreen gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} callbackError={AUTH_RETURN.message} onLogin={() => go(profileFilled ? 'home' : 'wizard')} onPreview={() => go('home')} supabase={supabase} session={session} authReady={!sessionLoading} onSignOut={() => supabase.auth.signOut()} />
+        return <AuthScreen gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} callbackError={nativeAuthError || AUTH_RETURN.message} onLogin={() => go(profileFilled ? 'home' : 'wizard')} onPreview={() => go('home')} supabase={supabase} session={session} authReady={!sessionLoading} onSignOut={() => supabase.auth.signOut()} />
       case 'wizard':
         return <WizardScreen profile={profile} setProfile={setProfile} gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
@@ -529,7 +561,7 @@ export default function App() {
         setGameId={setGameId}
         gameServer={gameServer}
         setGameServer={setGameServer}
-        callbackError={AUTH_RETURN.message}
+        callbackError={nativeAuthError || AUTH_RETURN.message}
         screensCount={SCREENS.filter((s) => !s.admin).length}
       />
     )

@@ -21,3 +21,24 @@ app/.vite/
 .env.*
 !.env.example
 app/dist-singlefile/
+
+# capacitor native shells — сгенерированные копии веба и локальные сборки
+app/android/app/src/main/assets/public/
+app/android/app/src/main/assets/capacitor.config.json
+app/android/app/src/main/assets/capacitor.plugins.json
+app/android/app/src/main/res/xml/config.xml
+app/android/.gradle/
+app/android/build/
+app/android/app/build/
+app/android/local.properties
+app/android/keystore.properties
+app/ios/App/App/public/
+app/ios/App/App/capacitor.config.json
+app/ios/App/App/config.xml
+app/ios/App/Pods/
+app/ios/App/build/
+app/ios/App/DerivedData/
+app/ios/App/App.xcodeproj/xcuserdata/
+app/ios/App/App.xcworkspace/xcuserdata/
+app/*.keystore
+app/*.jks

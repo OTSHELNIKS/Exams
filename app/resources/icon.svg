@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#141019"/>
+      <stop offset="1" stop-color="#08080b"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff4b12" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ff4b12" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff6a2b"/>
+      <stop offset="1" stop-color="#ff3d00"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <circle cx="512" cy="512" r="470" fill="url(#glow)"/>
+  <circle cx="512" cy="512" r="300" fill="url(#mark)"/>
+  <g fill="#1a0a04">
+    <g transform="translate(512 512)">
+      <rect x="-108" y="-86" width="34" height="172" rx="14" transform="skewX(-24)"/>
+      <rect x="-54" y="-86" width="34" height="172" rx="14" transform="skewX(-24)"/>
+      <rect x="0" y="-86" width="34" height="172" rx="14" transform="skewX(-24)"/>
+      <rect x="54" y="-86" width="34" height="172" rx="14" transform="skewX(-24)"/>
+      <rect x="108" y="-86" width="34" height="172" rx="14" transform="skewX(-24)"/>
+    </g>
+  </g>
+</svg>

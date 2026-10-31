@@ -54,9 +54,13 @@ test('T-AUTH-01b скрытый VK не показывается и не обе�
 })
 
 test('T-AUTH-02 Google — настоящий OAuth через Supabase', () => {
-  assert.ok(auth.includes("signInWithOAuth"), 'нет вызова OAuth')
+  // Сам вызов Supabase теперь в native-auth.js: в браузере — обычный редирект,
+  // в приложении — системный браузер и возврат по deep link.
+  const nativeAuth = read('app/src/native-auth.js')
+  assert.ok(nativeAuth.includes('signInWithOAuth'), 'нет вызова OAuth')
+  assert.ok(auth.includes('startOAuth('), 'кнопка Google не запускает OAuth')
   assert.ok(/oauth\('google',\s*'Google'\)/.test(auth), 'кнопка Google не запускает OAuth')
-  assert.ok(auth.includes('redirectTo'), 'не задан адрес возврата')
+  assert.ok(nativeAuth.includes('redirectTo'), 'не задан адрес возврата')
 })
 
 test('T-AUTH-03 Telegram ведёт в бота без payload', () => {

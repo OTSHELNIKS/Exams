@@ -52,6 +52,9 @@ export function gameLinks(platform = detectPlatform()) {
 export async function openGame({
   platform = detectPlatform(),
   navigate = (url) => { if (typeof window !== 'undefined') window.location.href = url },
+  // В мобильном приложении (Capacitor) intent:// из WebView не работает:
+  // передаём открытие системе через AppLauncher — см. native.js.
+  launcher = null,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   isHidden = () => (typeof document !== 'undefined' ? document.hidden : false),
   waitMs = 1200,
@@ -59,6 +62,22 @@ export async function openGame({
   const links = gameLinks(platform)
   const visited = []
   if (!links.direct) return { opened: false, via: 'desktop', visited, note: links.note }
+
+  if (launcher) {
+    const target = platform === 'ios' ? links.direct : 'mlbb://'
+    try {
+      await launcher(target)
+      visited.push(target)
+      await sleep(waitMs)
+      return { opened: true, via: 'launcher', visited, note: links.note }
+    } catch {
+      /* игры нет на телефоне — уводим в магазин */
+    }
+    try {
+      if (links.store) { navigate(links.store); visited.push(links.store) }
+    } catch { /* покажем подсказку в интерфейсе */ }
+    return { opened: false, via: 'store', visited, note: links.note }
+  }
 
   try {
     navigate(links.direct)

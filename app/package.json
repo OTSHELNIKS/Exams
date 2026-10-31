@@ -7,9 +7,22 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "build:singlefile": "vite build --config vite.singlefile.config.js"
+    "build:singlefile": "vite build --config vite.singlefile.config.js",
+    "build:native": "VITE_NATIVE=1 vite build",
+    "sync:android": "VITE_NATIVE=1 vite build && cap sync android",
+    "sync:ios": "VITE_NATIVE=1 vite build && cap sync ios",
+    "icons": "capacitor-assets generate --android --ios --splashBackgroundColor '#08080b' --splashBackgroundColorDark '#08080b'"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/app-launcher": "^8.0.1",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/clipboard": "^8.0.1",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
     "@fontsource/inter": "^5.2.5",
     "@fontsource/unbounded": "^5.2.5",
     "@supabase/supabase-js": "^2.118.0",
@@ -18,9 +31,13 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "^8.6.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^30.1.3",
+    "sharp": "^0.35.5",
+    "typescript": "^7.0.2",
     "vite": "^6.0.5",
-    "vite-plugin-singlefile": "^2.3.4",
-    "jsdom": "^30.1.3"
+    "vite-plugin-singlefile": "^2.3.4"
   }
 }

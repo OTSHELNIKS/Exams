@@ -1,0 +1,134 @@
+# NAME MLBB — сборка мобильного приложения (Android).
+#
+# Что делает:
+#   1. собирает веб-часть с относительными путями (VITE_NATIVE=1) — иначе
+#      WebView покажет белый экран;
+#   2. кладёт её в нативную оболочку (npx cap sync android);
+#   3. собирает APK отладочным ключом и прикладывает его к релизу
+#      «android-latest» — ссылка на скачивание всегда одна и та же;
+#   4. если в секретах есть ключ подписи — дополнительно собирает AAB для
+#      Google Play (и APP, если нужен платный APK для теста).
+#
+# APK подписан отладочным ключом: он ставится на телефон «из браузера», но
+# Google Play его не примет. Для Play нужен свой ключ (см. app/NATIVE.md).
+
+name: Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - arena/cc650609-exams
+    paths:
+      - 'app/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install web dependencies
+        run: npm --prefix app ci
+
+      # Ключи Supabase и TikTok публичны по дизайну — они всё равно уезжают
+      # в браузерный JS. Секреты сюда не добавлять.
+      - name: Build web bundle for WebView
+        env:
+          VITE_NATIVE: '1'
+          VITE_SUPABASE_URL: https://yjedqdbwvjvikyixsduw.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_yzJAjp-Nt7gfcsRXt0jKAQ_tFl2_-_x
+          VITE_TIKTOK_CLIENT_KEY: awyj2tttpian4x4v
+        run: npm --prefix app run build
+
+      - name: Copy web bundle into native shell
+        working-directory: app
+        run: npx cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Ensure SDK 36 is installed
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0" > /dev/null
+
+      # Подпись релиза. Если секретов нет — шаг просто пропускается, APK всё
+      # равно соберётся (отладочная подпись), AAB — нет.
+      - name: Decode release keystore
+        id: keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::notice title=Ключ подписи не задан::APK соберётся с отладочной подписью. Для Google Play добавьте секреты (см. app/NATIVE.md)"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build debug APK
+        working-directory: app/android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 1.0.${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Build release AAB for Google Play
+        if: steps.keystore.outputs.ready == 'true'
+        working-directory: app/android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 1.0.${{ github.run_number }}
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/upload.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease --no-daemon
+
+      - name: Name artifacts
+        run: |
+          mkdir -p dist-android
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk "dist-android/NAME-${GITHUB_RUN_NUMBER}.apk"
+          if [ -f app/android/app/build/outputs/bundle/release/app-release.aab ]; then
+            cp app/android/app/build/outputs/bundle/release/app-release.aab "dist-android/NAME-${GITHUB_RUN_NUMBER}.aab"
+          fi
+          ls -lh dist-android
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: dist-android/*
+          if-no-files-found: error
+
+      # Постоянная ссылка: Releases → «Android APK» → последний файл.
+      - name: Publish to Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view android-latest > /dev/null 2>&1 || \
+            gh release create android-latest \
+              --title "Android APK" \
+              --notes "Свежая сборка приложения NAME. Скачайте .apk и разрешите установку из этого источника." \
+              --latest=false
+          gh release upload android-latest dist-android/* --clobber

@@ -99,8 +99,12 @@ test('T-SOC-10 стили выбора соцсети на месте', () => {
 })
 
 test('T-SOC-11 Google привязывается окном выбора аккаунта, без ввода почты', () => {
-  assert.ok(app.includes('supabase.auth.linkIdentity'), 'нет связывания через linkIdentity')
-  assert.ok(/linkIdentity\(\{ provider: 'google'/.test(app), 'linkIdentity должен открывать Google')
+  // Сам вызов переехал в native-auth.js (в приложении — системный браузер),
+  // App.jsx только просит привязать Google к текущему аккаунту.
+  const nativeAuth = read('app/src/native-auth.js')
+  assert.ok(nativeAuth.includes('supabase.auth.linkIdentity'), 'нет связывания через linkIdentity')
+  assert.ok(/linkIdentity\(\{ provider, options \}\)/.test(nativeAuth), 'linkIdentity должен открывать Google')
+  assert.ok(/startOAuth\(supabase, \{ provider: 'google', link: true \}\)/.test(app), 'кнопка Google не привязывает аккаунт')
   assert.ok(app.includes('localStorage.setItem(LINK_GOOGLE_KEY, \'1\')'), 'нет метки возврата от Google')
   assert.ok(social.includes('Выбрать аккаунт Google'), 'нет кнопки выбора аккаунта')
   assert.ok(social.includes('startGoogle'), 'кнопка не запускает OAuth')
