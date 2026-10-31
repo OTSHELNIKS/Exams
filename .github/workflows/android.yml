@@ -135,6 +135,8 @@ jobs:
         run: |
           mkdir -p dist-android
           cp app/android/app/build/outputs/apk/debug/app-debug.apk "dist-android/NAME-${GITHUB_RUN_NUMBER}.apk"
+          # Постоянное имя: на него ссылается README, старые файлы остаются рядом.
+          cp app/android/app/build/outputs/apk/debug/app-debug.apk "dist-android/NAME-latest.apk"
           if [ -f app/android/app/build/outputs/bundle/release/app-release.aab ]; then
             cp app/android/app/build/outputs/bundle/release/app-release.aab "dist-android/NAME-${GITHUB_RUN_NUMBER}.aab"
           fi
