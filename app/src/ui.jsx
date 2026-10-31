@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  ChevronLeft, Gamepad2, Send, Camera, Plus,
-  ShieldCheck, Check, X, Copy, Mic, MicOff, RotateCcw, Crown, Users, Trophy, Search, Music2,
+  ChevronLeft, Gamepad2, Camera, Plus,
+  ShieldCheck, Check, X, Copy, Mic, MicOff, RotateCcw, Crown, Users, Trophy, Search,
 } from 'lucide-react'
+import { GoogleIcon, TelegramIcon, TikTokIcon, VkIcon, FacebookIcon, BRAND_TINT } from './brand-icons.jsx'
 import { HERO_BY_NAME } from './data.js'
 
 /* ------------------------------------------------------------------ logo */
@@ -17,12 +18,24 @@ export function Logo({ size = 'md', light = false }) {
 }
 
 /* -------------------------------------------------------------- brand btn */
+/* Настоящие логотипы сервисов (см. brand-icons.jsx): узнаваемый знак в своём
+   цвете вместо буквы-заглушки. MLBB — официального логотипа в проекте нет,
+   поэтому геймпад на золотой подложке остаётся. */
 export function BrandMark({ type }) {
-  if (type === 'vk') return <span className="brand vk">VK</span>
-  if (type === 'google') return <span className="brand google">G</span>
-  if (type === 'facebook') return <span className="brand facebook">f</span>
-  if (type === 'telegram') return <span className="brand telegram"><Send size={18} strokeWidth={2.2} /></span>
-  if (type === 'tiktok') return <span className="brand tiktok"><Music2 size={18} strokeWidth={2.2} /></span>
+  const icons = {
+    google: <GoogleIcon />,
+    telegram: <TelegramIcon />,
+    tiktok: <TikTokIcon />,
+    vk: <VkIcon />,
+    facebook: <FacebookIcon />,
+  }
+  if (icons[type]) {
+    return (
+      <span className={`brand brand--logo ${type}`} style={BRAND_TINT[type]} aria-hidden="true">
+        {icons[type]}
+      </span>
+    )
+  }
   if (type === 'mlbb') return <span className="brand mlbb"><Gamepad2 size={18} strokeWidth={2.2} /></span>
   return null
 }

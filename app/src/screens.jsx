@@ -193,8 +193,20 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
           : 'Game ID и сервер видны в профиле MLBB рядом с ником.'}
       </p>
 
+      {/* Главный путь — вход через саму игру: кнопка стоит сразу под полями
+          Game ID, чтобы её не приходилось искать среди плиток. */}
+      <button type="button" className="btn btn--primary auth__game-btn" disabled={busy} onClick={openGameLogin}>
+        <Gamepad2 size={18} /> Войти через игру — код в MLBB
+      </button>
+      <p className="field-hint auth__game-hint">
+        Код придёт письмом на внутриигровую почту MLBB. Telegram-бот — запасной вариант, если игры нет под рукой.
+      </p>
+
       <Label hint="одним нажатием">СПОСОБЫ РЕГИСТРАЦИИ</Label>
       <div className="methods">
+        <button type="button" className="method method--game" disabled={busy} onClick={openGameLogin} aria-label="Войти через игровой аккаунт MLBB">
+          <BrandMark type="mlbb" /><span>MLBB</span><em className="method__tag">код в игре</em>
+        </button>
         <button
           type="button"
           className={`method${googleReady === false ? ' method--soon' : ''}`}
@@ -208,16 +220,14 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
         <a className="method" href={`https://t.me/${TELEGRAM_BOT_USERNAME}`} target="_blank" rel="noreferrer" aria-label="Войти через Telegram-бота" title="Откроется бот: привязка по коду из Профиля">
           <BrandMark type="telegram" /><span>Telegram</span>
         </a>
-        <button type="button" className="method" disabled={busy} onClick={openGameLogin} aria-label="Войти через игровой аккаунт MLBB">
-          <BrandMark type="mlbb" /><span>MLBB</span>
-        </button>
         <button type="button" className="method method--soon" onClick={() => setMethodNote('TikTok — это привязка соцсети, а не вход: войди по почте или Google, затем привяжи TikTok в Профиле одним нажатием.')} aria-label="TikTok привязывается в профиле">
           <BrandMark type="tiktok" /><span>TikTok</span><em className="method__soon">скоро</em>
         </button>
       </div>
       <p className="auth-methods__note">
-        Google входит сразу, Telegram — привязка через бота @{TELEGRAM_BOT_USERNAME}.
-        Игровой аккаунт — по Game ID и серверу: код придёт в Telegram. TikTok привязывается в Профиле.
+        Игровой аккаунт входит по Game ID и серверу: код приходит на внутриигровую почту MLBB
+        (или в Telegram-бот @{TELEGRAM_BOT_USERNAME} — по выбору). Google входит сразу.
+        TikTok привязывается в Профиле.
       </p>
       {methodNote && <p className="auth-methods__note auth-methods__note--warn" role="status">{methodNote}</p>}
 

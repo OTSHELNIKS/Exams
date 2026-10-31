@@ -68,8 +68,13 @@ a { color: inherit; }
 .brand.tiktok { background: #23252e; color: #e8e9f0; }
 .brand.mlbb { background: rgba(255, 200, 61, .14); color: var(--gold); }
 
+/* Настоящие логотипы сервисов (brand-icons.jsx): знак лежит на своём цвете,
+   поэтому внутри квадрата остаётся небольшой отступ и нет букв-заглушек. */
+.brand--logo { padding: 8px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .06) inset; }
+.brand--logo svg { width: 100%; height: 100%; }
+
 /* способы регистрации на экране входа */
-.methods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
 .method {
   position: relative; display: flex; flex-direction: column; align-items: center; gap: 7px;
   padding: 11px 6px 10px; border-radius: 16px; border: 1px solid var(--line);
@@ -80,6 +85,16 @@ a { color: inherit; }
 .method:hover { transform: translateY(-1px); border-color: #4a4d5c; }
 .method .brand { width: 34px; height: 34px; border-radius: 11px; }
 .method--soon { color: #b9bcc8; }
+/* Плитка игры — главный способ входа: золотая рамка и метка «код в игре». */
+.method--game { border-color: rgba(255, 200, 61, .45); background: rgba(255, 200, 61, .07); }
+.method--game:hover { border-color: rgba(255, 200, 61, .75); }
+.method__tag {
+  position: absolute; top: 6px; right: 6px; font-style: normal; font-size: 8px; font-weight: 800;
+  letter-spacing: .4px; text-transform: uppercase; color: var(--gold);
+  border: 1px solid rgba(255, 200, 61, .35); border-radius: 6px; padding: 1px 4px;
+}
+.auth__game-btn { width: 100%; margin-top: 12px; }
+.auth__game-hint { margin-top: 8px; }
 .method__soon {
   position: absolute; top: 6px; right: 6px; font-style: normal; font-size: 8px; font-weight: 800;
   letter-spacing: .4px; text-transform: uppercase; color: var(--dim);
@@ -1221,7 +1236,7 @@ html.is-modal-open .rail { overflow: hidden !important; }
    поднимаем на 1.5–2.5px: на большом мониторе 10–11px читаются как «пыль». */
 @media (min-width: 1024px) {
   /* подписи и подсказки */
-  .methods { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+  .methods { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
   .method { font-size: 13px; padding: 14px 8px 13px; }
   .method .brand { width: 40px; height: 40px; }
   .auth-methods__note { font-size: 13px; }

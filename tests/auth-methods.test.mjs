@@ -84,15 +84,27 @@ test('T-AUTH-05 у каждого способа есть понятное об�
 })
 
 test('T-AUTH-06 иконки брендов отрисованы в BrandMark', () => {
-  for (const type of [...METHODS, ...HIDDEN]) {
-    assert.ok(new RegExp(`type === '${type}'`).test(ui), 'BrandMark не знает ' + type)
+  // Настоящие логотипы живут в brand-icons.jsx: BrandMark берёт их по типу.
+  const icons = read('app/src/brand-icons.jsx')
+  const ICONS = { google: 'GoogleIcon', telegram: 'TelegramIcon', tiktok: 'TikTokIcon', facebook: 'FacebookIcon' }
+  for (const [type, component] of Object.entries(ICONS)) {
+    assert.ok(new RegExp(`\\b${component}\\b`).test(ui), 'BrandMark не использует ' + component)
+    assert.ok(new RegExp(`export function ${component}`).test(icons), 'нет компонента ' + component)
+    assert.ok(new RegExp(`${type}: <${component} />`).test(ui), 'BrandMark не знает ' + type)
   }
+  // MLBB остаётся геймпадом: официального логотипа в проекте нет.
+  assert.ok(/type === 'mlbb'/.test(ui), 'BrandMark не знает mlbb')
+  assert.ok(/export function VkIcon/.test(icons), 'нет VkIcon')
 })
 
 test('T-AUTH-07 сетка плиток адаптивная', () => {
-  assert.ok(/\.methods \{[^}]*grid-template-columns: repeat\(3/.test(styles), 'на телефоне три плитки в ряд')
-  assert.ok(/\.methods \{ grid-template-columns: repeat\(5/.test(styles), 'на десктопе пять плиток в ряд')
+  // Четыре способа: 2×2 на телефоне (ни одна плитка не остаётся одна в ряду)
+  // и четыре в ряд на ПК.
+  assert.ok(/\.methods \{[^}]*grid-template-columns: repeat\(2/.test(styles), 'на телефоне две плитки в ряд')
+  assert.ok(/\.methods \{ grid-template-columns: repeat\(4/.test(styles), 'на десктопе четыре плитки в ряд')
   assert.ok(styles.includes('.method__soon'), 'нет бейджа «скоро»')
+  assert.ok(styles.includes('.method--game'), 'нет выделения плитки игры')
+  assert.ok(auth.includes('auth__game-btn'), 'нет крупной кнопки «Войти через игру»')
 })
 
 test('T-AUTH-08 почта осталась основным способом', () => {
