@@ -65,10 +65,18 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Ensure SDK 36 is installed
-        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0" > /dev/null
+      # Android SDK уже стоит на ubuntu-latest (ANDROID_HOME). Дополнительно
+      # ставим только платформу, если её нет в образе.
+      - name: Ensure Android SDK 36
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
+          echo "sdk.dir=$ANDROID_HOME" > app/android/local.properties
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0" > /dev/null 2>&1 || true
+          fi
+          "$SDKMANAGER" --list_installed 2>/dev/null | head -20 || ls "$ANDROID_HOME
 
       # Подпись релиза. Если секретов нет — шаг просто пропускается, APK всё
       # равно соберётся (отладочная подпись), AAB — нет.
