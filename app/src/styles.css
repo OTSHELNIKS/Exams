@@ -635,6 +635,32 @@ html.is-modal-open .rail { overflow: hidden !important; }
 .prize-note { display: flex; align-items: center; gap: 8px; color: #b9bcc8; font-size: 11px; margin-top: 18px; }
 .prize-note svg { color: var(--gold); flex: none; }
 
+/* Вход через игру: кнопка «Открыть игру» и выбор канала кода. */
+.game-open-app {
+  width: 100%; margin-top: 12px; display: inline-flex; align-items: center;
+  justify-content: center; gap: 8px; font-size: 13px;
+}
+.game-channel { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 4px; }
+.game-channel__item {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  border-radius: 13px; padding: 10px 11px; text-align: left; cursor: pointer;
+}
+.game-channel__item span { font-size: 12.5px; font-weight: 800; }
+.game-channel__item small { font-size: 10.5px; color: var(--dim); line-height: 1.3; }
+.game-channel__item.is-active {
+  border-color: rgba(255, 75, 18, .55); background: rgba(255, 75, 18, .08);
+  box-shadow: 0 0 0 1px rgba(255, 75, 18, .25) inset;
+}
+.game-channel__item.is-active span { color: var(--orange-2); }
+.game-channel__switch { margin: 10px auto 0; display: block; font-size: 12.5px; }
+@media (min-width: 1024px) {
+  .game-channel__item span { font-size: 14px; }
+  .game-channel__item small { font-size: 12px; }
+  .game-open-app { font-size: 14px; }
+  .game-channel__switch { font-size: 13.5px; }
+}
+
 /* Строка рейтинга — кнопка: открывает карточку игрока. */
 .rank-row--btn {
   width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer;

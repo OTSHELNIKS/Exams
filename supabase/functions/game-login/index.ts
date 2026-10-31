@@ -1,32 +1,48 @@
 // NAME MLBB — вход через саму игру (Mobile Legends: Bang Bang).
 // Edge function `game-login`. Dependency-free: plain fetch + PostgREST.
 //
-// Игрок не вводит почту и пароль: он указывает свой Game ID и сервер, получает
-// шестизначный код в Telegram от бота @name_mlbb_bot и вводит его на сайте.
+// Игрок не вводит почту и пароль: он указывает Game ID и сервер и подтверждает
+// владение аккаунтом одним из двух способов:
 //
-//   POST /?action=code     { gameId, gameServer }        -> код уходит в Telegram
-//   POST /?action=session  { gameId, gameServer, code }  -> { tokenHash }
+//   channel=ingame   (основной) — код приходит НА ВНУТРИИГРОВУЮ ПОЧТУ MLBB:
+//                    игрок открывает игру, читает письмо и вводит код на сайте;
+//   channel=telegram (запасной) — код приходит в привязанный Telegram-бот.
+//
+//   POST /?action=code     { gameId, gameServer, channel } -> код отправлен
+//   POST /?action=session  { gameId, gameServer, code, channel } -> { tokenHash }
 //
 // Клиент меняет tokenHash на сессию через supabase.auth.verifyOtp({ type:
 // 'magiclink', token_hash }), то есть пароль не нужен вообще.
 //
 // Безопасность:
-//   - код живёт 5 минут, одноразовый, на игрока не больше одного активного;
+//   - код живёт 5 минут, одноразовый, на игрока не больше одной попытки;
 //   - не чаще одного запроса кода в 30 секунд на профиль (защита от спама);
-//   - код привязан к Game ID: чужой код не подойдёт к другому аккаунту;
+//   - 5 неверных вводов — попытка сгорает, нужен новый код;
+//   - код привязан к Game ID и серверу: чужой код не подойдёт к другому аккаунту;
 //   - в ответах нет ни почты, ни id пользователя — только причина отказа;
-//   - таблица game_login_codes закрыта для anon/authenticated (RLS + revoke),
-//     работает только service role этой функции.
+//   - код запрашивается только для профиля, который уже есть в NAME: на чужой
+//     Game ID письмо в игру не отправить (иначе мы были бы бесплатным спамером);
+//   - таблица game_login_codes закрыта для anon/authenticated (RLS + revoke).
 //
-// Секреты функции: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TELEGRAM_BOT_TOKEN
-// (последние два Supabase подставляет сам для этого проекта).
+// Внутриигровую почту нельзя отправить напрямую: у Moonton нет публичного API.
+// Используется игровой шлюз, который отправляет официальное письмо с кодом на
+// аккаунт MLBB (тот же механизм, что и на официальной странице обмена кодов).
+// Секрета он не требует; если шлюз недоступен, клиент предлагает Telegram.
+//
+// Секреты функции: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TELEGRAM_BOT_TOKEN.
 
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').replace(/\/+$/, '')
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') || ''
-const BUILD = 'game-login-v1'
+const BUILD = 'game-login-v2'
 const CODE_TTL_MS = 5 * 60 * 1000
 const COOLDOWN_MS = 30 * 1000
+const MAX_ATTEMPTS = 5
+// Зеркала игрового шлюза: если основное недоступно, пробуем второе.
+const GAME_API_BASES = [
+  'https://arena.rone.dev/api',
+  'https://arena.fastapicloud.dev/api',
+]
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -55,65 +71,110 @@ async function dbSelect(table, params) {
     if (!r.ok) { console.error('db select failed', table, r.status); return [] }
     const j = await r.json().catch(() => [])
     return Array.isArray(j) ? j : []
-  } catch (e) {
-    console.error('db select threw', table, String(e))
-    return []
-  }
+  } catch (e) { console.error('db select threw', table, String(e)); return [] }
 }
 
 async function dbInsert(table, row) {
   try {
     const r = await fetch(SUPABASE_URL + '/rest/v1/' + table, {
-      method: 'POST',
-      headers: svcHeaders({ Prefer: 'return=minimal' }),
-      body: JSON.stringify(row),
+      method: 'POST', headers: svcHeaders({ Prefer: 'return=minimal' }), body: JSON.stringify(row),
     })
     if (!r.ok) { console.error('db insert failed', table, r.status); return false }
     return true
-  } catch (e) {
-    console.error('db insert threw', table, String(e))
-    return false
-  }
+  } catch (e) { console.error('db insert threw', table, String(e)); return false }
+}
+
+async function dbPatch(table, params, patch) {
+  try {
+    const q = new URLSearchParams(params || {}).toString()
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + (q ? '?' + q : ''), {
+      method: 'PATCH', headers: svcHeaders({ Prefer: 'return=minimal' }), body: JSON.stringify(patch),
+    })
+    if (!r.ok) { console.error('db patch failed', table, r.status); return false }
+    return true
+  } catch (e) { console.error('db patch threw', table, String(e)); return false }
 }
 
 async function dbDelete(table, params) {
   try {
     const q = new URLSearchParams(params || {}).toString()
-    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + (q ? '?' + q : ''), {
-      method: 'DELETE', headers: svcHeaders(),
-    })
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + (q ? '?' + q : ''), { method: 'DELETE', headers: svcHeaders() })
     if (!r.ok) console.error('db delete failed', table, r.status)
     return r.ok
-  } catch (e) {
-    console.error('db delete threw', table, String(e))
-    return false
-  }
+  } catch (e) { console.error('db delete threw', table, String(e)); return false }
 }
 
 async function sendTelegram(chatId, text) {
   if (!BOT_TOKEN) { console.error('no bot token'); return false }
   try {
     const r = await fetch('https://api.telegram.org/bot' + BOT_TOKEN + '/sendMessage', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'HTML', disable_web_page_preview: true }),
     })
     const j = await r.json().catch(() => ({}))
     if (!r.ok || j.ok === false) console.error('telegram send failed', JSON.stringify(j).slice(0, 300))
     return !!(j && j.ok)
-  } catch (e) {
-    console.error('telegram send threw', String(e))
-    return false
-  }
+  } catch (e) { console.error('telegram send threw', String(e)); return false }
 }
 
 function digits(value, max) {
   return String(value === undefined || value === null ? '' : value).replace(/[^0-9]/g, '').slice(0, max)
 }
 
-async function readJson(req) {
-  try { return await req.json() } catch (e) { return {} }
+async function readJson(req) { try { return await req.json() } catch (e) { return {} } }
+
+// ---------------------------------------------------------------- игровой шлюз
+
+async function gameApi(path, body) {
+  for (const base of GAME_API_BASES) {
+    try {
+      const r = await fetch(base + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await r.json().catch(() => null)
+      if (r.ok && data && typeof data.code === 'number') return data
+      console.error('game api bad response', base, r.status)
+    } catch (e) {
+      console.error('game api threw', base, String(e))
+    }
+  }
+  return null
 }
+
+// Просим игру отправить письмо с кодом на аккаунт игрока.
+async function sendInGameCode(gameId, gameServer) {
+  const data = await gameApi('/user/auth/send-vc', {
+    role_id: Number(gameId),
+    zone_id: Number(gameServer || 0),
+  })
+  if (!data) return { error: 'ingame_unavailable' }
+  if (data.code !== 0) {
+    console.error('send-vc refused', String(data.msg || '').slice(0, 120))
+    return { error: 'ingame_failed' }
+  }
+  return { ok: true }
+}
+
+// Проверяем код из внутриигровой почты. Шлюз возвращает сам аккаунт — сверяем
+// role_id и zone_id с тем, что ввёл игрок: код от другого аккаунта не подойдёт.
+async function verifyInGameCode(gameId, gameServer, code) {
+  const data = await gameApi('/user/auth/login', {
+    role_id: Number(gameId),
+    zone_id: Number(gameServer || 0),
+    vc: String(code),
+  })
+  if (!data) return { error: 'ingame_unavailable' }
+  if (data.code !== 0 || !data.data) return { error: 'bad_code' }
+  const roleId = String(data.data.roleid || gameId)
+  const zoneId = String(data.data.zoneid || gameServer || '')
+  if (roleId !== gameId) return { error: 'bad_code' }
+  if (gameServer && zoneId && zoneId !== gameServer) return { error: 'bad_code' }
+  return { ok: true }
+}
+
+// ------------------------------------------------------------------- профиль
 
 async function findProfile(gameId, gameServer) {
   const filters = { game_id: 'eq.' + gameId, select: 'user_id,game_id,game_server,nick', order: 'updated_at.desc' }
@@ -122,48 +183,93 @@ async function findProfile(gameId, gameServer) {
   return rows[0] || null
 }
 
-// Шаг 1: находим профиль по Game ID, шлём код в привязанный Telegram.
+async function telegramChatOf(userId) {
+  const links = await dbSelect('telegram_links', { user_id: 'eq.' + userId, select: 'tg_chat_id' })
+  return links[0] ? links[0].tg_chat_id : null
+}
+
+// Одна активная попытка на игрока: старые стираем, чтобы не копились коды.
+async function startAttempt(profile, gameId, gameServer, channel) {
+  await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
+  return dbInsert('game_login_codes', {
+    code: (channel === 'ingame' ? 'ig-' : '') + crypto.randomUUID(),
+    user_id: profile.user_id,
+    game_id: gameId,
+    game_server: gameServer || profile.game_server || '',
+    channel,
+    attempts: 0,
+    expires_at: new Date(Date.now() + CODE_TTL_MS).toISOString(),
+  })
+}
+
+async function latestAttempt(userId) {
+  const rows = await dbSelect('game_login_codes', {
+    user_id: 'eq.' + userId, select: '*', order: 'created_at.desc', limit: '1',
+  })
+  return rows[0] || null
+}
+
+async function cooldownLeft(userId) {
+  const row = await latestAttempt(userId)
+  if (!row) return 0
+  const since = Date.now() - new Date(row.created_at).getTime()
+  return since < COOLDOWN_MS ? COOLDOWN_MS - since : 0
+}
+
+// --------------------------------------------------------------------- шаги
+
 async function handleCode(req) {
   const body = await readJson(req)
   const gameId = digits(body.gameId, 12)
   const gameServer = digits(body.gameServer, 6)
+  const channel = body.channel === 'telegram' ? 'telegram' : 'ingame'
   if (!/^[0-9]{6,12}$/.test(gameId)) return json({ ok: false, error: 'bad_game_id' }, 400)
 
   const profile = await findProfile(gameId, gameServer)
   if (!profile) return json({ ok: false, error: 'profile_not_found' }, 404)
 
-  const links = await dbSelect('telegram_links', { user_id: 'eq.' + profile.user_id, select: 'tg_chat_id' })
-  if (!links[0]) return json({ ok: false, error: 'telegram_not_linked' }, 409)
+  if (await cooldownLeft(profile.user_id) > 0) return json({ ok: false, error: 'too_often' }, 429)
 
-  const recent = await dbSelect('game_login_codes', {
-    user_id: 'eq.' + profile.user_id, select: 'created_at', order: 'created_at.desc', limit: '1',
-  })
-  if (recent[0] && Date.now() - new Date(recent[0].created_at).getTime() < COOLDOWN_MS) {
-    return json({ ok: false, error: 'too_often' }, 429)
+  const chatId = await telegramChatOf(profile.user_id)
+
+  if (channel === 'telegram') {
+    if (!chatId) return json({ ok: false, error: 'telegram_not_linked' }, 409)
+    await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
+    const code = String(Math.floor(100000 + Math.random() * 900000))
+    const saved = await dbInsert('game_login_codes', {
+      code, user_id: profile.user_id, game_id: gameId,
+      game_server: gameServer || profile.game_server || '',
+      channel: 'telegram', attempts: 0,
+      expires_at: new Date(Date.now() + CODE_TTL_MS).toISOString(),
+    })
+    if (!saved) return json({ ok: false, error: 'internal' }, 500)
+    const sent = await sendTelegram(chatId,
+      '🔐 <b>Код входа на NAME</b>\n\n<code>' + code + '</code>\n\n' +
+      'Введи его на сайте в течение 5 минут: Game ID <code>' + gameId + '</code>' +
+      (gameServer ? ' · сервер <code>' + gameServer + '</code>' : '') + '.\n\n' +
+      'Если это был не ты — просто проигнорируй сообщение.')
+    if (!sent) return json({ ok: false, error: 'telegram_failed' }, 502)
+    return json({ ok: true, channel: 'telegram', ttl: Math.round(CODE_TTL_MS / 1000), nick: profile.nick || null })
   }
 
-  await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
-  const code = String(Math.floor(100000 + Math.random() * 900000))
-  const saved = await dbInsert('game_login_codes', {
-    code: code,
-    user_id: profile.user_id,
-    game_id: gameId,
-    game_server: gameServer || profile.game_server || '',
-    expires_at: new Date(Date.now() + CODE_TTL_MS).toISOString(),
-  })
+  // Основной путь: письмо с кодом внутри игры.
+  const sent = await sendInGameCode(gameId, gameServer || profile.game_server || '')
+  if (sent.error) return json({ ok: false, error: sent.error }, sent.error === 'ingame_unavailable' ? 503 : 502)
+
+  const saved = await startAttempt(profile, gameId, gameServer, 'ingame')
   if (!saved) return json({ ok: false, error: 'internal' }, 500)
 
-  const sent = await sendTelegram(links[0].tg_chat_id,
-    '🔐 <b>Код входа на NAME</b>\n\n<code>' + code + '</code>\n\n' +
-    'Введи его на сайте в течение 5 минут: Game ID <code>' + gameId + '</code>' +
-    (gameServer ? ' · сервер <code>' + gameServer + '</code>' : '') + '.\n\n' +
-    'Если это был не ты — просто проигнорируй сообщение.')
-  if (!sent) return json({ ok: false, error: 'telegram_failed' }, 502)
+  // Предупреждение в Telegram, если он привязан: вход просили именно сейчас.
+  if (chatId) {
+    await sendTelegram(chatId,
+      '🎮 <b>Запрошен вход через игру</b>\n\nGame ID <code>' + gameId + '</code>' +
+      (gameServer ? ' · сервер <code>' + gameServer + '</code>' : '') +
+      '\nКод отправлен на внутриигровую почту MLBB. Если это не ты — смени пароль и напиши в поддержку.')
+  }
 
-  return json({ ok: true, ttl: Math.round(CODE_TTL_MS / 1000), nick: profile.nick || null })
+  return json({ ok: true, channel: 'ingame', ttl: Math.round(CODE_TTL_MS / 1000), nick: profile.nick || null })
 }
 
-// Одноразовая ссылка Supabase -> token_hash, который клиент меняет на сессию.
 async function magicLinkToken(userId) {
   try {
     const userRes = await fetch(SUPABASE_URL + '/auth/v1/admin/users/' + encodeURIComponent(userId), { headers: svcHeaders() })
@@ -172,45 +278,62 @@ async function magicLinkToken(userId) {
     const email = user && user.email
     if (!email) return null
     const linkRes = await fetch(SUPABASE_URL + '/auth/v1/admin/generate_link', {
-      method: 'POST',
-      headers: svcHeaders(),
-      body: JSON.stringify({ type: 'magiclink', email: email }),
+      method: 'POST', headers: svcHeaders(), body: JSON.stringify({ type: 'magiclink', email: email }),
     })
     const link = await linkRes.json().catch(() => null)
     if (!linkRes.ok || !link) { console.error('generate link failed', linkRes.status); return null }
     const props = link.properties || link
     return props.hashed_token || link.hashed_token || null
-  } catch (e) {
-    console.error('magicLinkToken threw', String(e))
-    return null
-  }
+  } catch (e) { console.error('magicLinkToken threw', String(e)); return null }
 }
 
-// Шаг 2: проверяем код и отдаём token_hash.
 async function handleSession(req) {
   const body = await readJson(req)
   const gameId = digits(body.gameId, 12)
   const gameServer = digits(body.gameServer, 6)
   const code = digits(body.code, 6)
+  const channel = body.channel === 'telegram' ? 'telegram' : 'ingame'
   if (!/^[0-9]{6,12}$/.test(gameId) || !/^[0-9]{6}$/.test(code)) {
     return json({ ok: false, error: 'bad_request' }, 400)
   }
 
-  const rows = await dbSelect('game_login_codes', { code: 'eq.' + code, select: '*' })
-  const row = rows[0]
-  if (!row) return json({ ok: false, error: 'bad_code' }, 401)
-  if (String(row.game_id) !== gameId) return json({ ok: false, error: 'bad_code' }, 401)
-  if (row.game_server && gameServer && String(row.game_server) !== gameServer) {
-    return json({ ok: false, error: 'bad_code' }, 401)
-  }
-  if (new Date(row.expires_at).getTime() < Date.now()) {
-    await dbDelete('game_login_codes', { code: 'eq.' + code })
+  // Не раскрываем, существует ли профиль: на этапе проверки любой промах —
+  // это просто неверный код.
+  const profile = await findProfile(gameId, gameServer)
+  if (!profile) return json({ ok: false, error: 'bad_code' }, 401)
+
+  const attempt = await latestAttempt(profile.user_id)
+  if (!attempt || attempt.channel !== channel) return json({ ok: false, error: 'bad_code' }, 401)
+  if (new Date(attempt.expires_at).getTime() < Date.now()) {
+    await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
     return json({ ok: false, error: 'code_expired' }, 401)
   }
+  if (String(attempt.game_id) !== gameId) return json({ ok: false, error: 'bad_code' }, 401)
+  if (gameServer && attempt.game_server && String(attempt.game_server) !== gameServer) {
+    return json({ ok: false, error: 'bad_code' }, 401)
+  }
+  if ((attempt.attempts || 0) >= MAX_ATTEMPTS) {
+    await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
+    return json({ ok: false, error: 'too_many_attempts' }, 429)
+  }
 
-  // Код одноразовый: гасим до обмена, чтобы повтор не сработал.
-  await dbDelete('game_login_codes', { code: 'eq.' + code })
-  const tokenHash = await magicLinkToken(row.user_id)
+  let valid = false
+  if (channel === 'telegram') {
+    valid = String(attempt.code) === String(code) && attempt.game_id === gameId
+  } else {
+    const check = await verifyInGameCode(gameId, gameServer || attempt.game_server || '', code)
+    if (check.error === 'ingame_unavailable') return json({ ok: false, error: 'ingame_unavailable' }, 503)
+    valid = !check.error
+  }
+
+  if (!valid) {
+    const used = (attempt.attempts || 0) + 1
+    await dbPatch('game_login_codes', { user_id: 'eq.' + profile.user_id }, { attempts: used })
+    return json({ ok: false, error: 'bad_code', attemptsLeft: Math.max(0, MAX_ATTEMPTS - used) }, 401)
+  }
+
+  await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
+  const tokenHash = await magicLinkToken(profile.user_id)
   if (!tokenHash) return json({ ok: false, error: 'no_email' }, 409)
   return json({ ok: true, tokenHash: tokenHash })
 }

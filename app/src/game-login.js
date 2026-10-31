@@ -1,14 +1,30 @@
-// Вход через саму игру: Game ID + сервер + код из Telegram-бота.
-// Клиент только просит код и обменивает его на сессию — проверка и выдача
-// одноразовой ссылки живут в edge-функции `game-login` (service role).
-// Пароль и почта игроку не нужны: код приходит в Telegram, привязанный к профилю.
+// Вход через саму игру: Game ID + сервер + подтверждение владения аккаунтом.
+//
+// Два канала, оба проверяются на сервере (edge-функция `game-login`):
+//   ingame   — код приходит на внутриигровую почту MLBB (основной путь);
+//   telegram — код приходит в привязанный Telegram-бот (запасной путь).
+//
+// Пароль и почта игроку не нужны: сервер выдаёт одноразовую ссылку на сессию,
+// клиент меняет её через supabase.auth.verifyOtp.
 
-import { supabase, functionsUrl } from './supabase.js'
+const FUNCTION = 'game-login'
 
-const ACTION_URL = (action) => `${functionsUrl('game-login')}?action=${action}`
+export const GAME_CHANNELS = {
+  ingame: { id: 'ingame', label: 'На внутриигровую почту', short: 'в игре' },
+  telegram: { id: 'telegram', label: 'В Telegram-бота', short: 'в Telegram' },
+}
 
-async function postJson(url, payload) {
-  const res = await fetch(url, {
+function actionUrl(action) {
+  const fromWindow = typeof window !== 'undefined' ? window.__NAME_SUPABASE_URL__ : ''
+  const fromEnv = import.meta.env?.VITE_SUPABASE_URL
+  const base = String(fromWindow || fromEnv || '').replace(/\/+$/, '')
+  return base
+    ? `${base}/functions/v1/${FUNCTION}?action=${action}`
+    : `/functions/v1/${FUNCTION}?action=${action}`
+}
+
+async function post(action, payload) {
+  const res = await fetch(actionUrl(action), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload || {}),
@@ -17,17 +33,22 @@ async function postJson(url, payload) {
   return { ok: res.ok && data.ok !== false, data, status: res.status }
 }
 
-// Шаг 1: код уходит в Telegram, привязанный к профилю с этим Game ID.
-export async function requestGameCode({ gameId, gameServer }) {
-  const { data } = await postJson(ACTION_URL('code'), { gameId, gameServer })
+// Шаг 1: код уходит в игру или в Telegram — что выбрал игрок.
+export async function requestGameCode({ gameId, gameServer, channel = 'ingame' }) {
+  const { data } = await post('code', { gameId, gameServer, channel })
   if (!data.ok) throw new Error(data.error || 'internal')
-  return { ttl: data.ttl || 300, nick: data.nick || '' }
+  return { ttl: data.ttl || 300, nick: data.nick || '', channel: data.channel || channel }
 }
 
-// Шаг 2: меняем код на одноразовую ссылку и поднимаем сессию.
-export async function signInWithGameCode({ gameId, gameServer, code }) {
-  const { data } = await postJson(ACTION_URL('session'), { gameId, gameServer, code })
-  if (!data.ok || !data.tokenHash) throw new Error(data.error || 'internal')
+// Шаг 2: код проверяется на сервере (в игре — через игровой шлюз), затем сессия.
+export async function signInWithGameCode({ gameId, gameServer, code, channel = 'ingame', supabase }) {
+  const { data } = await post('session', { gameId, gameServer, code, channel })
+  if (!data.ok) {
+    const error = new Error(data.error || 'internal')
+    if (data.attemptsLeft !== undefined) error.attemptsLeft = data.attemptsLeft
+    throw error
+  }
+  if (!data.tokenHash) throw new Error('internal')
   if (!supabase) throw new Error('no_supabase')
   const { error } = await supabase.auth.verifyOtp({ type: 'magiclink', token_hash: data.tokenHash })
   if (error) throw new Error(error.message || 'verify_failed')
@@ -37,23 +58,32 @@ export async function signInWithGameCode({ gameId, gameServer, code }) {
 // Технический код -> фраза для игрока.
 export function describeGameLoginError(error) {
   const raw = String(error?.message || error || '')
+  const left = error?.attemptsLeft
   switch (raw) {
     case 'bad_game_id':
       return 'Game ID — это 6–12 цифр из профиля MLBB. Проверь значение.'
     case 'profile_not_found':
       return 'Аккаунта с таким Game ID и сервером нет. Проверь цифры или сначала зарегистрируйся по почте.'
     case 'telegram_not_linked':
-      return 'К этому профилю не привязан Telegram. Войди по почте/Google один раз, привяжи бота в Профиле — дальше сможешь входить через игру.'
+      return 'К этому профилю не привязан Telegram. Выбери код на внутриигровую почту — он работает без бота.'
+    case 'ingame_unavailable':
+      return 'Почта в игре сейчас недоступна. Попробуй код в Telegram или через минуту.'
+    case 'ingame_failed':
+      return 'Игра не приняла запрос на письмо. Проверь Game ID и сервер — цифры должны быть как в профиле MLBB.'
     case 'too_often':
       return 'Код уже отправлен меньше 30 секунд назад. Подожди немного и попробуй снова.'
+    case 'too_many_attempts':
+      return 'Слишком много неверных попыток. Запроси новый код.'
     case 'telegram_failed':
       return 'Telegram не принял сообщение. Проверь, что бот не заблокирован, и попробуй ещё раз.'
     case 'bad_request':
       return 'Проверь Game ID и код: в коде ровно 6 цифр.'
     case 'bad_code':
-      return 'Код не подошёл. Проверь цифры из сообщения бота или запроси новый.'
+      return left !== undefined && left > 0
+        ? `Код не подошёл. Осталось попыток: ${left}.`
+        : 'Код не подошёл. Проверь цифры из письма или запроси новый.'
     case 'code_expired':
-      return 'Код действует 5 минут и не успел. Запроси новый.'
+      return 'Код живёт 5 минут и не успел. Запроси новый — он придёт в игру или бота.'
     case 'no_email':
       return 'В аккаунте не осталось почты — вход по коду невозможен. Войди по почте и привяжи её заново.'
     case 'no_supabase':

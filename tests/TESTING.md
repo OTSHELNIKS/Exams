@@ -15,13 +15,13 @@ node tests/auth-methods.test.mjs  # 9 проверок способов реги
 node tests/auth-return.test.mjs  # 7 проверок возврата с внешнего входа
 node tests/socials.test.mjs  # 22 проверки привязки соцсетей (включая сохранение в базу)
 node tests/vk-auth.test.mjs  # 9 проверок VK ID (OAuth + PKCE)
-node tests/game-login.test.mjs  # 21 проверка входа через игру (Game ID + код в Telegram)
+node tests/game-login.test.mjs  # 38 проверок входа через игру (код в игре + Telegram)
 node tests/public-profile.test.mjs  # 15 проверок публичной карточки игрока
 node tests/tiktok-auth.test.mjs  # 25 проверок привязки TikTok (Login Kit)
 node tests/legal.test.mjs  # 10 проверок страниц «Политика» и «Условия» (нужны для ревью TikTok)
 ```
 
-Всего на 2026-10-31: **208 автотестов** (21 — вход через игру, 25 — TikTok, 10 — юридические страницы и шпаргалка для формы, 15 — просмотр чужих профилей).
+Всего на 2026-10-31: **225 автотестов** (38 — вход через игру, 25 — TikTok, 10 — юридические страницы и шпаргалка для формы, 15 — просмотр чужих профилей).
 
 Тест грузит **настоящий** `supabase/functions/telegram-bot/index.ts`, подменяет `Deno`/`fetch`
 и гоняет фейковые апдейты Telegram + вызовы `?action=notify` / `?setup` / `?health`.
@@ -168,16 +168,27 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 
 ## T-GL — вход через игру (авто)
 
-Сценарий: Game ID + сервер → код в Telegram, привязанный к профилю → код на сайте → сессия.
-Серверная часть — edge-функция `game-login` (`build: game-login-v1`), клиент — `app/src/game-login.js`.
+Сценарий: Game ID + сервер → подтверждение владения аккаунтом → сессия.
+
+Два канала (выбор в модалке, по умолчанию — игра):
+
+- `channel=ingame` (основной): сервер просит игру отправить письмо с кодом на
+  **внутриигровую почту MLBB** (шлюз `arena.rone.dev` → `/user/auth/send-vc`),
+  игрок открывает MLBB кнопкой «Открыть игру», читает письмо и вводит 6 цифр.
+  Код проверяется на сервере через `/user/auth/login` — успешный ответ доказывает
+  владение аккаунтом. JWT игры **наружу не отдаётся**.
+- `channel=telegram` (запасной): код приходит в привязанный Telegram-бот.
+
+Серверная часть — edge-функция `game-login` (`build: game-login-v2`),
+клиент — `app/src/game-login.js`, ссылки на игру — `app/src/game-link.js`.
 
 | ID | Кейс | Ожидание | Статус |
 |---|---|---|---|
-| 01 | `?health=1` | `{ok:true, build:"game-login-v1"}` | ✅ |
-| 02 | Код по существующему Game ID | 200, код уходит привязанному чату, TTL 300 с | ✅ |
+| 01 | `?health=1` | `{ok:true, build:"game-login-v2"}` | ✅ |
+| 02 | Канал `telegram`, профиль с ботом | 200, код уходит привязанному чату, TTL 300 с | ✅ |
 | 03 | Game ID короче 6 цифр | 400 `bad_game_id`, Telegram не трогаем | ✅ |
 | 04 | Нет профиля с таким Game ID | 404 `profile_not_found` | ✅ |
-| 05 | К профилю не привязан Telegram | 409 `telegram_not_linked`, код не создаётся | ✅ |
+| 05 | Канал `telegram`, а бот не привязан | 409 `telegram_not_linked`, код не создаётся | ✅ |
 | 06 | Повторный запрос раньше 30 с | 429 `too_often` | ✅ |
 | 07 | Новый запрос кода | Старый код стирается — активен один | ✅ |
 | 08 | Telegram отклонил отправку | 502 `telegram_failed` | ✅ |
@@ -194,6 +205,23 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 | 19 | Клиент | `?action=code` → `?action=session` → `verifyOtp({type:'magiclink'})` | ✅ |
 | 20 | Тексты ошибок | Все 7 кодов переведены на человеческий язык | ✅ |
 | 21 | Плитка MLBB | Активна, открывает модалку, без бейджа «скоро» | ✅ |
+| 22 | Канал не указан | По умолчанию `ingame`: письмо в игру, кода в Telegram нет | ✅ |
+| 23 | Нет профиля с таким Game ID | 404, письмо в игру не отправляем | ✅ |
+| 24 | Бот привязан, канал `ingame` | В Telegram уходит только предупреждение, без кода | ✅ |
+| 25 | Код из письма | `/user/auth/login` → 200 + `tokenHash`, попытка удалена | ✅ |
+| 26 | Ответ шага `session` | Ни `jwt`, ни `token`, ни `roleid` игры наружу | ✅ |
+| 27 | Неверный код из письма | 401 `bad_code` + `attemptsLeft`, счётчик растёт | ✅ |
+| 28 | 5 неверных вводов | 429 `too_many_attempts`, даже верный код не проходит | ✅ |
+| 29 | Шлюз недоступен | 503 `ingame_unavailable`, попытка не создаётся | ✅ |
+| 30 | Игра не нашла аккаунт | 502 `ingame_failed` | ✅ |
+| 31 | Канал при запросе и вводе разный | 401 `bad_code` | ✅ |
+| 32 | Профиля нет на шаге `session` | 401 `bad_code` (не раскрываем существование) | ✅ |
+| 33 | Миграция каналов | `channel` (default `telegram`), `attempts` (default 0) | ✅ |
+| 34 | Ссылки на игру | Android `intent://` + Play Маркет, iOS `mlbb://` + App Store | ✅ |
+| 35 | Игра не открылась | Уводим в магазин (`via: store`) | ✅ |
+| 36 | Игра открылась | В магазин не уводим (`via: mlbb://`) | ✅ |
+| 37 | Модалка | Выбор канала, «Открыть игру», подсказка про Почту | ✅ |
+| 38 | Тексты | Нет запроса пароля Moonton, есть `ingame_unavailable` | ✅ |
 
 Важно: обмен кода на сессию делает сервер через `auth.admin.generate_link`
 (`magiclink` → `hashed_token`), клиент только вызывает `verifyOtp`. Пароль и
@@ -310,7 +338,7 @@ TikTok Login Kit требует публичные Terms of Service и Privacy P
 | ID | Кейс | Ожидание | Статус |
 |---|---|---|---|
 | 01 | Сайт открывается | 200, шелл приложения | ✅ |
-| 02 | `?health=1` функций | `telegram-bot`: `{ok:true, build:"greeting-v2"}`; `game-login`: `{ok:true, build:"game-login-v1"}` | ✅ |
+| 02 | `?health=1` функций | `telegram-bot`: `{ok:true, build:"greeting-v2"}`; `game-login`: `{ok:true, build:"game-login-v2"}` | ✅ |
 
 ## M — ручные кейсы (выполняются на телефоне/ПК)
 
