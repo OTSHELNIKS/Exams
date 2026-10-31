@@ -124,5 +124,51 @@ test('T-PUB-13 стили карточки и кликабельной стро�
   }
 })
 
+
+// ---------- КДА и винрейт вместо героев и соцсетей ----------
+const statsSql = read('supabase/migrations/20261031200000_game_stats.sql')
+const card = () => screens.slice(
+  screens.indexOf('export function PublicProfileModal'),
+  screens.indexOf('/* ========================================================= LEADERBOARD'),
+)
+
+test('T-PUB-16 статистика игры лежит в публичной вьюхе', () => {
+  for (const field of ['game_kda', 'game_winrate', 'game_matches', 'game_stats_at']) {
+    assert.match(statsSql, new RegExp(`add column if not exists ${field}`, 'i'), 'нет колонки ' + field)
+    assert.ok(statsSql.includes('p.' + field), 'вьюха не отдаёт ' + field)
+  }
+  const view = statsSql.slice(statsSql.indexOf('create or replace view'))
+  assert.ok(!/game_id\b/.test(view), 'во вьюху утёк Game ID')
+})
+
+test('T-PUB-17 в карточке КДА и винрейт вместо героев и соцсетей', () => {
+  const src = card()
+  assert.match(src, /<span>КДА<\/span>/, 'нет плитки КДА')
+  assert.match(src, /<span>ВИНРЕЙТ<\/span>/, 'нет плитки винрейта')
+  assert.match(src, /row\.game_kda/, 'КДА не берётся из данных игры')
+  assert.match(src, /row\.game_winrate/, 'винрейт не берётся из данных игры')
+  // Плитки статистики: ровно три — PTS, КДА, ВИНРЕЙТ (героев и соцсетей там нет).
+  const stats = src.slice(src.indexOf('modal__stats'), src.indexOf('</div>', src.indexOf('modal__stats')))
+  assert.doesNotMatch(src.slice(src.indexOf('modal__stats'), src.indexOf('modal__stats') + 700), /ГЕРОИ|СОЦСЕТИ/, 'в статистике остались старые плитки')
+  assert.match(src, /pub__socials/, 'список соцсетей ниже должен остаться')
+})
+
+test('T-PUB-18 без подтверждения карточка честно показывает «—»', () => {
+  const src = card()
+  assert.match(src, /kda \?\? '—'/)
+  assert.match(src, /winrate \?\? '—'/)
+  assert.match(src, /появятся после подтверждения аккаунта через внутриигровую почту/)
+})
+
+test('T-PUB-19 винрейт и КДА считаются из данных игры', () => {
+  const fn = read('supabase/functions/game-login/index.ts')
+  assert.match(fn, /statsFromGame\(/)
+  assert.match(fn, /wc \/ tc/)
+  assert.match(fn, /game_kda/)
+  assert.match(fn, /game_winrate/)
+  assert.match(fn, /\/user\/stats/)
+  assert.match(fn, /\/user\/matches/)
+})
+
 console.log(`\npublic-profile: ${passed}/${passed + failed}`)
 if (failed) process.exit(1)

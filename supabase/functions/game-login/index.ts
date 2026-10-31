@@ -37,7 +37,7 @@
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').replace(/\/+$/, '')
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') || ''
-const BUILD = 'game-login-v4'
+const BUILD = 'game-login-v5'
 const CODE_TTL_MS = 5 * 60 * 1000
 const COOLDOWN_MS = 30 * 1000
 const MAX_ATTEMPTS = 5
@@ -174,7 +174,58 @@ async function verifyInGameCode(gameId, gameServer, code) {
   const zoneId = String(data.data.zoneid || gameServer || '')
   if (roleId !== gameId) return { error: 'bad_code' }
   if (gameServer && zoneId && zoneId !== gameServer) return { error: 'bad_code' }
-  return { ok: true }
+  // JWT игры остаётся на сервере: он нужен, чтобы забрать КДА и винрейт.
+  // Клиенту он не отдаётся никогда.
+  return { ok: true, jwt: String(data.data.jwt || data.data.token || '') }
+}
+
+// ------------------------------------------------------------- статистика
+// Общие цифры игрока: винрейт из /user/stats (wc/tc), КДА — по последним
+// матчам ((убийства + помощь) / смерти). Работает только с игровым JWT,
+// то есть только сразу после подтверждения кодом из внутриигровой почты.
+function statsFromGame(stats, matches) {
+  const patch = {}
+  if (stats) {
+    const wc = Number(stats.wc)
+    const tc = Number(stats.tc)
+    if (Number.isFinite(wc) && Number.isFinite(tc) && tc > 0) {
+      patch.game_winrate = Math.round((wc / tc) * 100)
+      patch.game_matches = tc
+    }
+  }
+  if (Array.isArray(matches) && matches.length) {
+    let kills = 0, deaths = 0, assists = 0
+    for (const m of matches) {
+      kills += Number(m && m.k) || 0
+      deaths += Number(m && m.d) || 0
+      assists += Number(m && m.a) || 0
+    }
+    const kda = deaths > 0 ? (kills + assists) / deaths : kills + assists
+    patch.game_kda = Math.round(kda * 100) / 100
+    if (patch.game_matches === undefined) patch.game_matches = matches.length
+  }
+  return Object.keys(patch).length ? patch : null
+}
+
+async function fetchGameStats(jwt) {
+  if (!jwt) return null
+  const headers = { Authorization: 'Bearer ' + jwt, Accept: 'application/json' }
+  for (const base of GAME_API_BASES) {
+    let stats = null
+    let matches = null
+    try {
+      const r = await fetch(base + '/user/stats', { headers })
+      const j = await r.json().catch(() => null)
+      if (r.ok && j && j.code === 0 && j.data) stats = j.data
+    } catch (e) { console.error('stats threw', base, String(e)) }
+    try {
+      const r = await fetch(base + '/user/matches?limit=20', { headers })
+      const j = await r.json().catch(() => null)
+      if (r.ok && j && j.code === 0 && j.data && Array.isArray(j.data.result)) matches = j.data.result
+    } catch (e) { console.error('matches threw', base, String(e)) }
+    if (stats || matches) return { stats, matches }
+  }
+  return null
 }
 
 // ------------------------------------------------------------------- профиль
@@ -323,12 +374,14 @@ async function handleSession(req) {
   }
 
   let valid = false
+  let gameJwt = ''
   if (channel === 'telegram') {
     valid = String(attempt.code) === String(code) && attempt.game_id === gameId
   } else {
     const check = await verifyInGameCode(gameId, gameServer || attempt.game_server || '', code)
     if (check.error === 'ingame_unavailable') return json({ ok: false, error: 'ingame_unavailable' }, 503)
     valid = !check.error
+    gameJwt = check.jwt || ''
   }
 
   if (!valid) {
@@ -343,10 +396,15 @@ async function handleSession(req) {
   // «подтверждён». Код в Telegram доказывает лишь доступ к боту, поэтому
   // статус не меняет.
   if (channel === 'ingame') {
-    const marked = await dbPatch('player_profiles', { user_id: 'eq.' + profile.user_id }, {
+    const patch = {
       game_verified_at: new Date().toISOString(),
       game_verified_id: gameId,
-    })
+    }
+    // Заодно забираем КДА и винрейт: другой возможности получить игровой JWT нет.
+    const fetched = await fetchGameStats(gameJwt)
+    const stats = fetched ? statsFromGame(fetched.stats, fetched.matches) : null
+    if (stats) Object.assign(patch, stats, { game_stats_at: new Date().toISOString() })
+    const marked = await dbPatch('player_profiles', { user_id: 'eq.' + profile.user_id }, patch)
     if (!marked) console.error('verify mark failed', profile.user_id)
   }
 

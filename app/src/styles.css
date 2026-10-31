@@ -664,6 +664,9 @@ html.is-modal-open .rail { overflow: hidden !important; }
 .prize-note { display: flex; align-items: center; gap: 8px; color: #b9bcc8; font-size: 11px; margin-top: 18px; }
 .prize-note svg { color: var(--gold); flex: none; }
 
+/* Подпись под КДА и винрейтом в карточке игрока. */
+.pub__note--stats { margin-top: -4px; font-size: 11px; text-align: center; }
+
 /* Игровой аккаунт в профиле: отдельная карточка под разделом «СОЦСЕТИ». */
 .game-account {
   border: 1px solid var(--line); border-radius: 18px; padding: 14px;

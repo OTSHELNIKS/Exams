@@ -1894,6 +1894,15 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
   const socials = ((row && row.socials) || [])
     .map(parseSocial)
     .filter((x) => SOCIAL_IDS.includes(x.provider))
+  // КДА и винрейт приходят из игры — их пишет edge-функция game-login сразу
+  // после кода из внутриигровой почты. Если подтверждения не было, честно «—».
+  const kda = row && row.game_kda !== null && row.game_kda !== undefined
+    ? Number(row.game_kda).toFixed(2).replace(/\.00$/, '')
+    : null
+  const winrate = row && row.game_winrate !== null && row.game_winrate !== undefined
+    ? `${row.game_winrate}%`
+    : null
+  const matches = row && row.game_matches ? Number(row.game_matches) : null
 
   return (
     <Modal open={Boolean(userId)} onClose={onClose} className="modal--player" labelledBy="public-profile-title">
@@ -1914,9 +1923,16 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
 
           <div className="modal__stats">
             <div><b>{row.pts ?? 0}</b><span>PTS</span></div>
-            <div><b>{heroes.length || '—'}</b><span>ГЕРОИ</span></div>
-            <div><b>{socials.length || '—'}</b><span>СОЦСЕТИ</span></div>
+            <div><b>{kda ?? '—'}</b><span>КДА</span></div>
+            <div><b>{winrate ?? '—'}</b><span>ВИНРЕЙТ</span></div>
           </div>
+          <p className="pub__note pub__note--stats">
+            {winrate || kda
+              ? `Данные игры${matches ? ` · ${matches} матчей` : ''}${row.game_stats_at ? ` · обновлено ${new Date(row.game_stats_at).toLocaleDateString('ru-RU')}` : ''}.`
+              : row.game_verified
+                ? 'Аккаунт подтверждён, но цифры игры ещё не загрузились — подтвердите его кодом из внутриигровой почты ещё раз.'
+                : 'КДА и винрейт появятся после подтверждения аккаунта через внутриигровую почту MLBB.'}
+          </p>
 
           {row.bio ? <p className="pub__bio">{row.bio}</p> : null}
 

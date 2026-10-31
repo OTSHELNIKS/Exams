@@ -24,6 +24,8 @@ const state = {
   gameApi: { up: true, sendOk: true, acceptCode: '4821', zone: '6634' },
   gameCalls: [],
   profilePatches: [],
+  statsCalls: [],
+  statsUp: true,
 }
 
 function J(status, json) {
@@ -97,6 +99,20 @@ globalThis.fetch = async (input, init) => {
     return rest(table, url, init || {})
   }
   // Игровой шлюз: отправка письма с кодом и проверка кода из письма.
+  // Статистика игры: доступна только с игровым JWT (после проверки кода).
+  if (url.includes('/user/stats') || url.includes('/user/matches')) {
+    state.statsCalls.push(url)
+    const auth = (init.headers && (init.headers.Authorization || init.headers.authorization)) || ''
+    if (!/^Bearer GJWT/.test(auth)) return J(401, { code: 401, message: 'unauthorized' })
+    if (url.includes('/user/stats')) {
+      return state.statsUp ? J(200, { code: 0, data: { wc: 188, tc: 308, as: 762.35 } }) : J(502, {})
+    }
+    return state.statsUp
+      ? J(200, { code: 0, data: { result: [
+        { k: 10, d: 2, a: 8 }, { k: 4, d: 4, a: 12 }, { k: 6, d: 0, a: 6 },
+      ] } })
+      : J(502, {})
+  }
   if (url.includes('/user/auth/send-vc') || url.includes('/user/auth/login')) {
     state.gameCalls.push({ url, body: JSON.parse(init.body) })
     if (!state.gameApi.up) return J(502, { message: 'bad gateway' })
@@ -106,7 +122,10 @@ globalThis.fetch = async (input, init) => {
     const body = JSON.parse(init.body)
     const good = String(body.vc) === state.gameApi.acceptCode
     return good
-      ? J(200, { code: 0, msg: 'ok', data: { roleid: Number(body.role_id), zoneid: Number(state.gameApi.zone) } })
+      ? J(200, { code: 0, msg: 'ok', data: {
+        roleid: Number(body.role_id), zoneid: Number(state.gameApi.zone),
+        jwt: 'GJWT-' + body.role_id, token: 'GJWT-' + body.role_id,
+      } })
       : J(200, { code: 1001, msg: 'invalid verification code' })
   }
   if (url.includes('/auth/v1/admin/users/')) {
@@ -155,6 +174,8 @@ const reset = () => {
   state.gameApi = { up: true, sendOk: true, acceptCode: '4821', zone: '6634' }
   state.gameCalls = []
   state.profilePatches = []
+  state.statsCalls = []
+  state.statsUp = true
   state.admins = { u1: { id: 'u1', email: 'player@example.test' } }
 }
 
@@ -164,7 +185,7 @@ await test('T-GL-01 health отдаёт build функции', async () => {
   const data = await res.json()
   assert.equal(res.status, 200)
   assert.equal(data.ok, true)
-  assert.equal(data.build, 'game-login-v4')
+  assert.equal(data.build, 'game-login-v5')
 })
 
 // ---------- шаг 1: код ----------
@@ -634,6 +655,62 @@ await test('T-GL-47 интерфейс ждёт 4 цифры, а не 6', () => 
   assert.match(src, /gameCode\.length < 4/, 'кнопка «Войти» не разблокируется на 4 цифрах')
   assert.doesNotMatch(src, /gameCode\.length !== 6/, 'старое требование ровно 6 цифр')
   assert.match(src, /В письме 4 цифры/)
+})
+
+
+// ---------- КДА и винрейт после подтверждения ----------
+await test('T-GL-48 после кода из игры сохраняются винрейт и КДА', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
+  assert.equal(res.status, 200, JSON.stringify(await res.json().catch(() => ({}))))
+  const mark = state.profilePatches.find((p) => p.patch.game_verified_at)
+  assert.ok(mark, 'нет отметки подтверждения')
+  // 188 побед из 308 матчей → 61%
+  assert.equal(mark.patch.game_winrate, 61)
+  assert.equal(mark.patch.game_matches, 308)
+  // (10+4+6 убийств + 8+12+6 помощи) / 6 смертей = 46/6 ≈ 7.67
+  assert.equal(mark.patch.game_kda, 7.67)
+  assert.ok(mark.patch.game_stats_at, 'нет времени обновления статистики')
+})
+
+await test('T-GL-49 статистика запрашивается только с игровым JWT', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
+  assert.ok(state.statsCalls.length >= 1, 'не запрашивали статистику')
+  assert.match(state.statsCalls[0], /\/user\/stats$/)
+})
+
+await test('T-GL-50 игра не отдала статистику — вход всё равно работает', async () => {
+  reset()
+  state.statsUp = false
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
+  const data = await res.json()
+  assert.equal(data.ok, true, 'вход не должен ломаться из-за статистики')
+  const mark = state.profilePatches.find((p) => p.patch.game_verified_at)
+  assert.ok(mark, 'отметка подтверждения всё равно ставится')
+  assert.equal(mark.patch.game_winrate, undefined, 'выдуманных цифр не пишем')
+})
+
+await test('T-GL-51 вход через Telegram не тянет статистику', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634', channel: 'telegram' })
+  const code = state.codes[0].code
+  await post('session', { gameId: '1340937090', gameServer: '6634', code, channel: 'telegram' })
+  assert.equal(state.statsCalls.length, 0)
+  assert.equal(state.profilePatches.length, 0)
+})
+
+await test('T-GL-52 миграция статистики и публичной вьюхи', () => {
+  const sql = read('supabase/migrations/20261031200000_game_stats.sql')
+  for (const col of ['game_kda', 'game_winrate', 'game_matches', 'game_stats_at']) {
+    assert.match(sql, new RegExp(`add column if not exists ${col}`, 'i'), 'нет ' + col)
+  }
+  assert.match(sql, /create or replace view public\.player_profiles_public/i)
+  assert.match(sql, /p\.game_winrate/)
+  assert.match(sql, /game_verified\) AS|AS game_verified/i)
 })
 
 console.log(`\n${passed}/${passed + failed} game-login tests passed`)
