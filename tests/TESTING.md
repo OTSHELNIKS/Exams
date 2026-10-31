@@ -18,10 +18,10 @@ node tests/vk-auth.test.mjs  # 9 проверок VK ID (OAuth + PKCE)
 node tests/game-login.test.mjs  # 21 проверка входа через игру (Game ID + код в Telegram)
 node tests/public-profile.test.mjs  # 15 проверок публичной карточки игрока
 node tests/tiktok-auth.test.mjs  # 25 проверок привязки TikTok (Login Kit)
-node tests/legal.test.mjs  # 9 проверок страниц «Политика» и «Условия» (нужны для ревью TikTok)
+node tests/legal.test.mjs  # 10 проверок страниц «Политика» и «Условия» (нужны для ревью TikTok)
 ```
 
-Всего на 2026-10-31: **207 автотестов** (21 — вход через игру, 25 — TikTok, 9 — юридические страницы и подтверждение домена, 15 — просмотр чужих профилей).
+Всего на 2026-10-31: **208 автотестов** (21 — вход через игру, 25 — TikTok, 10 — юридические страницы и шпаргалка для формы, 15 — просмотр чужих профилей).
 
 Тест грузит **настоящий** `supabase/functions/telegram-bot/index.ts`, подменяет `Deno`/`fetch`
 и гоняет фейковые апдейты Telegram + вызовы `?action=notify` / `?setup` / `?health`.
@@ -48,7 +48,7 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 | T-GL (вход через игру) | 01–21 | ✅ 21/21 PASS |
 | T-PUB (профиль другого игрока) | 01–15 | ✅ 15/15 PASS |
 | T-TT (привязка TikTok) | 01–25 | ✅ 25/25 PASS |
-| T-LGL (документы для ревью) | 01–09 | ✅ 9/9 PASS |
+| T-LGL (документы для ревью) | 01–10 | ✅ 10/10 PASS |
 | T-FE (фронт: сборка, бандл) | 01–04 | ✅ 4/4 PASS |
 | T-LIVE (прод: сайт, health) | 01–02 | ✅ 2/2 PASS |
 | M (ручные, на устройстве) | 01–15 | ⏳ к выполнению |
@@ -285,6 +285,7 @@ TikTok Login Kit требует публичные Terms of Service и Privacy P
 | 07 | Навигация | Документы связаны между собой и с приложением | ✅ |
 | 08 | Честность | Запрашиваем только базовый профиль, лишних прав нет | ✅ |
 | 09 | Подтверждение URL | `tiktok<key>.txt` в `app/public`, имя и содержимое совпадают | ✅ |
+| 10 | Шпаргалка | `tiktok-setup.html`: все значения формы и кнопки копирования, без секретов | ✅ |
 
 Подтверждение владения адресом (TikTok → URL properties → **URL prefix**):
 файл `https://otshelniks.github.io/Exams/tiktokOdUndK3a1I8gHCy17ppWPoi4LZTPWapJ.txt`

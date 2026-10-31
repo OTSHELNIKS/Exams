@@ -97,5 +97,30 @@ test('T-LGL-09 файл подтверждения URL от TikTok лежит в
   assert.ok(content.endsWith(key), 'ключ в имени файла и в содержимом не совпадают')
 })
 
+test('T-LGL-10 страница-шпаргалка для формы TikTok: значения и копирование', () => {
+  const helper = read('app/public/tiktok-setup.html')
+  // Каждое обязательное поле формы есть на странице ровно в том виде, в каком
+  // его ждёт TikTok: ссылки, категория, описание, текст для ревьюера.
+  for (const value of [
+    'https://otshelniks.github.io/Exams/terms.html',
+    'https://otshelniks.github.io/Exams/privacy.html',
+    'https://otshelniks.github.io/Exams/',
+    'NAME MLBB',
+  ]) {
+    assert.ok(helper.includes(value), 'на шпаргалке нет значения: ' + value)
+  }
+  assert.ok(helper.includes('user.info.basic'), 'не указан scope')
+  assert.ok(helper.includes('Login Kit'), 'не указан продукт')
+  assert.ok(helper.includes('Sandbox'), 'не напомнила про Sandbox')
+  assert.ok(helper.includes('tiktok-icon-1024.png'), 'нет ссылки на иконку')
+  assert.ok(/data-copy="/.test(helper) && /clipboard/.test(helper), 'кнопки копирования не работают')
+  // Текст описания не длиннее лимита TikTok (120 символов).
+  const desc = helper.match(/data-copy="(Матчмейкинг[^"]+)"/)
+  assert.ok(desc && desc[1].length <= 120, 'описание длиннее 120 символов')
+  // Шпаргалка не должна светить секретами и не собирает данные.
+  assert.ok(!/client_secret|TIKTOK_CLIENT_SECRET/.test(helper), 'на странице упомянут секрет')
+  assert.ok(!/<form|fetch\(/.test(helper), 'страница что-то отправляет на сервер')
+})
+
 console.log(`\nlegal: ${passed}/${passed + failed}`)
 if (failed) process.exit(1)

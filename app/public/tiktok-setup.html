@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Заполнение формы TikTok — NAME MLBB</title>
+<style>
+  :root { --bg:#0b0b10; --surface:#15161d; --line:#23252f; --text:#eef0f5; --muted:#9a9daa; --dim:#6f7280; --orange:#ff4b12; --orange-2:#ff7a45; --green:#3fcb7b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif; line-height:1.55; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 18px 16px 60px; }
+  .top { display:flex; align-items:center; gap:10px; padding:10px 0 4px; }
+  .mark { width:32px; height:32px; border-radius:50%; flex:none; background:linear-gradient(145deg,#ff6a2b,#ff3d00); display:flex; align-items:center; justify-content:center; gap:2px; }
+  .mark i { display:block; width:2.6px; height:13px; border-radius:2px; background:#1a0a04; transform:skewX(-24deg); }
+  h1 { font-size:21px; margin:14px 0 4px; letter-spacing:-.4px; }
+  .lead { color:var(--muted); font-size:13.5px; margin:0 0 18px; }
+  .step { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:14px 14px 12px; margin:0 0 12px; }
+  .step__num { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:7px; background:rgba(255,75,18,.16); color:var(--orange-2); font-size:12px; font-weight:900; margin-right:8px; }
+  .step h2 { font-size:15px; margin:0 0 8px; display:flex; align-items:center; letter-spacing:-.2px; }
+  .field { margin:10px 0 0; }
+  .field__label { display:block; font-size:11px; letter-spacing:.7px; text-transform:uppercase; color:var(--dim); font-weight:800; margin-bottom:5px; }
+  .value {
+    display:flex; align-items:center; gap:8px; background:#101119; border:1px solid var(--line);
+    border-radius:12px; padding:10px 11px; font-size:13.5px; word-break:break-word;
+  }
+  .value span { flex:1; min-width:0; }
+  .copy {
+    flex:none; border:0; border-radius:9px; padding:8px 12px; font-size:12px; font-weight:800;
+    background:linear-gradient(100deg,#ff5317,#f0334f); color:#160a05; cursor:pointer;
+  }
+  .copy.is-done { background:var(--green); }
+  .long .value { font-size:12.5px; line-height:1.5; }
+  .hint { font-size:12px; color:var(--dim); margin:8px 0 0; }
+  .warn { border-color:rgba(255,75,18,.45); }
+  .warn .step__num { background:rgba(255,75,18,.22); }
+  .toast { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); background:rgba(63,203,123,.14); border:1px solid rgba(63,203,123,.45); color:#9df0bf; padding:10px 16px; border-radius:999px; font-size:13px; font-weight:700; opacity:0; transition:opacity .18s; pointer-events:none; }
+  .toast.is-on { opacity:1; }
+  a { color:var(--orange-2); }
+  .pill { display:inline-block; font-size:11.5px; color:var(--dim); border:1px solid var(--line); border-radius:999px; padding:3px 9px; margin:2px 4px 2px 0; }
+  @media (min-width:1024px) { body { font-size:15px; } .value { font-size:14.5px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="mark"><i></i><i></i><i></i><i></i><i></i></span><strong>NAME</strong></div>
+  <h1>Заполнение формы TikTok</h1>
+  <p class="lead">Жми «копировать» и вставляй в поле в кабинете TikTok for Developers. Ничего набирать руками не нужно.</p>
+
+  <div class="step">
+    <h2><span class="step__num">1</span>App details → Basic information</h2>
+    <div class="field">
+      <span class="field__label">App name</span>
+      <div class="value"><span>NAME MLBB</span><button class="copy" data-copy="NAME MLBB">копировать</button></div>
+    </div>
+    <div class="field">
+      <span class="field__label">Category</span>
+      <div class="value"><span>Games</span><button class="copy" data-copy="Games">копировать</button></div>
+    </div>
+    <div class="field long">
+      <span class="field__label">Description (120 символов)</span>
+      <div class="value"><span>Матчмейкинг Mobile Legends: Bang Bang — драфт капитанов, лобби и рейтинг PTS. Привязка TikTok к профилю игрока.</span><button class="copy" data-copy="Матчмейкинг Mobile Legends: Bang Bang — драфт капитанов, лобби и рейтинг PTS. Привязка TikTok к профилю игрока.">копировать</button></div>
+    </div>
+    <div class="field">
+      <span class="field__label">Terms of Service URL</span>
+      <div class="value"><span>https://otshelniks.github.io/Exams/terms.html</span><button class="copy" data-copy="https://otshelniks.github.io/Exams/terms.html">копировать</button></div>
+    </div>
+    <div class="field">
+      <span class="field__label">Privacy Policy URL</span>
+      <div class="value"><span>https://otshelniks.github.io/Exams/privacy.html</span><button class="copy" data-copy="https://otshelniks.github.io/Exams/privacy.html">копировать</button></div>
+    </div>
+    <div class="field">
+      <span class="field__label">Platforms → Website URL</span>
+      <div class="value"><span>https://otshelniks.github.io/Exams/</span><button class="copy" data-copy="https://otshelniks.github.io/Exams/">копировать</button></div>
+      <p class="hint">Отметь галочку <b>Web</b> — после этого появится поле Website URL.</p>
+    </div>
+    <div class="field">
+      <span class="field__label">App icon</span>
+      <p class="hint" style="margin:0">Скачай картинку и загрузи в TikTok: <a href="./tiktok-icon-1024.png">tiktok-icon-1024.png</a> (1024×1024, открыть → «Скачать изображение»).</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <h2><span class="step__num">2</span>App review → Required information</h2>
+    <div class="field long">
+      <span class="field__label">Текст для ревьюера</span>
+      <div class="value"><span id="review-text">NAME is a matchmaking web app for Mobile Legends: Bang Bang players. TikTok Login Kit is used as a social link on a player's profile: after sign-in with TikTok we request only user.info.basic to read the display name (and avatar URL when provided) and show it in the profile as a verified social account. We do not post or upload content, do not access videos, followers or messages, and do not store tokens — the access token is used once on our server to fetch the profile and then discarded. Only the display name is stored in the player's profile.
+Website: https://otshelniks.github.io/Exams/
+Privacy Policy: https://otshelniks.github.io/Exams/privacy.html
+Terms of Service: https://otshelniks.github.io/Exams/terms.html
+Scopes used: user.info.basic (Login Kit only).</span><button class="copy" data-copy-from="review-text">копировать</button></div>
+    </div>
+  </div>
+
+  <div class="step">
+    <h2><span class="step__num">3</span>Products и Scopes</h2>
+    <p class="hint" style="margin:0">
+      Продукт: <span class="pill">Login Kit</span><br />
+      Права: <span class="pill">user.info.basic</span><br />
+      Больше ничего не добавляй — лишние права затягивают ревью.
+    </p>
+  </div>
+
+  <div class="step warn">
+    <h2><span class="step__num">4</span>Sandbox — без этого вход не пустит</h2>
+    <p class="hint" style="margin:0 0 8px">Переключись на вкладку <b>Sandbox</b> сверху и добавь свой TikTok-аккаунт в тестовые пользователи. Пока приложение не одобрено, авторизация работает только у них.</p>
+    <p class="hint" style="margin:0">Затем проверь привязку: <a href="./">открыть сайт</a> → войти → Профиль → «+» → TikTok → «Войти через TikTok» → «Разрешить».</p>
+  </div>
+
+  <div class="step warn">
+    <h2><span class="step__num">5</span>Демо-видео</h2>
+    <p class="hint" style="margin:0">Запиши экран телефона, пока проходишь привязку (15–20 секунд). В кадре должен быть адрес сайта <b>otshelniks.github.io/Exams</b>. Формат mp4, до 50 МБ. Загрузи в блок Upload и жми Submit for review.</p>
+  </div>
+
+  <p class="hint">Страница только для тебя: ссылки ведут на документы и сайт, данные никуда не отправляются.</p>
+</div>
+<div class="toast" id="toast">Скопировано — вставляй в поле</div>
+<script>
+  const toast = document.getElementById('toast')
+  let timer = null
+  function showToast() {
+    toast.classList.add('is-on')
+    clearTimeout(timer)
+    timer = setTimeout(() => toast.classList.remove('is-on'), 1600)
+  }
+  document.querySelectorAll('.copy').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const from = btn.getAttribute('data-copy-from')
+      const text = from ? (document.getElementById(from)?.textContent || '') : btn.getAttribute('data-copy')
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text)
+        } else {
+          // Запасной путь для старых браузеров: выделяем и копируем командой.
+          const area = document.createElement('textarea')
+          area.value = text
+          area.setAttribute('readonly', '')
+          area.style.position = 'fixed'
+          area.style.opacity = '0'
+          document.body.appendChild(area)
+          area.select()
+          document.execCommand('copy')
+          document.body.removeChild(area)
+        }
+        btn.textContent = 'скопировано'
+        btn.classList.add('is-done')
+        showToast()
+        setTimeout(() => { btn.textContent = 'копировать'; btn.classList.remove('is-done') }, 1800)
+      } catch {
+        btn.textContent = 'выдели вручную'
+      }
+    })
+  })
+</script>
+</body>
+</html>
