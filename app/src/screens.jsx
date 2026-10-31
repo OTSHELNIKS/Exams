@@ -51,63 +51,12 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
   }
   const [notice, setNotice] = useState('')
   const [methodNote, setMethodNote] = useState(callbackError || '')
-  // Вход через саму игру: Game ID + сервер -> код в Telegram -> сессия.
+  // Вход через игру живёт в отдельном компоненте GameLoginModal: тот же экран
+  // «подтверди аккаунт кодом» открывается и на входе, и в профиле.
   const [gameOpen, setGameOpen] = useState(false)
-  const [gameStep, setGameStep] = useState('id')   // id | code
-  const [gameCode, setGameCode] = useState('')
-  const [gameBusy, setGameBusy] = useState(false)
-  const [gameError, setGameError] = useState('')
-  const [gameTtl, setGameTtl] = useState(300)
-  const [gameNick, setGameNick] = useState('')
-  // Канал подтверждения: письмо в игре (основной) или код в Telegram (запасной).
-  const [gameChannel, setGameChannel] = useState('ingame')
-  const [gameHelp, setGameHelp] = useState('')
-  const gamePlatform = detectPlatform()
-
-  const askGameCode = async () => {
-    if (!/^\d{6,12}$/.test(gameId)) { setGameError('Game ID — это 6–12 цифр из профиля MLBB.'); return }
-    setGameBusy(true); setGameError('')
-    try {
-      const res = await requestGameCode({ gameId, gameServer, channel: gameChannel })
-      setGameTtl(res.ttl); setGameNick(res.nick || '')
-      setGameChannel(res.channel || gameChannel)
-      setGameStep('code'); setGameCode('')
-    } catch (e) {
-      setGameError(describeGameLoginError(e))
-    } finally { setGameBusy(false) }
-  }
-  const confirmGameCode = async () => {
-    if (!/^\d{6}$/.test(gameCode)) { setGameError('В коде ровно 6 цифр — проверь письмо в игре или сообщение бота.'); return }
-    setGameBusy(true); setGameError('')
-    try {
-      await signInWithGameCode({ gameId, gameServer, code: gameCode, channel: gameChannel, supabase })
-      setGameOpen(false)
-    } catch (e) {
-      setGameError(describeGameLoginError(e))
-    } finally { setGameBusy(false) }
-  }
+  const gameLoginProps = { open: gameOpen, onClose: () => setGameOpen(false), supabase, gameId, gameServer, setGameId, setGameServer }
   const openGameLogin = () => {
-    setGameStep('id'); setGameCode(''); setGameError(''); setGameHelp('')
-    setGameChannel('ingame'); setGameOpen(true)
-  }
-  // Кнопка «Открыть игру»: уводит в MLBB, чтобы посмотреть Game ID и прочитать письмо.
-  const launchGame = async () => {
-    setGameHelp('')
-    const result = await openGame({ platform: gamePlatform })
-    if (!result.opened) setGameHelp(gameHelpText(gamePlatform))
-  }
-  // Смена канала прямо на шаге ввода кода: перезапрашиваем код в другом канале.
-  const switchGameChannel = async (next) => {
-    if (next === gameChannel) return
-    setGameChannel(next); setGameCode(''); setGameError('')
-    setGameBusy(true)
-    try {
-      const res = await requestGameCode({ gameId, gameServer, channel: next })
-      setGameTtl(res.ttl); setGameNick(res.nick || '')
-    } catch (e) {
-      setGameError(describeGameLoginError(e))
-      setGameStep('id')
-    } finally { setGameBusy(false) }
+    setGameOpen(true)
   }
   // Включён ли Google в проекте: спрашиваем у Supabase один раз при открытии
   // экрана. Пока ответа нет — плитка активна (fail-open), если провайдер
@@ -255,7 +204,93 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
         </a>
       </div>
 
-      <Modal open={gameOpen} onClose={() => setGameOpen(false)} labelledBy="game-login-title">
+      <GameLoginModal {...gameLoginProps} />
+
+      {notice && <div className="toast">{notice}</div>}
+
+      <div className="auth__foot">
+        <ShieldCheck size={16} color="#ff6a2b" />
+        <span>Античит и верификация каждого игрока</span>
+      </div>
+      {onPreview && (
+        <button type="button" className="link-btn" onClick={onPreview}>
+          Посмотреть все экраны <ArrowRight size={15} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/* ==================================================== GAME LOGIN MODAL ==== */
+/* Подтверждение игрового аккаунта кодом. Один и тот же экран нужен в двух
+   местах: на входе (плитка MLBB) и в профиле, в разделе привязок — поэтому
+   состояние и клики живут здесь, а не в AuthScreen.
+
+   Каналы: ingame — письмо на внутриигровую почту MLBB (основной);
+   telegram — код в привязанный бот (запасной). */
+export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, setGameId, setGameServer }) {
+  const [gameStep, setGameStep] = useState('id')   // id | code
+  const [gameCode, setGameCode] = useState('')
+  const [gameBusy, setGameBusy] = useState(false)
+  const [gameError, setGameError] = useState('')
+  const [gameTtl, setGameTtl] = useState(300)
+  const [gameNick, setGameNick] = useState('')
+  // Канал подтверждения: письмо в игре (основной) или код в Telegram (запасной).
+  const [gameChannel, setGameChannel] = useState('ingame')
+  const [gameHelp, setGameHelp] = useState('')
+  const gamePlatform = detectPlatform()
+
+  // Каждое открытие начинается с чистого шага ввода Game ID.
+  useEffect(() => {
+    if (!open) return
+    setGameStep('id'); setGameCode(''); setGameError(''); setGameHelp('')
+    setGameChannel('ingame')
+  }, [open])
+
+  const askGameCode = async () => {
+    if (!/^\d{6,12}$/.test(gameId)) { setGameError('Game ID — это 6–12 цифр из профиля MLBB.'); return }
+    setGameBusy(true); setGameError('')
+    try {
+      const res = await requestGameCode({ gameId, gameServer, channel: gameChannel })
+      setGameTtl(res.ttl); setGameNick(res.nick || '')
+      setGameChannel(res.channel || gameChannel)
+      setGameStep('code'); setGameCode('')
+    } catch (e) {
+      setGameError(describeGameLoginError(e))
+    } finally { setGameBusy(false) }
+  }
+  const confirmGameCode = async () => {
+    if (!/^\d{6}$/.test(gameCode)) { setGameError('В коде ровно 6 цифр — проверь письмо в игре или сообщение бота.'); return }
+    setGameBusy(true); setGameError('')
+    try {
+      await signInWithGameCode({ gameId, gameServer, code: gameCode, channel: gameChannel, supabase })
+      onClose()
+    } catch (e) {
+      setGameError(describeGameLoginError(e))
+    } finally { setGameBusy(false) }
+  }
+  // Кнопка «Открыть игру»: уводит в MLBB, чтобы посмотреть Game ID и прочитать письмо.
+  const launchGame = async () => {
+    setGameHelp('')
+    const result = await openGame({ platform: gamePlatform })
+    if (!result.opened) setGameHelp(gameHelpText(gamePlatform))
+  }
+  // Смена канала прямо на шаге ввода кода: перезапрашиваем код в другом канале.
+  const switchGameChannel = async (next) => {
+    if (next === gameChannel) return
+    setGameChannel(next); setGameCode(''); setGameError('')
+    setGameBusy(true)
+    try {
+      const res = await requestGameCode({ gameId, gameServer, channel: next })
+      setGameTtl(res.ttl); setGameNick(res.nick || '')
+    } catch (e) {
+      setGameError(describeGameLoginError(e))
+      setGameStep('id')
+    } finally { setGameBusy(false) }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} labelledBy="game-login-title">
         <h3 id="game-login-title">Вход через игру</h3>
         <p className="modal__role">
           {gameStep === 'id'
@@ -318,7 +353,7 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
             </div>
 
             <div className="social-modal__actions">
-              <button type="button" className="btn btn--ghost" onClick={() => setGameOpen(false)}>Отмена</button>
+              <button type="button" className="btn btn--ghost" onClick={() => onClose()}>Отмена</button>
               <PrimaryButton disabled={gameBusy} onClick={askGameCode}>{gameBusy ? 'Отправляю…' : 'Получить код'}</PrimaryButton>
             </div>
           </>
@@ -366,18 +401,39 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
         )}
         {gameError && <p className="social-error" role="alert">{gameError}</p>}
       </Modal>
+  )
+}
 
-      {notice && <div className="toast">{notice}</div>}
-
-      <div className="auth__foot">
-        <ShieldCheck size={16} color="#ff6a2b" />
-        <span>Античит и верификация каждого игрока</span>
+/* ================================================ GAME ACCOUNT (профиль) == */
+/* Игровой аккаунт — не соцсеть, поэтому он не входит в SocialRow (там счётчик
+   «привязано N из M»). Показываем его отдельной карточкой сразу под разделом
+   «СОЦСЕТИ»: тот же фирменный стиль, но своя логика и своя кнопка проверки. */
+export function GameAccountCard({ gameId, gameServer, onConfirm, onOpenGame, hint }) {
+  const bound = Boolean(gameId)
+  return (
+    <div className="game-account">
+      <div className="section-head"><span>ИГРОВОЙ АККАУНТ</span><b>{bound ? 'привязан' : 'не привязан'}</b></div>
+      <div className="game-account__row">
+        <BrandMark type="mlbb" />
+        <div className="game-account__info">
+          <strong>Mobile Legends</strong>
+          <small>{bound ? formatGameId(gameId, gameServer) : 'Game ID и сервер не указаны'}</small>
+        </div>
+        <span className={`game-account__badge${bound ? ' is-on' : ''}`}>{bound ? 'MLBB' : '—'}</span>
       </div>
-      {onPreview && (
-        <button type="button" className="link-btn" onClick={onPreview}>
-          Посмотреть все экраны <ArrowRight size={15} />
+      <p className="social-hint">
+        {hint || 'Владение аккаунтом подтверждается кодом: письмо приходит на внутриигровую почту MLBB.'}
+      </p>
+      <div className="game-account__actions">
+        <button type="button" className="btn btn--primary game-account__btn" onClick={onConfirm}>
+          <Gamepad2 size={16} /> {bound ? 'Подтвердить входом в игру' : 'Привязать игровой аккаунт'}
         </button>
-      )}
+        {onOpenGame && (
+          <button type="button" className="btn btn--ghost game-account__btn" onClick={onOpenGame}>
+            Открыть MLBB
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -1311,6 +1367,19 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, googleAcco
     return () => clearTimeout(t)
   }, [toast])
 
+  // Вход через игру прямо из профиля: поля Game ID подставляются из анкеты,
+  // но их можно поправить — например, если в профиле опечатка.
+  const [gameOpen, setGameOpen] = useState(false)
+  const [gameIdDraft, setGameIdDraft] = useState(gameId || '')
+  const [gameServerDraft, setGameServerDraft] = useState(gameServer || '')
+  useEffect(() => { setGameIdDraft(gameId || '') }, [gameId])
+  useEffect(() => { setGameServerDraft(gameServer || '') }, [gameServer])
+  const [gameHelp, setGameHelp] = useState('')
+  const openGameFromProfile = async () => {
+    const result = await openGame({ platform: detectPlatform() })
+    if (!result.opened) setGameHelp(gameHelpText(detectPlatform()))
+  }
+
   const hasBadges = profile.elo != null || (profile.roles || []).length > 0
 
   return (
@@ -1346,6 +1415,22 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, googleAcco
       </button>
 
       <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} onUnlinkTelegram={onUnlinkTelegram} onStartTelegram={onStartTelegram} onRefreshTelegram={onRefreshTelegram} onLinkVk={onLinkVk} onLinkTikTok={onLinkTikTok} notice={socialNotice} onNoticeShown={onSocialNoticeShown} />
+      <GameAccountCard
+        gameId={gameId}
+        gameServer={gameServer}
+        hint={gameHelp || undefined}
+        onConfirm={() => { setGameHelp(''); setGameOpen(true) }}
+        onOpenGame={openGameFromProfile}
+      />
+      <GameLoginModal
+        open={gameOpen}
+        onClose={() => setGameOpen(false)}
+        supabase={supabase}
+        gameId={gameIdDraft}
+        gameServer={gameServerDraft}
+        setGameId={setGameIdDraft}
+        setGameServer={setGameServerDraft}
+      />
       <TelegramLinkCard supabase={supabase} userId={userId} />
       <button type="button" className="btn btn--ghost profile__back" onClick={onBack}>На главную</button>
       </div>

@@ -655,6 +655,29 @@ html.is-modal-open .rail { overflow: hidden !important; }
 .prize-note { display: flex; align-items: center; gap: 8px; color: #b9bcc8; font-size: 11px; margin-top: 18px; }
 .prize-note svg { color: var(--gold); flex: none; }
 
+/* Игровой аккаунт в профиле: отдельная карточка под разделом «СОЦСЕТИ». */
+.game-account {
+  border: 1px solid var(--line); border-radius: 18px; padding: 14px;
+  background: var(--surface); margin: 10px 0 14px;
+}
+.game-account .section-head { margin-top: 0; }
+.game-account__row { display: flex; align-items: center; gap: 11px; }
+.game-account__info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.game-account__info strong { font-size: 13.5px; }
+.game-account__info small { font-size: 11.5px; color: var(--dim); }
+.game-account__badge {
+  margin-left: auto; font-size: 9px; font-weight: 800; letter-spacing: .5px;
+  border: 1px solid #33353f; border-radius: 7px; padding: 3px 7px; color: var(--dim);
+}
+.game-account__badge.is-on { color: var(--gold); border-color: rgba(255, 200, 61, .4); background: rgba(255, 200, 61, .08); }
+.game-account__actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.game-account__btn { flex: 1 1 190px; padding: 12px 14px; font-size: 12.5px; }
+@media (min-width: 1024px) {
+  .game-account__info strong { font-size: 15px; }
+  .game-account__info small { font-size: 13px; }
+  .game-account__btn { font-size: 14px; }
+}
+
 /* Вход через игру: кнопка «Открыть игру» и выбор канала кода. */
 .game-open-app {
   width: 100%; margin-top: 12px; display: inline-flex; align-items: center;

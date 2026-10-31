@@ -1,4 +1,4 @@
-// NAME MLBB — экран входа: способ «через игру» действительно виден и работает.
+// NAME MLBB — экран входа и профиль: способ «через игру» виден и работает.
 //
 // Это не grep по исходникам, а настоящий рендер в jsdom: собираем screens.jsx
 // через esbuild (он уже есть в зависимостях vite), монтируем AuthScreen, ищем
@@ -145,6 +145,61 @@ await test('T-AU-05 иконки способов входа — настоящ�
   assert.ok(google && google.querySelectorAll('svg path').length === 4, 'у Google не 4 фирменных цвета')
   const tg = document.querySelector('.brand.telegram')
   assert.match(tg.getAttribute('style') || '', /background/, 'у Telegram нет своей подложки')
+})
+
+
+// ---------- профиль: игровой аккаунт под «СОЦСЕТЯМИ» ----------
+function mountProfile({ gameId = '1340937090', gameServer = '6634' } = {}) {
+  document.body.innerHTML = '<div id="root"></div>'
+  const rootEl = createRoot(document.getElementById('root'))
+  rootEl.render(React.createElement(screens.ProfileScreen, {
+    profile: { nick: 'Stranger_zxc', heroes: [], socials: [], screenshots: [], pts: 120 },
+    actions: { addSocial: async () => ({ ok: true }), removeSocial: async () => true, addSlot: () => {} },
+    gameId, gameServer, googleAccount: '', telegramLink: undefined,
+    onLinkGoogle: () => {}, onUnlinkTelegram: () => {}, onStartTelegram: () => {},
+    onRefreshTelegram: () => {}, onLinkVk: () => {}, onLinkTikTok: () => {},
+    socialNotice: '', onSocialNoticeShown: () => {}, onBack: () => {}, onEdit: () => {},
+    supabase: null, userId: 'u1',
+  }))
+  return rootEl
+}
+
+mountProfile()
+await settle()
+
+await test('T-AU-06 в профиле есть карточка игрового аккаунта под «СОЦСЕТЯМИ»', () => {
+  const card = document.querySelector('.game-account')
+  assert.ok(card, 'нет карточки игрового аккаунта')
+  assert.match(card.textContent, /ИГРОВОЙ АККАУНТ/)
+  assert.match(card.textContent, /Mobile Legends/)
+  assert.match(card.textContent, /1340937090/, 'нет Game ID в карточке')
+  assert.match(card.textContent, /привязан/)
+  // Карточка стоит сразу после блока «СОЦСЕТИ», а не внутри него.
+  const social = document.querySelector('.social-block')
+  assert.ok(social, 'нет блока соцсетей')
+  assert.ok(social.nextElementSibling === card, 'карточка должна идти сразу под «СОЦСЕТЯМИ»')
+})
+
+await test('T-AU-07 кнопка в карточке открывает подтверждение кодом', async () => {
+  const btn = Array.from(document.querySelectorAll('.game-account__btn'))
+    .find((b) => /Подтвердить входом в игру/.test(b.textContent))
+  assert.ok(btn, 'нет кнопки подтверждения')
+  click(btn)
+  await settle()
+  const html = document.body.innerHTML
+  assert.match(html, /Вход через игру/, 'окно подтверждения не открылось')
+  assert.match(html, /Письмо в игре/, 'нет канала «письмо в игре»')
+  assert.match(html, /Открыть игру и посмотреть ID/)
+})
+
+await test('T-AU-08 без Game ID карточка предлагает привязать аккаунт', async () => {
+  mountProfile({ gameId: '', gameServer: '' })
+  await settle()
+  const card = document.querySelector('.game-account')
+  assert.match(card.textContent, /не привязан/)
+  const btn = Array.from(document.querySelectorAll('.game-account__btn'))
+    .find((b) => /Привязать игровой аккаунт/.test(b.textContent))
+  assert.ok(btn, 'нет кнопки привязки')
 })
 
 rmSync(bundle, { force: true })
