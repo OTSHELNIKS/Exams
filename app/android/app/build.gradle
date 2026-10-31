@@ -6,6 +6,11 @@ apply plugin: 'com.android.application'
 def releaseKeystore = System.getenv("ANDROID_KEYSTORE_PATH")
 def hasReleaseKey = releaseKeystore && new File(releaseKeystore).exists()
 
+// Считаем версию до android {}: Groovy иначе применит "as Integer" к результату
+// метода versionCode(), а он null — сборка падает с «Value is null».
+def appVersionCode = (System.getenv("VERSION_CODE") ?: "1").toInteger()
+def appVersionName = System.getenv("VERSION_NAME") ?: "1.0"
+
 android {
     namespace = "com.namemlbb.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -14,8 +19,8 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Номер сборки растёт с каждым прогоном CI, иначе Play не примет APK.
-        versionCode (System.getenv("VERSION_CODE") ?: "1") as Integer
-        versionName (System.getenv("VERSION_NAME") ?: "1.0")
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
