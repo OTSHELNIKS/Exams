@@ -16,9 +16,9 @@ export function profileToRow(profile, gameId, gameServer, userId) {
     // В базу пишем "провайдер:ник" и не сохраняем пустые привязки.
     socials: (profile.socials || [])
       .map((x) => String(x || '').trim())
-      .filter((x) => ['telegram', 'vk', 'google'].includes(x.split(':')[0]))
+      .filter((x) => ['telegram', 'vk', 'google', 'tiktok'].includes(x.split(':')[0]))
       .filter((x) => x.includes(':') && x.split(':')[1].trim())
-      .slice(0, 3),
+      .slice(0, 4),
     extra_slots: Math.max(0, Math.min(3, profile.extraSlots || 0)),
     avatar_url: profile.avatarUrl || '',
     screenshot_urls: (profile.screenshots || []).filter((u) => typeof u === 'string' && u.startsWith('http')),

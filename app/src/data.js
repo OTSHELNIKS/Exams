@@ -161,6 +161,9 @@ export const SOCIAL_PROVIDERS = [
   { id: 'telegram', label: 'Telegram', placeholder: '@nickname', hint: 'Ник в Telegram, начинается с @', enabled: true },
   { id: 'vk', label: 'VK', placeholder: 'vk.com/id123456', hint: 'Ссылка на страницу или короткое имя', enabled: false },
   { id: 'google', label: 'Google', placeholder: 'name@gmail.com', hint: 'Почта Google-аккаунта', enabled: true },
+  // TikTok привязывается окном самого TikTok (Login Kit). Пока в проекте нет
+  // client key, плитка не показывается — чтобы не вести игрока в тупик.
+  { id: 'tiktok', label: 'TikTok', placeholder: '@nickname', hint: 'Ник в TikTok', enabled: true },
 ]
 
 export const SOCIAL_IDS = SOCIAL_PROVIDERS.map((p) => p.id)

@@ -47,8 +47,8 @@ test('T-SOC-01 формат «провайдер:ник» разбирается
 test('T-SOC-02 подпись для игрока и админа', () => {
   assert.equal(socialCaption('vk:@durov'), 'VK · @durov')
   assert.equal(socialCaption('telegram'), 'Telegram, ник не указан')
-  assert.equal(SOCIAL_PROVIDERS.length, 3)
-  assert.deepEqual(SOCIAL_IDS, ['telegram', 'vk', 'google'])
+  assert.equal(SOCIAL_PROVIDERS.length, 4)
+  assert.deepEqual(SOCIAL_IDS, ['telegram', 'vk', 'google', 'tiktok'])
 })
 
 test('T-SOC-03 «+» больше не привязывает соцсеть сам', () => {
@@ -152,9 +152,9 @@ test('T-SOC-16 Telegram привязывается через бота, ник �
 test('T-SOC-17a VK скрыт из выбора соцсетей, старые привязки видны', () => {
   const { SOCIAL_ACTIVE, SOCIAL_ACTIVE_IDS } = await_import()
   assert.ok(!SOCIAL_ACTIVE_IDS.includes('vk'), 'VK не должен быть в активных')
-  assert.deepEqual(SOCIAL_ACTIVE_IDS, ['telegram', 'google'])
+  assert.deepEqual(SOCIAL_ACTIVE_IDS, ['telegram', 'google', 'tiktok'])
   assert.ok(SOCIAL_ACTIVE.every((p) => p.enabled), 'в активные попал выключенный провайдер')
-  assert.ok(social.includes('const pickable = SOCIAL_ACTIVE'), 'окно выбора должно строиться из активных')
+  assert.ok(/const pickable = SOCIAL_ACTIVE\.filter/.test(social), 'окно выбора должно строиться из активных')
 })
 
 test('T-SOC-17 VK привязывается окном VK ID, а не ником', () => {

@@ -17,9 +17,10 @@ node tests/socials.test.mjs  # 22 проверки привязки соцсет
 node tests/vk-auth.test.mjs  # 9 проверок VK ID (OAuth + PKCE)
 node tests/game-login.test.mjs  # 21 проверка входа через игру (Game ID + код в Telegram)
 node tests/public-profile.test.mjs  # 15 проверок публичной карточки игрока
+node tests/tiktok-auth.test.mjs  # 24 проверки привязки TikTok (Login Kit)
 ```
 
-Всего на 2026-10-31: **173 автотеста** (21 — вход через игру, 15 — просмотр чужих профилей, 3 — привязки соцсетей переживают перезагрузку).
+Всего на 2026-10-31: **197 автотестов** (21 — вход через игру, 24 — TikTok, 15 — просмотр чужих профилей, 3 — привязки соцсетей переживают перезагрузку).
 
 Тест грузит **настоящий** `supabase/functions/telegram-bot/index.ts`, подменяет `Deno`/`fetch`
 и гоняет фейковые апдейты Telegram + вызовы `?action=notify` / `?setup` / `?health`.
@@ -45,6 +46,7 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 | T-DB (база, RLS, ограничения) | 00–18 | ✅ 19/19 PASS |
 | T-GL (вход через игру) | 01–21 | ✅ 21/21 PASS |
 | T-PUB (профиль другого игрока) | 01–15 | ✅ 15/15 PASS |
+| T-TT (привязка TikTok) | 01–24 | ✅ 24/24 PASS |
 | T-FE (фронт: сборка, бандл) | 01–04 | ✅ 4/4 PASS |
 | T-LIVE (прод: сайт, health) | 01–02 | ✅ 2/2 PASS |
 | M (ручные, на устройстве) | 01–15 | ⏳ к выполнению |
@@ -223,6 +225,44 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 `authenticated` видит `player_profiles_public` (2 строки) и **0** строк в
 `player_profiles`; `anon` получает `permission denied for view`.
 
+## T-TT — привязка TikTok (авто)
+
+TikTok подключается как соцсеть профиля (не как вход): Login Kit, OAuth 2.0.
+Обмен кода на токен требует `client_secret`, поэтому он живёт **только** в
+edge-функции `tiktok-auth` (`build: tiktok-auth-v1`); браузер получает лишь ник.
+
+| ID | Кейс | Ожидание | Статус |
+|---|---|---|---|
+| 01 | Ссылка авторизации | `tiktok.com/v2/auth/authorize/`, client_key, scope `user.info.basic`, redirect_uri, state | ✅ |
+| 02 | Client key | Берётся из `VITE_TIKTOK_CLIENT_KEY` / `window`, не пустой | ✅ |
+| 03 | Старт привязки | State сохранён в sessionStorage (≥20 символов) | ✅ |
+| 04 | Нет client key | `TIKTOK_NOT_CONFIGURED`, на TikTok не уходим | ✅ |
+| 05 | Возврат с кодом | `{code, state}` разобраны | ✅ |
+| 06 | Отказ пользователя | Отдельный код `access_denied` | ✅ |
+| 07 | Обычная страница | Возвратом не считается | ✅ |
+| 08 | Запрос к серверу | Уходят только `code` и `redirectUri`, секрета нет | ✅ |
+| 09 | Ошибка сервера | `redirect_mismatch` → понятный код | ✅ |
+| 10 | Полный цикл | State совпал → ник получен | ✅ |
+| 11 | Чужой state | `TIKTOK_STATE_MISMATCH` | ✅ |
+| 12 | Нет state | `TIKTOK_STATE_LOST` | ✅ |
+| 13 | Отказ TikTok | `TIKTOK_DENIED`, сети не касаемся | ✅ |
+| 14 | Обмен на сервере | `/v2/oauth/token/`, form-urlencoded, все параметры | ✅ |
+| 15 | Секрет | Только `Deno.env`, нет во фронтенде | ✅ |
+| 16 | Токены | В ответе клиенту нет access/refresh token | ✅ |
+| 17 | Коды ошибок | `redirect_mismatch`, `code_expired`, `token_failed`, `not_configured` | ✅ |
+| 18 | Health | `{ok, build, configured}` | ✅ |
+| 19 | Возврат в приложении | Один раз, адрес чистится от `code`/`state` | ✅ |
+| 20 | Сохранение | Сразу `upsert` в `player_profiles`, ник в `socials` | ✅ |
+| 21 | Профиль | Кнопка «Войти через TikTok», шаг в окне привязки | ✅ |
+| 22 | Без client key | Плитка TikTok не показывается | ✅ |
+| 23 | Состав провайдеров | `tiktok` в списке, `socials` не обрезается до 3 | ✅ |
+| 24 | Тексты ошибок | Все коды объяснены по-русски | ✅ |
+
+Порядок запуска в проекте: секреты `TIKTOK_CLIENT_KEY` + `TIKTOK_CLIENT_SECRET`
+(Supabase → Edge Functions → Secrets) и переменная сборки `VITE_TIKTOK_CLIENT_KEY`
+(workflow Pages). Redirect URI в TikTok for Developers:
+`https://otshelniks.github.io/Exams/` — ровно так, со слешем на конце.
+
 ## T-FE — фронт (авто)
 
 | ID | Кейс | Ожидание | Статус |
@@ -267,6 +307,7 @@ set request.jwt.claims to '{"sub":"<user-uuid>"}';
 | 20 | Чужой профиль из рейтинга | Таблица лидеров → нажать на другого игрока | Карточка: аватар, ник, PTS, ранг, роли, серверы, герои, соцсети; нет Game ID и скриншотов |
 | 21 | Чужой профиль из драфта | Драфт → нажать на игрока → «Открыть профиль» | Та же карточка, закрывается кнопкой «Закрыть»/Esc |
 | 22 | Профиль сокомандника в лобби | Матч готов → нажать на ник в голосовом чате | Открывается карточка игрока, микрофон не переключается |
+| 23 | Привязка TikTok | Профиль → «+» → TikTok → «Войти через TikTok» → разрешить | Ник появился, после F5 остался; отказ в TikTok даёт понятное сообщение |
 
 ## Известные ограничения
 

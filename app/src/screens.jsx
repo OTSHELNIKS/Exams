@@ -16,6 +16,7 @@ import {
 } from './data.js'
 import { AvatarCropModal } from './crop.jsx'
 import { requestGameCode, signInWithGameCode, describeGameLoginError } from './game-login.js'
+import { tiktokConfigured } from './tiktok-auth.js'
 import {
   uploadAvatar, uploadScreenshot, deleteScreenshot, validateImage,
   TELEGRAM_BOT_USERNAME, createTelegramLinkCode, getTelegramLink,
@@ -184,13 +185,13 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
         <button type="button" className="method" disabled={busy} onClick={openGameLogin} aria-label="Войти через игровой аккаунт MLBB">
           <BrandMark type="mlbb" /><span>MLBB</span>
         </button>
-        <button type="button" className="method method--soon" onClick={() => setMethodNote('TikTok подключается через TikTok Login Kit — нужен аккаунт разработчика. Пока почта, Google или Telegram-бот.')} aria-label="Вход через TikTok — скоро">
+        <button type="button" className="method method--soon" onClick={() => setMethodNote('TikTok — это привязка соцсети, а не вход: войди по почте или Google, затем привяжи TikTok в Профиле одним нажатием.')} aria-label="TikTok привязывается в профиле">
           <BrandMark type="tiktok" /><span>TikTok</span><em className="method__soon">скоро</em>
         </button>
       </div>
       <p className="auth-methods__note">
         Google входит сразу, Telegram — привязка через бота @{TELEGRAM_BOT_USERNAME}.
-        Игровой аккаунт — по Game ID и серверу: код придёт в Telegram от бота. TikTok подключим позже.
+        Игровой аккаунт — по Game ID и серверу: код придёт в Telegram. TikTok привязывается в Профиле.
       </p>
       {methodNote && <p className="auth-methods__note auth-methods__note--warn" role="status">{methodNote}</p>}
 
@@ -663,7 +664,7 @@ export function StatsGrid({ profile, onAddSlot, onEdit }) {
   )
 }
 
-const SOCIAL_ICONS = { telegram: 'telegram', vk: 'vk', google: 'google' }
+const SOCIAL_ICONS = { telegram: 'telegram', vk: 'vk', google: 'google', tiktok: 'tiktok' }
 
 /* Соцсети: ники руками не вводятся.
    - Telegram привязывается через бота: получаем 6-значный код, открываем бота
@@ -675,7 +676,8 @@ const SOCIAL_ICONS = { telegram: 'telegram', vk: 'vk', google: 'google' }
    аккаунт), поэтому «привязано» больше не бывает фальшивым. */
 export function SocialRow({
   profile, onAddSocial, onRemoveSocial, googleAccount = '', onLinkGoogle,
-  telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk,
+  telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok,
+  notice = '', onNoticeShown,
 }) {
   const [toast, setToast] = useState('')
   const [open, setOpen] = useState(false)
@@ -692,6 +694,13 @@ export function SocialRow({
     const t = setTimeout(() => setToast(''), 2600)
     return () => clearTimeout(t)
   }, [toast])
+  // Сообщение после возврата с TikTok (успех или причина отказа).
+  useEffect(() => {
+    if (!notice) return
+    setToast(notice)
+    onNoticeShown?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notice])
 
   // Telegram — не ручная запись: он привязан, если в telegram_links есть строка.
   const botHandle = telegramLink ? (telegramLink.tg_username ? `@${telegramLink.tg_username}` : 'привязан через бота') : ''
@@ -705,7 +714,10 @@ export function SocialRow({
   ]
   // picker показывает только включённые соцсети; уже привязанные (даже если
   // способ скрыт) остаются видимыми, чтобы связку можно было увидеть/отвязать.
-  const pickable = SOCIAL_ACTIVE
+  // TikTok показываем только когда в проекте есть client key: иначе плитка
+  // ведёт в тупик («не подключено»). Уже привязанный TikTok остаётся видимым.
+  const pickable = SOCIAL_ACTIVE.filter((p) => p.id !== 'tiktok' || tiktokConfigured)
+  const slotCount = Math.max(pickable.length, bound.length)
   const free = pickable.filter((p) => !bound.some((x) => x.provider === p.id))
   const current = SOCIAL_PROVIDERS.find((p) => p.id === provider)
 
@@ -745,6 +757,13 @@ export function SocialRow({
       setError(e?.message || 'Не удалось получить код. Попробуй ещё раз.')
     } finally { setLinking(false) }
   }
+  const startTikTok = async () => {
+    if (!onLinkTikTok) { setError('TikTok не подключён в проекте.'); return }
+    setLinking(true); setError('')
+    const result = await onLinkTikTok()
+    setLinking(false)
+    if (result && result.error) setError(result.error)
+  }
   const startVk = async () => {
     if (!onLinkVk) { setError('VK ещё не подключён.'); return }
     setLinking(true); setError('')
@@ -775,7 +794,7 @@ export function SocialRow({
 
   return (
     <div className="social-block">
-      <div className="section-head"><span>СОЦСЕТИ</span><b>{bound.length}/{SOCIAL_ACTIVE_IDS.length}</b></div>
+      <div className="section-head"><span>СОЦСЕТИ</span><b>{bound.length}/{slotCount}</b></div>
       {bound.length === 0 && (
         <p className="social-hint">Ничего не привязано. Telegram — через бота, Google — одним нажатием.</p>
       )}
@@ -792,7 +811,7 @@ export function SocialRow({
             {!nick && <i className="social-circle__dot" aria-hidden="true" />}
           </button>
         ))}
-        {bound.length < SOCIAL_ACTIVE_IDS.length && (
+        {bound.length < slotCount && (
           <button type="button" className="social-circle social-circle--add" onClick={openAdd} title="Привязать соцсеть" aria-label="Привязать соцсеть">
             <Plus size={18} />
           </button>
@@ -844,6 +863,18 @@ export function SocialRow({
                 <p className="field-hint">Откроем бота с этим кодом — он сам свяжет Telegram с профилем.</p>
               </>
             )}
+          </div>
+        )}
+
+        {provider === 'tiktok' && (
+          <div className="social-flow">
+            <button type="button" className="btn btn--primary social-flow__cta" disabled={linking} onClick={startTikTok}>
+              <BrandMark type="tiktok" /> {linking ? 'Открываю TikTok…' : 'Войти через TikTok'}
+            </button>
+            <p className="field-hint">
+              Откроется окно TikTok — разреши доступ к базовому профилю, и ник появится здесь сам.
+              Пароль от TikTok нам не нужен и не сохраняется.
+            </p>
           </div>
         )}
 
@@ -976,7 +1007,7 @@ export function SocialRow({
   )
 }
 
-export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onEdit, isAdmin, onAdmin, supabase, userId }) {
+export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onEdit, isAdmin, onAdmin, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -1017,7 +1048,7 @@ export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount
         {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
       </div>
 
-      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} onUnlinkTelegram={onUnlinkTelegram} onStartTelegram={onStartTelegram} onRefreshTelegram={onRefreshTelegram} onLinkVk={onLinkVk} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} onUnlinkTelegram={onUnlinkTelegram} onStartTelegram={onStartTelegram} onRefreshTelegram={onRefreshTelegram} onLinkVk={onLinkVk} onLinkTikTok={onLinkTikTok} notice={socialNotice} onNoticeShown={onSocialNoticeShown} />
 
       <div className="home__actions">
         {profile.nick
@@ -1189,7 +1220,7 @@ function TelegramLinkCard({ supabase, userId }) {
 }
 
 /* ============================================================= PROFILE ==== */
-export function ProfileScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onBack, onEdit, supabase, userId }) {
+export function ProfileScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onBack, onEdit, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -1231,7 +1262,7 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, googleAcco
         <Settings size={15} /> {(profile.heroes || []).length ? 'Изменить героев' : 'Выбрать героев'}
       </button>
 
-      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} onUnlinkTelegram={onUnlinkTelegram} onStartTelegram={onStartTelegram} onRefreshTelegram={onRefreshTelegram} onLinkVk={onLinkVk} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} onUnlinkTelegram={onUnlinkTelegram} onStartTelegram={onStartTelegram} onRefreshTelegram={onRefreshTelegram} onLinkVk={onLinkVk} onLinkTikTok={onLinkTikTok} notice={socialNotice} onNoticeShown={onSocialNoticeShown} />
       <TelegramLinkCard supabase={supabase} userId={userId} />
       <button type="button" className="btn btn--ghost profile__back" onClick={onBack}>На главную</button>
       </div>

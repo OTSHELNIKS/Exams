@@ -16,6 +16,7 @@ import {
   getTelegramLink, deleteTelegramLink, createTelegramLinkCode,
 } from './supabase.js'
 import { parseVkReturn, completeVkAuth, startVkAuth, describeVkError, vkConfigured } from './vk-auth.js'
+import { parseTikTokReturn, completeTikTokAuth, startTikTokAuth, describeTikTokError } from './tiktok-auth.js'
 import { parseAuthReturn, cleanAuthUrl, describeAuthError } from './auth-return.js'
 
 // Возврат с VK: код и device_id приходят в query. Запоминаем адрес и сразу
@@ -29,6 +30,22 @@ const VK_RETURN = typeof window === 'undefined'
     try {
       const url = new URL(href)
       ;['code', 'device_id', 'state'].forEach((key) => url.searchParams.delete(key))
+      window.history.replaceState({}, '', url.toString())
+    } catch { /* noop */ }
+    return { href }
+  })()
+
+// Возврат с TikTok: приходят ?code=...&state=... (или error). Запоминаем адрес
+// и сразу чистим параметры, чтобы F5 не пытался обменять одноразовый код.
+const TIKTOK_RETURN = typeof window === 'undefined'
+  ? null
+  : (() => {
+    const parsed = parseTikTokReturn(window.location.href)
+    if (!parsed) return null
+    const href = window.location.href
+    try {
+      const url = new URL(href)
+      ;['code', 'state', 'scopes', 'error', 'error_description'].forEach((key) => url.searchParams.delete(key))
       window.history.replaceState({}, '', url.toString())
     } catch { /* noop */ }
     return { href }
@@ -243,6 +260,35 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, sessionLoading])
 
+  // Вернулись с TikTok после «Войти через TikTok»: меняем код на ник на сервере
+  // и сохраняем привязку в базу (чтобы она пережила перезагрузку).
+  const tiktokHandled = useRef(false)
+  // Сообщение после возврата с внешней привязки (TikTok): показываем тостом в
+  // блоке соцсетей — иначе ошибка уходила в saveError, который виден только в анкете.
+  const [socialNotice, setSocialNotice] = useState('')
+  useEffect(() => {
+    if (!TIKTOK_RETURN || tiktokHandled.current || !supabase || sessionLoading || !session) return
+    tiktokHandled.current = true
+    ;(async () => {
+      try {
+        const linked = await completeTikTokAuth(TIKTOK_RETURN.href)
+        if (!linked) return
+        const base = profileRef.current
+        const list = (base.socials || []).map(parseSocial)
+        if (list.some((x) => x.provider === 'tiktok')) return
+        const next = { ...base, socials: [...(base.socials || []), formatSocial('tiktok', linked.handle)] }
+        setProfile(next)
+        const { error } = await supabase
+          .from('player_profiles')
+          .upsert(profileToRow(next, gameId, gameServer, session.user.id))
+        setSocialNotice(error ? 'TikTok привязан, но сохранить не удалось: ' + error.message : 'TikTok привязан')
+      } catch (error) {
+        setSocialNotice(describeTikTokError(error))
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, sessionLoading])
+
   // Кнопка «Войти через VK»: готовим PKCE и уходим на экран разрешения VK.
   const linkVk = async () => {
     if (!supabase) return { error: 'Проект не подключён к Supabase.' }
@@ -253,6 +299,18 @@ export default function App() {
       return { redirected: true }
     } catch (error) {
       return { error: describeVkError(error) }
+    }
+  }
+
+  // Кнопка «Войти через TikTok»: уходим на окно разрешения TikTok.
+  const linkTikTok = async () => {
+    if (!supabase) return { error: 'Проект не подключён к Supabase.' }
+    if (!session) return { error: 'Сначала войди в аккаунт, потом привязывай соцсети.' }
+    try {
+      await startTikTokAuth()
+      return { redirected: true }
+    } catch (error) {
+      return { error: describeTikTokError(error) }
     }
   }
 
@@ -405,9 +463,9 @@ export default function App() {
       case 'wizard':
         return <WizardScreen profile={profile} setProfile={setProfile} gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
-        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
+        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
       case 'profile':
-        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
+        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
         return <DraftScreen supabase={supabase} userId={session?.user?.id || null} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
       case 'match':
