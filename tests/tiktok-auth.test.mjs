@@ -180,7 +180,7 @@ await test('T-TT-17 ошибки TikTok переводятся в коды дл�
     assert.ok(fn.includes(code), 'нет обработки ' + code)
   }
   assert.match(fn, /'not_found'/)
-  assert.match(fn, /'not_configured'/)
+  assert.match(fn, /'server_not_configured'/)
 })
 
 await test('T-TT-18 health показывает, настроено ли приложение', () => {
@@ -224,12 +224,13 @@ await test('T-TT-23 TikTok — привязка, а не вход по почт�
 })
 
 await test('T-TT-24 ошибки объясняются по-русски', () => {
-  const cases = ['TIKTOK_NOT_CONFIGURED', 'TIKTOK_STATE_LOST', 'TIKTOK_DENIED', 'TIKTOK_REDIRECT_MISMATCH', 'TIKTOK_CODE_EXPIRED', 'TIKTOK_TOKEN_FAILED']
+  const cases = ['TIKTOK_NOT_CONFIGURED', 'TIKTOK_SERVER_NOT_CONFIGURED', 'TIKTOK_STATE_LOST', 'TIKTOK_DENIED', 'TIKTOK_REDIRECT_MISMATCH', 'TIKTOK_CODE_EXPIRED', 'TIKTOK_TOKEN_FAILED']
   for (const key of cases) {
     assert.ok(tiktok.describeTikTokError(new Error(key)).length > 20, 'нет текста для ' + key)
   }
   assert.match(tiktok.describeTikTokError(new Error('TIKTOK_REDIRECT_MISMATCH')), /адрес возврата/)
   assert.match(tiktok.describeTikTokError(new Error('TIKTOK_DENIED')), /не разрешил/)
+  assert.match(tiktok.describeTikTokError(new Error('TIKTOK_SERVER_NOT_CONFIGURED')), /Supabase/)
 })
 
 console.log(`\ntiktok: ${passed}/${passed + failed}`)

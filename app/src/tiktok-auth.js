@@ -127,22 +127,20 @@ export async function completeTikTokAuth(href, { fetchImpl = fetch } = {}) {
 // Технические коды -> понятная фраза для игрока.
 export function describeTikTokError(error) {
   const raw = String(error?.message || error || '')
-  if (raw.includes('TIKTOK_NOT_CONFIGURED')) {
-    return 'TikTok ещё не подключён: нужно приложение TikTok for Developers (Login Kit) и его client key. Пока привяжи Telegram или Google.'
-  }
   if (raw.includes('TIKTOK_STATE_LOST') || raw.includes('TIKTOK_STATE_MISMATCH')) {
     return 'Сессия привязки TikTok истекла. Нажми «Войти через TikTok» ещё раз.'
   }
   if (raw.includes('TIKTOK_DENIED')) return 'Ты не разрешил доступ в TikTok — привязка отменена.'
-  if (raw.includes('TIKTOK_NOT_CONFIGURED_SECRET') || raw.includes('TIKTOK_NOT_CONFIGURED')) {
-    return 'Сервер TikTok не настроен: нет client key/secret. Напиши в поддержку.'
+  if (raw.includes('TIKTOK_SERVER_NOT_CONFIGURED')) {
+    return 'Привязка TikTok ещё не включена на сервере: не добавлены client key и secret в Supabase.'
   }
-  if (raw.includes('TIKTOK_NOT_CONFIGURED_SERVER')) return 'Сервер TikTok не настроен: нет client key/secret.'
+  if (raw.includes('TIKTOK_NOT_CONFIGURED')) {
+    return 'TikTok ещё не подключён: нужно приложение TikTok for Developers (Login Kit) и его client key. Пока привяжи Telegram или Google.'
+  }
   if (raw.includes('TIKTOK_REDIRECT_MISMATCH')) {
     return 'TikTok не принял адрес возврата: в настройках приложения должен быть указан ровно этот адрес сайта (со слешем на конце).'
   }
   if (raw.includes('TIKTOK_CODE_EXPIRED')) return 'Код TikTok устарел. Попробуй привязать ещё раз.'
-  if (raw.includes('TIKTOK_NOT_CONFIGURED_SERVER')) return 'Сервер TikTok не настроен.'
   if (raw.includes('TIKTOK_NO_HANDLE')) return 'TikTok не отдал ник — проверь, что в приложении включён доступ к базовым данным профиля.'
   if (raw.includes('TIKTOK_TOKEN_FAILED')) return 'TikTok отказал в доступе. Проверь настройки приложения TikTok for Developers.'
   if (raw.includes('TIKTOK_INTERNAL')) return 'Сервер TikTok не ответил. Попробуй ещё раз через минуту.'

@@ -90,7 +90,8 @@ Deno.serve(async (req) => {
   if (action !== 'exchange') return json({ ok: false, error: 'not_found' }, 404)
 
   if (!CLIENT_KEY || !CLIENT_SECRET) {
-    return json({ ok: false, error: 'not_configured' }, 503)
+    // Секретов нет на сервере: это наша настройка, а не ошибка игрока.
+    return json({ ok: false, error: 'server_not_configured' }, 503)
   }
 
   try {
