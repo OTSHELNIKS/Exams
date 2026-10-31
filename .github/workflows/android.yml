@@ -104,7 +104,14 @@ jobs:
           VERSION_NAME: 1.0.${{ github.run_number }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          # Лог Gradle складываем в файл: если сборка упадёт, первые строки
+          # ошибки попадут в аннотацию PR — по ним видно причину без выгрузки логов.
+          ./gradlew assembleDebug --no-daemon 2>&1 | tee gradle-debug.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::error title=Gradle::$(grep -iE 'error:|failed|what went wrong' -A 3 gradle-debug.log | head -15 | tr '\n' ' ')"
+            exit "$status"
+          fi
 
       - name: Build release AAB for Google Play
         if: steps.keystore.outputs.ready == 'true'
@@ -116,7 +123,13 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew bundleRelease --no-daemon
+        run: |
+          ./gradlew bundleRelease --no-daemon 2>&1 | tee gradle-release.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::error title=Gradle AAB::$(grep -iE 'error:|failed|what went wrong' -A 3 gradle-release.log | head -15 | tr '\n' ' ')"
+            exit "$status"
+          fi
 
       - name: Name artifacts
         run: |
