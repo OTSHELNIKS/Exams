@@ -10,7 +10,7 @@
 //
 // Run: node tests/auth-ui.test.mjs   (нужны app/node_modules: react, react-dom, jsdom, esbuild)
 import assert from 'node:assert/strict'
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -43,10 +43,15 @@ if (missing.length) {
 const { JSDOM } = await import(join(nm, 'jsdom/lib/api.js'))
 const esbuild = (await import(join(nm, 'esbuild/lib/main.js'))).default || await import(join(nm, 'esbuild/lib/main.js'))
 
-const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
+const dom = new JSDOM('<!doctype html><html><head></head><body><div id="root"></div></body></html>', {
   url: 'https://otshelniks.github.io/Exams/',
   pretendToBeVisual: true,
 })
+// Настоящие стили: без них нельзя проверить каскад (например, что поля Game ID
+// внутри окна идут в одну колонку). jsdom считает CSS, хоть и без раскладки.
+const styleEl = dom.window.document.createElement('style')
+styleEl.textContent = readFileSync(join(app, 'src/styles.css'), 'utf8')
+dom.window.document.head.appendChild(styleEl)
 globalThis.window = dom.window
 globalThis.document = dom.window.document
 Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, configurable: true })
@@ -200,6 +205,26 @@ await test('T-AU-08 без Game ID карточка предлагает при�
   const btn = Array.from(document.querySelectorAll('.game-account__btn'))
     .find((b) => /Привязать игровой аккаунт/.test(b.textContent))
   assert.ok(btn, 'нет кнопки привязки')
+})
+
+await test('T-AU-09 в окне подтверждения поля Game ID в одну колонку (не вылезают за карточку)', async () => {
+  mountProfile()
+  await settle()
+  const btn = Array.from(document.querySelectorAll('.game-account__btn'))
+    .find((b) => /Подтвердить входом в игру/.test(b.textContent))
+  click(btn)
+  await settle()
+  const card = document.querySelector('.modal__card')
+  assert.ok(card, 'окно не открылось')
+  const fields = card.querySelector('.id-fields')
+  assert.ok(fields, 'нет полей Game ID')
+  const style = dom.window.getComputedStyle(fields)
+  assert.equal(style.gridTemplateColumns, '1fr', 'поля всё ещё в две колонки — вылезут на узком экране')
+  // Внутри окна не должно быть горизонтальной прокрутки.
+  assert.equal(dom.window.getComputedStyle(card).overflowX, 'hidden')
+  // И на самой сетке, и на полях разрешено сжиматься — иначе цифры давят ширину.
+  const wrap = fields.querySelector('.input-wrap')
+  assert.equal(dom.window.getComputedStyle(wrap).minWidth, '0px')
 })
 
 rmSync(bundle, { force: true })

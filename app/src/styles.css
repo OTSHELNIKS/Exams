@@ -218,9 +218,17 @@ a { color: inherit; }
 .gameid-icon { color: var(--orange-2); display: flex; }
 
 /* Game ID и сервер — два отдельных поля */
-.id-fields { display: grid; grid-template-columns: 1.35fr 1fr; gap: 10px; }
+.id-fields { display: grid; grid-template-columns: 1.35fr 1fr; gap: 10px; min-width: 0; }
+.id-fields > * { min-width: 0; }
 .id-fields .input-wrap { margin-bottom: 10px; padding: 0 14px; gap: 10px; height: 56px; }
-.id-fields .input-wrap input { min-width: 0; font-variant-numeric: tabular-nums; }
+.id-fields .input-wrap input { min-width: 0; width: 100%; font-variant-numeric: tabular-nums; }
+
+/* В окне подтверждения места мало: два поля в ряд не помещаются (плашка
+   «СЕРВЕР» + иконка съедали всю ширину, и цифры вылезали за карточку).
+   Поэтому внутри модалки ID и сервер всегда идут друг под другом. */
+.modal .id-fields { grid-template-columns: 1fr; gap: 10px; }
+.modal .id-fields .input-wrap { margin-bottom: 0; padding: 0 12px; height: 54px; }
+.modal .id-fields .input-wrap__tag { font-size: 8.5px; padding: 2px 5px; }
 .input-wrap__tag {
   flex: none; font-size: 9px; font-weight: 800; letter-spacing: 1px; color: #8d90a0;
   border: 1px solid #33353f; border-radius: 7px; padding: 3px 6px;
@@ -547,7 +555,7 @@ a { color: inherit; }
 @keyframes modal-fade { from { opacity: 0 } to { opacity: 1 } }
 .modal__card {
   position: relative; width: 100%; max-width: 440px; outline: none;
-  max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain;
+  max-height: calc(100dvh - 48px); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
   touch-action: pan-y;
   background: #171820; border: 1px solid var(--line); border-radius: 22px;
   padding: 24px 18px 18px; text-align: center;
