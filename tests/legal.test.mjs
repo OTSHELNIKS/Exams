@@ -115,6 +115,9 @@ test('T-LGL-10 страница-шпаргалка для формы TikTok: з�
   assert.ok(helper.includes('Sandbox'), 'не напомнила про Sandbox')
   assert.ok(helper.includes('tiktok-icon-1024.png'), 'нет ссылки на иконку')
   assert.ok(/data-copy="/.test(helper) && /clipboard/.test(helper), 'кнопки копирования не работают')
+  // Причина подачи на ревью — отдельное поле на 120 символов.
+  const reason = helper.match(/data-copy="(Initial submission[^"]+)"/)
+  assert.ok(reason && reason[1].length <= 120, 'нет короткой причины подачи или она длиннее 120 символов')
   // Текст описания не длиннее лимита TikTok (120 символов).
   const desc = helper.match(/data-copy="(Матчмейкинг[^"]+)"/)
   assert.ok(desc && desc[1].length <= 120, 'описание длиннее 120 символов')
