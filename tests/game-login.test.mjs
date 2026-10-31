@@ -26,6 +26,10 @@ const state = {
   profilePatches: [],
   statsCalls: [],
   statsUp: true,
+  // Приватная таблица игровых JWT + сессии NAME (кого пускает Supabase).
+  tokens: [],
+  sessions: { 'USER-JWT': 'u1' },
+  gameTokenExpired: false,
 }
 
 function J(status, json) {
@@ -60,6 +64,19 @@ function rest(table, url, init) {
     const patch = JSON.parse(init.body)
     state.profilePatches.push({ params: Object.fromEntries(params), patch })
     state.profiles.filter((r) => eq(r, 'user_id')).forEach((r) => Object.assign(r, patch))
+    return J(204, null)
+  }
+  if (table === 'game_tokens' && method === 'GET') {
+    return J(200, state.tokens.filter((r) => eq(r, 'user_id')))
+  }
+  if (table === 'game_tokens' && method === 'POST') {
+    const row = JSON.parse(init.body)
+    state.tokens = state.tokens.filter((r) => r.user_id !== row.user_id)
+    state.tokens.push(row)
+    return J(201, null)
+  }
+  if (table === 'game_tokens' && method === 'DELETE') {
+    state.tokens = state.tokens.filter((r) => !eq(r, 'user_id'))
     return J(204, null)
   }
   if (table === 'telegram_links' && method === 'GET') {
@@ -104,6 +121,7 @@ globalThis.fetch = async (input, init) => {
     state.statsCalls.push(url)
     const auth = (init.headers && (init.headers.Authorization || init.headers.authorization)) || ''
     if (!/^Bearer GJWT/.test(auth)) return J(401, { code: 401, message: 'unauthorized' })
+    if (state.gameTokenExpired) return J(401, { code: 401, message: 'token expired' })
     if (url.includes('/user/stats')) {
       return state.statsUp ? J(200, { code: 0, data: { wc: 188, tc: 308, as: 762.35 } }) : J(502, {})
     }
@@ -127,6 +145,12 @@ globalThis.fetch = async (input, init) => {
         jwt: 'GJWT-' + body.role_id, token: 'GJWT-' + body.role_id,
       } })
       : J(200, { code: 1001, msg: 'invalid verification code' })
+  }
+  if (url.includes('/auth/v1/user')) {
+    const auth = (init.headers && (init.headers.Authorization || init.headers.authorization)) || ''
+    const token = auth.replace(/^Bearer\s+/i, '')
+    const id = state.sessions[token]
+    return id ? J(200, { id, aud: 'authenticated' }) : J(401, { msg: 'invalid jwt' })
   }
   if (url.includes('/auth/v1/admin/users/')) {
     const id = url.split('/auth/v1/admin/users/')[1]
@@ -164,6 +188,13 @@ function post(action, body) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }))
 }
+function postAs(action, body, token) {
+  return handler(new Request(`${BASE}?action=${action}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify(body || {}),
+  }))
+}
 const reset = () => {
   state.profiles = [{ user_id: 'u1', game_id: '1340937090', game_server: '6634', nick: 'Stranger_zxc', updated_at: '2026-10-31' }]
   state.links = [{ user_id: 'u1', tg_chat_id: '6553836608' }]
@@ -176,6 +207,9 @@ const reset = () => {
   state.profilePatches = []
   state.statsCalls = []
   state.statsUp = true
+  state.tokens = []
+  state.sessions = { 'USER-JWT': 'u1' }
+  state.gameTokenExpired = false
   state.admins = { u1: { id: 'u1', email: 'player@example.test' } }
 }
 
@@ -185,7 +219,7 @@ await test('T-GL-01 health отдаёт build функции', async () => {
   const data = await res.json()
   assert.equal(res.status, 200)
   assert.equal(data.ok, true)
-  assert.equal(data.build, 'game-login-v6')
+  assert.equal(data.build, 'game-login-v7')
 })
 
 // ---------- шаг 1: код ----------
@@ -701,6 +735,52 @@ await test('T-GL-51 вход через Telegram не тянет статист�
   await post('session', { gameId: '1340937090', gameServer: '6634', code, channel: 'telegram' })
   assert.equal(state.statsCalls.length, 0)
   assert.equal(state.profilePatches.length, 0)
+})
+
+await test('T-GL-55 игровой JWT сохраняется на сервере после подтверждения', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
+  assert.equal(state.tokens.length, 1, 'игровой токен не сохранён')
+  assert.equal(state.tokens[0].jwt, 'GJWT-1340937090')
+})
+
+await test('T-GL-56 цифры обновляются по сессии, без кода', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
+  state.profilePatches = []
+  state.statsCalls = []
+  const res = await postAs('refresh', {}, 'USER-JWT')
+  const data = await res.json()
+  assert.equal(res.status, 200, JSON.stringify(data))
+  assert.equal(data.ok, true)
+  assert.equal(data.winrate, 61, 'винрейт не пересчитан')
+  assert.ok(state.statsCalls.length >= 1, 'статистику не запрашивали')
+  const patch = state.profilePatches.find((p) => p.patch.game_winrate)
+  assert.ok(patch, 'цифры не записаны в профиль')
+  assert.equal(patch.patch.game_kda, 7.67)
+})
+
+await test('T-GL-57 обновление без сессии не пускает', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
+  const res = await postAs('refresh', {}, 'BAD-TOKEN')
+  assert.equal(res.status, 401)
+  assert.equal(state.statsCalls.length >= 1, true)
+})
+
+await test('T-GL-58 истёкший игровой токен стирается, просим код один раз', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  await post('session', { gameId: '1340937090', gameServer: '6634', code: '4821' })
+  state.gameTokenExpired = true
+  const res = await postAs('refresh', {}, 'USER-JWT')
+  const data = await res.json()
+  assert.equal(data.ok, false)
+  assert.equal(data.error, 'no_token')
+  assert.equal(state.tokens.length, 0, 'мёртвый токен остался в базе')
 })
 
 await test('T-GL-53 обновление цифр не выдаёт новую сессию', async () => {

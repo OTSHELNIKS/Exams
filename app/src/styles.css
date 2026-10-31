@@ -227,9 +227,24 @@ a { color: inherit; }
 /* В окне подтверждения места мало: два поля в ряд не помещаются (плашка
    «СЕРВЕР» + иконка съедали всю ширину, и цифры вылезали за карточку).
    Поэтому внутри модалки ID и сервер всегда идут друг под другом. */
-.modal .id-fields { grid-template-columns: 1fr; gap: 10px; }
-.modal .id-fields .input-wrap { margin-bottom: 0; padding: 0 12px; height: 54px; }
-.modal .id-fields .input-wrap__tag { font-size: 8.5px; padding: 2px 5px; }
+.modal .id-fields {
+  grid-template-columns: minmax(0, 1fr); gap: 10px;
+  width: 100%; max-width: 100%; min-width: 0;
+}
+/* Поле не может быть шире карточки: у сетки и у самого поля нулевой min-width,
+   инпут тянется свободным местом (flex-basis 0), тег «ID»/«СЕРВЕР» не сжимается. */
+.modal .id-fields > * { min-width: 0; width: 100%; max-width: 100%; }
+.modal .id-fields .input-wrap {
+  margin-bottom: 0; padding: 0 12px; height: 54px;
+  width: 100%; max-width: 100%; min-width: 0; overflow: hidden;
+}
+.modal .id-fields .input-wrap input { flex: 1 1 0; width: 0; min-width: 0; font-size: 15px; }
+.modal .id-fields .input-wrap__tag { font-size: 8.5px; padding: 2px 5px; flex: 0 0 auto; }
+/* Узкий телефон: в окне тесно — канал подтверждения идёт в столбик. */
+@media (max-width: 420px) {
+  .modal .id-fields .input-wrap { padding: 0 10px; gap: 8px; }
+  .modal .game-channel { grid-template-columns: minmax(0, 1fr); }
+}
 .input-wrap__tag {
   flex: none; font-size: 9px; font-weight: 800; letter-spacing: 1px; color: #8d90a0;
   border: 1px solid #33353f; border-radius: 7px; padding: 3px 6px;

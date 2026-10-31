@@ -447,7 +447,7 @@ export function GameAccountCard({ gameId, gameServer, verified, onConfirm, onRef
   // Заполненные в анкете Game ID и сервер сами по себе ничего не подтверждают.
   const status = verified ? 'подтверждён' : filled ? 'не подтверждён' : 'не привязан'
   const defaultHint = verified
-    ? 'Аккаунт подтверждён кодом из внутриигровой почты MLBB — этим входом и восстанавливается доступ. Подтверди ещё раз, чтобы обновить КДА и винрейт.'
+    ? 'Аккаунт подтверждён кодом из внутриигровой почты MLBB — этим входом и восстанавливается доступ. КДА и винрейт обновляются одной кнопкой, без кода.'
     : filled
       ? 'Game ID и сервер из анкеты — просто цифры. Подтверди владение: код придёт на внутриигровую почту MLBB.'
       : 'Привяжи аккаунт: код придёт на внутриигровую почту MLBB, пароль от игры не нужен.'
@@ -1469,7 +1469,26 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
         verified={Boolean(gameVerified)}
         hint={gameHelp || undefined}
         onConfirm={() => { setGameHelp(''); setGameRefresh(false); setGameOpen(true) }}
-        onRefresh={() => { setGameHelp(''); setGameRefresh(true); setGameOpen(true) }}
+        onRefresh={async () => {
+          // Сначала пробуем без кода: сервер помнит игровой JWT. Код нужен
+          // только если аккаунт ещё не подтверждён или токен игры истёк.
+          setGameHelp('')
+          try {
+            const result = await refreshGameStats({ supabase })
+            setToast(result.stats
+              ? `КДА и винрейт обновлены${result.winrate === null ? '' : ` · винрейт ${result.winrate}%`}`
+              : 'Игра не отдала цифры — попробуй позже')
+            if (onGameVerified) onGameVerified({ verified: true })
+          } catch (e) {
+            const raw = String(e?.message || e)
+            if (raw === 'no_token' || raw === 'no_session' || raw === 'unauthorized') {
+              setGameRefresh(true); setGameOpen(true)
+              setToast('Один раз подтверди кодом из игры — дальше цифры обновляются без него')
+            } else {
+              setToast(describeGameLoginError(e))
+            }
+          }
+        }}
         onOpenGame={openGameFromProfile}
       />
       <GameLoginModal

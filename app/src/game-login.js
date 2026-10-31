@@ -23,10 +23,12 @@ function actionUrl(action) {
     : `/functions/v1/${FUNCTION}?action=${action}`
 }
 
-async function post(action, payload) {
+async function post(action, payload, token) {
+  const headers = { 'Content-Type': 'application/json' }
+  if (token) headers.Authorization = 'Bearer ' + token
   const res = await fetch(actionUrl(action), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(payload || {}),
   })
   const data = await res.json().catch(() => ({}))
@@ -59,7 +61,18 @@ export async function signInWithGameCode({ gameId, gameServer, code, channel = '
 
 // Обновление КДА и винрейта для уже подтверждённого аккаунта: тот же код из
 // внутриигровой почты, но новая сессия не выдаётся — только цифры.
-export async function refreshGameStats({ gameId, gameServer, code }) {
+export async function refreshGameStats({ supabase, gameId, gameServer, code }) {
+  // Без кода: сервер помнит игровой JWT, полученный при подтверждении, и сам
+  // перечитывает цифры. Доказывать владение аккаунтом заново не нужно — сессию
+  // NAME проверяет Supabase.
+  if (!code) {
+    const session = supabase ? (await supabase.auth.getSession()).data?.session : null
+    const token = session?.access_token || ''
+    if (!token) throw new Error('no_session')
+    const { data } = await post('refresh', {}, token)
+    if (!data.ok) throw new Error(data.error || 'internal')
+    return { stats: data.stats === true, kda: data.kda ?? null, winrate: data.winrate ?? null }
+  }
   const { data } = await post('stats', { gameId, gameServer, code })
   if (!data.ok) {
     const error = new Error(data.error || 'internal')
@@ -100,6 +113,16 @@ export function describeGameLoginError(error) {
       return 'Код живёт 5 минут и не успел. Запроси новый — он придёт в игру или бота.'
     case 'no_email':
       return 'В аккаунте не осталось почты — вход по коду невозможен. Войди по почте и привяжи её заново.'
+    case 'no_token':
+      return 'Цифры обновляются без кода только после подтверждения аккаунта. Подтверди его кодом из внутриигровой почты один раз.'
+    case 'no_session':
+      return 'Сессия истекла — войди заново, чтобы обновить цифры.'
+    case 'unauthorized':
+      return 'Сессия истекла — войди заново, чтобы обновить цифры.'
+    case 'no_stats':
+      return 'Игра не отдала цифры. Попробуй ещё раз позже.'
+    case 'game_unavailable':
+      return 'Игровой сервис сейчас недоступен. Попробуй позже.'
     case 'no_supabase':
       return 'Проект не подключён к Supabase — вход недоступен.'
     case 'internal':

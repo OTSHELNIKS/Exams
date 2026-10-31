@@ -244,12 +244,20 @@ await test('T-AU-09 в окне подтверждения поля Game ID в �
   const fields = card.querySelector('.id-fields')
   assert.ok(fields, 'нет полей Game ID')
   const style = dom.window.getComputedStyle(fields)
-  assert.equal(style.gridTemplateColumns, '1fr', 'поля всё ещё в две колонки — вылезут на узком экране')
+  assert.match(style.gridTemplateColumns, /^minmax\(0(px)?, ?1fr\)$/, 'поля всё ещё в две колонки — вылезут на узком экране')
   // Внутри окна не должно быть горизонтальной прокрутки.
   assert.equal(dom.window.getComputedStyle(card).overflowX, 'hidden')
   // И на самой сетке, и на полях разрешено сжиматься — иначе цифры давят ширину.
   const wrap = fields.querySelector('.input-wrap')
   assert.equal(dom.window.getComputedStyle(wrap).minWidth, '0px')
+  // Инпут не задаёт собственную ширину (flex-basis: 0) — иначе он вылезает
+  // за карточку на узком экране.
+  const input = wrap.querySelector('input')
+  assert.equal(dom.window.getComputedStyle(input).width, '0px', 'у инпута своя ширина — вылезет за окно')
+  assert.equal(dom.window.getComputedStyle(input).minWidth, '0px')
+  // Тег «ID»/«СЕРВЕР» не сжимается и не расширяет строку.
+  const tag = wrap.querySelector('.input-wrap__tag')
+  assert.equal(dom.window.getComputedStyle(tag).flexShrink, '0')
 })
 
 await test('T-AU-12 у подтверждённого аккаунта кнопка обновляет КДА и винрейт', async () => {

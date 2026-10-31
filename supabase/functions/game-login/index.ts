@@ -11,6 +11,7 @@
 //   POST /?action=code     { gameId, gameServer, channel } -> код отправлен
 //   POST /?action=session  { gameId, gameServer, code, channel } -> { tokenHash }
 //   POST /?action=stats    { gameId, gameServer, code } -> обновление КДА/винрейта
+//   POST /?action=refresh  (Authorization: <сессия игрока>) -> цифры без кода
 //
 // Клиент меняет tokenHash на сессию через supabase.auth.verifyOtp({ type:
 // 'magiclink', token_hash }), то есть пароль не нужен вообще.
@@ -37,8 +38,10 @@
 
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').replace(/\/+$/, '')
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+// Публичный ключ нужен только чтобы спросить у Supabase, чья это сессия.
+const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || ''
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') || ''
-const BUILD = 'game-login-v6'
+const BUILD = 'game-login-v7'
 const CODE_TTL_MS = 5 * 60 * 1000
 const COOLDOWN_MS = 30 * 1000
 const MAX_ATTEMPTS = 5
@@ -86,6 +89,18 @@ async function dbInsert(table, row) {
     if (!r.ok) { console.error('db insert failed', table, r.status); return false }
     return true
   } catch (e) { console.error('db insert threw', table, String(e)); return false }
+}
+
+async function dbUpsert(table, row) {
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + '?on_conflict=user_id', {
+      method: 'POST',
+      headers: svcHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify(row),
+    })
+    if (!r.ok) { console.error('db upsert failed', table, r.status); return false }
+    return true
+  } catch (e) { console.error('db upsert threw', table, String(e)); return false }
 }
 
 async function dbPatch(table, params, patch) {
@@ -228,10 +243,14 @@ function pickMatches(j) {
   return null
 }
 
+// Статус последнего ответа игры: по 401 понимаем, что сохранённый JWT истёк.
+let lastGameStatus = 0
+
 async function gameGet(base, path, jwt) {
   const headers = { Authorization: 'Bearer ' + jwt, Accept: 'application/json' }
   const r = await fetch(base + path, { headers })
   const j = await r.json().catch(() => null)
+  lastGameStatus = r.status
   if (!r.ok || !j || j.code !== 0) {
     console.error('game get failed', base + path, r.status, String((j && j.msg) || '').slice(0, 120))
     return null
@@ -257,6 +276,59 @@ async function fetchGameStats(jwt) {
     if (stats || matches) return { stats, matches }
   }
   return null
+}
+
+// --------------------------------------------------- игровой JWT на сервере
+// Код из письма нужен один раз. JWT игры, полученный при подтверждении, лежит
+// в приватной таблице game_tokens и позволяет обновлять цифры без кода.
+async function saveGameToken(userId, jwt) {
+  if (!jwt) return false
+  return dbUpsert('game_tokens', { user_id: userId, jwt: jwt, updated_at: new Date().toISOString() })
+}
+
+async function readGameToken(userId) {
+  const rows = await dbSelect('game_tokens', { user_id: 'eq.' + userId, select: 'jwt' })
+  return rows[0] ? String(rows[0].jwt || '') : ''
+}
+
+async function dropGameToken(userId) {
+  await dbDelete('game_tokens', { user_id: 'eq.' + userId })
+}
+
+// Перечитываем КДА и винрейт по сохранённому JWT. Если игра больше не
+// принимает токен — стираем его и просим один раз подтвердить кодом.
+async function refreshStats(userId) {
+  const jwt = await readGameToken(userId)
+  if (!jwt) return { error: 'no_token' }
+  const fetched = await fetchGameStats(jwt)
+  if (!fetched) {
+    if (lastGameStatus === 401 || lastGameStatus === 403) {
+      await dropGameToken(userId)
+      return { error: 'no_token' }
+    }
+    return { error: 'game_unavailable' }
+  }
+  const stats = statsFromGame(fetched.stats, fetched.matches)
+  if (!stats) return { error: 'no_stats' }
+  const ok = await dbPatch('player_profiles', { user_id: 'eq.' + userId },
+    Object.assign({}, stats, { game_stats_at: new Date().toISOString() }))
+  if (!ok) return { error: 'internal' }
+  return { ok: true, stats: stats }
+}
+
+// Чья это сессия: спрашиваем GoTrue, а не верим телу запроса.
+async function sessionUser(req) {
+  const auth = req.headers.get('authorization') || req.headers.get('Authorization') || ''
+  const token = auth.replace(/^Bearer\s+/i, '').trim()
+  if (!token || token === SERVICE_KEY) return null
+  try {
+    const r = await fetch(SUPABASE_URL + '/auth/v1/user', {
+      headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + token },
+    })
+    if (!r.ok) return null
+    const user = await r.json().catch(() => null)
+    return user && user.id ? String(user.id) : null
+  } catch (e) { console.error('session check threw', String(e)); return null }
 }
 
 // ------------------------------------------------------------------- профиль
@@ -451,7 +523,11 @@ async function handleSession(req) {
   // «подтверждён». Код в Telegram доказывает лишь доступ к боту, поэтому
   // статус не меняет.
   let stats = false
-  if (channel === 'ingame') stats = await saveGameData(profile, gameId, checked.jwt)
+  if (channel === 'ingame') {
+    stats = await saveGameData(profile, gameId, checked.jwt)
+    // Запоминаем игровой JWT — дальше цифры обновляются без кода.
+    if (checked.jwt) await saveGameToken(profile.user_id, checked.jwt)
+  }
 
   const tokenHash = await magicLinkToken(profile.user_id)
   if (!tokenHash) return json({ ok: false, error: 'no_email' }, 409)
@@ -476,7 +552,20 @@ async function handleStats(req) {
     return json({ ok: false, error: checked.error, attemptsLeft: checked.attemptsLeft }, checked.status)
   }
   const stats = await saveGameData(profile, gameId, checked.jwt)
+  if (checked.jwt) await saveGameToken(profile.user_id, checked.jwt)
   return json({ ok: true, stats })
+}
+
+// Цифры без кода: игрок открыл профиль и нажал «Обновить». Доказывать владение
+// аккаунтом заново не нужно — его сессию проверяет Supabase.
+async function handleRefresh(req) {
+  const userId = await sessionUser(req)
+  if (!userId) return json({ ok: false, error: 'unauthorized' }, 401)
+  const profiles = await dbSelect('player_profiles', { user_id: 'eq.' + userId, select: 'user_id' })
+  if (!profiles.length) return json({ ok: false, error: 'no_profile' }, 404)
+  const result = await refreshStats(userId)
+  if (!result.ok) return json({ ok: false, error: result.error }, result.error === 'game_unavailable' ? 503 : 409)
+  return json({ ok: true, stats: true, kda: result.stats.game_kda ?? null, winrate: result.stats.game_winrate ?? null })
 }
 
 Deno.serve(async (req) => {
@@ -491,6 +580,7 @@ Deno.serve(async (req) => {
     if (action === 'code') return await handleCode(req)
     if (action === 'session') return await handleSession(req)
     if (action === 'stats') return await handleStats(req)
+    if (action === 'refresh') return await handleRefresh(req)
   } catch (e) {
     console.error('game-login failed', String(e))
     return json({ ok: false, error: 'internal' }, 500)
