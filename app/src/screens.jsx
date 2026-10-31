@@ -228,7 +228,7 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
 
    Каналы: ingame — письмо на внутриигровую почту MLBB (основной);
    telegram — код в привязанный бот (запасной). */
-export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, setGameId, setGameServer }) {
+export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, setGameId, setGameServer, onlyIngame = false, onVerified }) {
   const [gameStep, setGameStep] = useState('id')   // id | code
   const [gameCode, setGameCode] = useState('')
   const [gameBusy, setGameBusy] = useState(false)
@@ -236,7 +236,10 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
   const [gameTtl, setGameTtl] = useState(300)
   const [gameNick, setGameNick] = useState('')
   // Канал подтверждения: письмо в игре (основной) или код в Telegram (запасной).
+  // При привязке аккаунта из профиля запасного канала нет: владение доказывает
+  // только код, который пришёл на внутриигровую почту.
   const [gameChannel, setGameChannel] = useState('ingame')
+  const channel = onlyIngame ? 'ingame' : gameChannel
   const [gameHelp, setGameHelp] = useState('')
   const gamePlatform = detectPlatform()
 
@@ -251,9 +254,9 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
     if (!/^\d{6,12}$/.test(gameId)) { setGameError('Game ID — это 6–12 цифр из профиля MLBB.'); return }
     setGameBusy(true); setGameError('')
     try {
-      const res = await requestGameCode({ gameId, gameServer, channel: gameChannel })
+      const res = await requestGameCode({ gameId, gameServer, channel })
       setGameTtl(res.ttl); setGameNick(res.nick || '')
-      setGameChannel(res.channel || gameChannel)
+      setGameChannel(res.channel || channel)
       setGameStep('code'); setGameCode('')
     } catch (e) {
       setGameError(describeGameLoginError(e))
@@ -263,7 +266,8 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
     if (!/^\d{6}$/.test(gameCode)) { setGameError('В коде ровно 6 цифр — проверь письмо в игре или сообщение бота.'); return }
     setGameBusy(true); setGameError('')
     try {
-      await signInWithGameCode({ gameId, gameServer, code: gameCode, channel: gameChannel, supabase })
+      const result = await signInWithGameCode({ gameId, gameServer, code: gameCode, channel, supabase })
+      if (onVerified) onVerified(result)
       onClose()
     } catch (e) {
       setGameError(describeGameLoginError(e))
@@ -277,7 +281,7 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
   }
   // Смена канала прямо на шаге ввода кода: перезапрашиваем код в другом канале.
   const switchGameChannel = async (next) => {
-    if (next === gameChannel) return
+    if (next === gameChannel || onlyIngame) return
     setGameChannel(next); setGameCode(''); setGameError('')
     setGameBusy(true)
     try {
@@ -294,7 +298,9 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
         <h3 id="game-login-title">Вход через игру</h3>
         <p className="modal__role">
           {gameStep === 'id'
-            ? 'Укажи Game ID и сервер как в профиле MLBB — подтвердим, что аккаунт твой.'
+            ? onlyIngame
+              ? 'Укажи Game ID и сервер как в профиле MLBB — код придёт на внутриигровую почту, и только после него аккаунт станет подтверждённым.'
+              : 'Укажи Game ID и сервер как в профиле MLBB — подтвердим, что аккаунт твой.'
             : gameChannel === 'ingame'
               ? `Код отправлен на внутриигровую почту MLBB${gameNick ? ` · ${gameNick}` : ''}. Он живёт ${Math.round(gameTtl / 60)} мин.`
               : `Код отправлен в Telegram${gameNick ? ` · ${gameNick}` : ''}. Он живёт ${Math.round(gameTtl / 60)} мин.`}
@@ -333,45 +339,54 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
             </button>
             <p className="field-hint">{gameHelp || 'Game ID и сервер видно в профиле MLBB под ником.'}</p>
 
-            <div className="game-channel">
-              <button
-                type="button"
-                className={`game-channel__item${gameChannel === 'ingame' ? ' is-active' : ''}`}
-                onClick={() => { setGameChannel('ingame'); setGameError('') }}
-              >
-                <span>Письмо в игре</span>
-                <small>код придёт на внутриигровую почту</small>
-              </button>
-              <button
-                type="button"
-                className={`game-channel__item${gameChannel === 'telegram' ? ' is-active' : ''}`}
-                onClick={() => { setGameChannel('telegram'); setGameError('') }}
-              >
-                <span>Telegram-бот</span>
-                <small>если бот уже привязан к профилю</small>
-              </button>
-            </div>
+            {onlyIngame ? (
+              <p className="field-hint game-account__note">
+                Код приходит только на внутриигровую почту MLBB — это и есть доказательство,
+                что аккаунт твой. Telegram для подтверждения не подходит.
+              </p>
+            ) : (
+              <div className="game-channel">
+                <button
+                  type="button"
+                  className={`game-channel__item${gameChannel === 'ingame' ? ' is-active' : ''}`}
+                  onClick={() => { setGameChannel('ingame'); setGameError('') }}
+                >
+                  <span>Письмо в игре</span>
+                  <small>код придёт на внутриигровую почту</small>
+                </button>
+                <button
+                  type="button"
+                  className={`game-channel__item${gameChannel === 'telegram' ? ' is-active' : ''}`}
+                  onClick={() => { setGameChannel('telegram'); setGameError('') }}
+                >
+                  <span>Telegram-бот</span>
+                  <small>если бот уже привязан к профилю</small>
+                </button>
+              </div>
+            )}
 
             <div className="social-modal__actions">
               <button type="button" className="btn btn--ghost" onClick={() => onClose()}>Отмена</button>
-              <PrimaryButton disabled={gameBusy} onClick={askGameCode}>{gameBusy ? 'Отправляю…' : 'Получить код'}</PrimaryButton>
+              <PrimaryButton disabled={gameBusy} onClick={askGameCode}>
+                {gameBusy ? 'Отправляю…' : onlyIngame ? 'Отправить код в игру' : 'Получить код'}
+              </PrimaryButton>
             </div>
           </>
         ) : (
           <>
             <label className="field">
-              <span>{gameChannel === 'ingame' ? 'КОД ИЗ ПИСЬМА В ИГРЕ' : 'КОД ИЗ TELEGRAM'}</span>
+              <span>{channel === 'ingame' ? 'КОД ИЗ ПИСЬМА В ИГРЕ' : 'КОД ИЗ TELEGRAM'}</span>
               <input
                 value={gameCode}
                 onChange={(e) => { setGameCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6)); setGameError('') }}
                 placeholder="123456"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                aria-label={gameChannel === 'ingame' ? 'Код из внутриигровой почты' : 'Код из Telegram'}
+                aria-label={channel === 'ingame' ? 'Код из внутриигровой почты' : 'Код из Telegram'}
                 className="game-code-input"
               />
             </label>
-            {gameChannel === 'ingame' ? (
+            {channel === 'ingame' ? (
               <>
                 <p className="field-hint">
                   Письмо лежит в MLBB: главный экран → значок конверта (Почта). Отправлено на аккаунт
@@ -380,16 +395,20 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
                 <button type="button" className="btn btn--ghost game-open-app" onClick={launchGame}>
                   <Gamepad2 size={16} /> Открыть игру и прочитать письмо
                 </button>
-                <button type="button" className="link-btn game-channel__switch" disabled={gameBusy} onClick={() => switchGameChannel('telegram')}>
-                  Нет доступа к игре? Прислать код в Telegram
-                </button>
+                {!onlyIngame && (
+                  <button type="button" className="link-btn game-channel__switch" disabled={gameBusy} onClick={() => switchGameChannel('telegram')}>
+                    Нет доступа к игре? Прислать код в Telegram
+                  </button>
+                )}
               </>
             ) : (
               <>
                 <p className="field-hint">Кода нет? Открой бота @{TELEGRAM_BOT_USERNAME} — сообщение приходит сразу.</p>
-                <button type="button" className="link-btn game-channel__switch" disabled={gameBusy} onClick={() => switchGameChannel('ingame')}>
-                  Прислать код на внутриигровую почту
-                </button>
+                {!onlyIngame && (
+                  <button type="button" className="link-btn game-channel__switch" disabled={gameBusy} onClick={() => switchGameChannel('ingame')}>
+                    Прислать код на внутриигровую почту
+                  </button>
+                )}
               </>
             )}
             {gameHelp && <p className="field-hint">{gameHelp}</p>}
@@ -408,25 +427,33 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
 /* Игровой аккаунт — не соцсеть, поэтому он не входит в SocialRow (там счётчик
    «привязано N из M»). Показываем его отдельной карточкой сразу под разделом
    «СОЦСЕТИ»: тот же фирменный стиль, но своя логика и своя кнопка проверки. */
-export function GameAccountCard({ gameId, gameServer, onConfirm, onOpenGame, hint }) {
-  const bound = Boolean(gameId)
+export function GameAccountCard({ gameId, gameServer, verified, onConfirm, onOpenGame, hint, busy }) {
+  const filled = Boolean(gameId)
+  // Статус «привязан» = владение доказано кодом из внутриигровой почты.
+  // Заполненные в анкете Game ID и сервер сами по себе ничего не подтверждают.
+  const status = verified ? 'подтверждён' : filled ? 'не подтверждён' : 'не привязан'
+  const defaultHint = verified
+    ? 'Аккаунт подтверждён кодом из внутриигровой почты MLBB — этим входом и восстанавливается доступ.'
+    : filled
+      ? 'Game ID и сервер из анкеты — просто цифры. Подтверди владение: код придёт на внутриигровую почту MLBB.'
+      : 'Привяжи аккаунт: код придёт на внутриигровую почту MLBB, пароль от игры не нужен.'
   return (
-    <div className="game-account">
-      <div className="section-head"><span>ИГРОВОЙ АККАУНТ</span><b>{bound ? 'привязан' : 'не привязан'}</b></div>
+    <div className={`game-account${verified ? ' is-verified' : ''}`}>
+      <div className="section-head"><span>ИГРОВОЙ АККАУНТ</span><b>{status}</b></div>
       <div className="game-account__row">
         <BrandMark type="mlbb" />
         <div className="game-account__info">
           <strong>Mobile Legends</strong>
-          <small>{bound ? formatGameId(gameId, gameServer) : 'Game ID и сервер не указаны'}</small>
+          <small>{filled ? formatGameId(gameId, gameServer) : 'Game ID и сервер не указаны'}</small>
         </div>
-        <span className={`game-account__badge${bound ? ' is-on' : ''}`}>{bound ? 'MLBB' : '—'}</span>
+        <span className={`game-account__badge${verified ? ' is-on' : filled ? ' is-warn' : ''}`}>
+          {verified ? 'MLBB ✓' : filled ? 'MLBB ?' : '—'}
+        </span>
       </div>
-      <p className="social-hint">
-        {hint || 'Владение аккаунтом подтверждается кодом: письмо приходит на внутриигровую почту MLBB.'}
-      </p>
+      <p className="social-hint">{hint || defaultHint}</p>
       <div className="game-account__actions">
-        <button type="button" className="btn btn--primary game-account__btn" onClick={onConfirm}>
-          <Gamepad2 size={16} /> {bound ? 'Подтвердить входом в игру' : 'Привязать игровой аккаунт'}
+        <button type="button" className="btn btn--primary game-account__btn" disabled={busy} onClick={onConfirm}>
+          <Gamepad2 size={16} /> {verified ? 'Подтвердить снова' : filled ? 'Подтвердить кодом из игры' : 'Привязать игровой аккаунт'}
         </button>
         {onOpenGame && (
           <button type="button" className="btn btn--ghost game-account__btn" onClick={onOpenGame}>
@@ -1359,7 +1386,7 @@ function TelegramLinkCard({ supabase, userId }) {
 }
 
 /* ============================================================= PROFILE ==== */
-export function ProfileScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onBack, onEdit, supabase, userId }) {
+export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerified, onGameVerified, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onBack, onEdit, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -1418,6 +1445,7 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, googleAcco
       <GameAccountCard
         gameId={gameId}
         gameServer={gameServer}
+        verified={Boolean(gameVerified)}
         hint={gameHelp || undefined}
         onConfirm={() => { setGameHelp(''); setGameOpen(true) }}
         onOpenGame={openGameFromProfile}
@@ -1430,6 +1458,8 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, googleAcco
         gameServer={gameServerDraft}
         setGameId={setGameIdDraft}
         setGameServer={setGameServerDraft}
+        onlyIngame
+        onVerified={(result) => { if (onGameVerified) onGameVerified(result) }}
       />
       <TelegramLinkCard supabase={supabase} userId={userId} />
       <button type="button" className="btn btn--ghost profile__back" onClick={onBack}>На главную</button>

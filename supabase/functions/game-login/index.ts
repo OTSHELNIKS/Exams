@@ -22,6 +22,9 @@
 //   - в ответах нет ни почты, ни id пользователя — только причина отказа;
 //   - код запрашивается только для профиля, который уже есть в NAME: на чужой
 //     Game ID письмо в игру не отправить (иначе мы были бы бесплатным спамером);
+//   - статус «аккаунт подтверждён» ставится ТОЛЬКО после кода из игры
+//     (player_profiles.game_verified_at / game_verified_id), заполненный в
+//     анкете Game ID сам по себе ничего не подтверждает;
 //   - таблица game_login_codes закрыта для anon/authenticated (RLS + revoke).
 //
 // Внутриигровую почту нельзя отправить напрямую: у Moonton нет публичного API.
@@ -34,7 +37,7 @@
 const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') || '').replace(/\/+$/, '')
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN') || ''
-const BUILD = 'game-login-v2'
+const BUILD = 'game-login-v3'
 const CODE_TTL_MS = 5 * 60 * 1000
 const COOLDOWN_MS = 30 * 1000
 const MAX_ATTEMPTS = 5
@@ -333,9 +336,21 @@ async function handleSession(req) {
   }
 
   await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
+
+  // Владение аккаунтом доказано кодом из игры — только теперь ставим отметку
+  // «подтверждён». Код в Telegram доказывает лишь доступ к боту, поэтому
+  // статус не меняет.
+  if (channel === 'ingame') {
+    const marked = await dbPatch('player_profiles', { user_id: 'eq.' + profile.user_id }, {
+      game_verified_at: new Date().toISOString(),
+      game_verified_id: gameId,
+    })
+    if (!marked) console.error('verify mark failed', profile.user_id)
+  }
+
   const tokenHash = await magicLinkToken(profile.user_id)
   if (!tokenHash) return json({ ok: false, error: 'no_email' }, 409)
-  return json({ ok: true, tokenHash: tokenHash })
+  return json({ ok: true, tokenHash: tokenHash, verified: channel === 'ingame' })
 }
 
 Deno.serve(async (req) => {

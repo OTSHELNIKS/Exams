@@ -66,7 +66,8 @@ a { color: inherit; }
 .brand.facebook { font-size: 23px; font-family: Georgia, serif; }
 .brand.telegram { background: rgba(255, 75, 18, .18); color: #ff7a45; }
 .brand.tiktok { background: #23252e; color: #e8e9f0; }
-.brand.mlbb { background: rgba(255, 200, 61, .14); color: var(--gold); }
+.brand.mlbb { background: rgba(255, 255, 255, .06); padding: 3px; }
+.brand.mlbb img { width: 100%; height: 100%; object-fit: contain; display: block; }
 
 /* Настоящие логотипы сервисов (brand-icons.jsx): знак лежит на своём цвете,
    поэтому внутри квадрата остаётся небольшой отступ и нет букв-заглушек. */
@@ -678,6 +679,11 @@ html.is-modal-open .rail { overflow: hidden !important; }
   border: 1px solid #33353f; border-radius: 7px; padding: 3px 7px; color: var(--dim);
 }
 .game-account__badge.is-on { color: var(--gold); border-color: rgba(255, 200, 61, .4); background: rgba(255, 200, 61, .08); }
+/* Заполнен, но владение не доказано: жёлтый «?» и подсказка, что делать. */
+.game-account__badge.is-warn { color: #ffb59a; border-color: rgba(255, 133, 87, .45); background: rgba(255, 75, 18, .08); }
+.game-account.is-verified { border-color: rgba(255, 200, 61, .35); }
+.game-account .section-head b { text-transform: lowercase; }
+.game-account__note { margin: 8px 0 0; }
 .game-account__actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .game-account__btn { flex: 1 1 190px; padding: 12px 14px; font-size: 12.5px; }
 @media (min-width: 1024px) {

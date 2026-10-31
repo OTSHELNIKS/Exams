@@ -36,7 +36,14 @@ export function BrandMark({ type }) {
       </span>
     )
   }
-  if (type === 'mlbb') return <span className="brand mlbb"><Gamepad2 size={18} strokeWidth={2.2} /></span>
+  // MLBB — настоящий логотип игры (эмблема «M»), файл лежит в app/public.
+  if (type === 'mlbb') {
+    return (
+      <span className="brand mlbb">
+        <img src={`${(import.meta.env && import.meta.env.BASE_URL) || '/'}mlbb-logo.png`} alt="" aria-hidden="true" />
+      </span>
+    )
+  }
   return null
 }
 

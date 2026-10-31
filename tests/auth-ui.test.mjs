@@ -154,13 +154,14 @@ await test('T-AU-05 иконки способов входа — настоящ�
 
 
 // ---------- профиль: игровой аккаунт под «СОЦСЕТЯМИ» ----------
-function mountProfile({ gameId = '1340937090', gameServer = '6634' } = {}) {
+function mountProfile({ gameId = '1340937090', gameServer = '6634', gameVerified = false } = {}) {
   document.body.innerHTML = '<div id="root"></div>'
   const rootEl = createRoot(document.getElementById('root'))
   rootEl.render(React.createElement(screens.ProfileScreen, {
     profile: { nick: 'Stranger_zxc', heroes: [], socials: [], screenshots: [], pts: 120 },
     actions: { addSocial: async () => ({ ok: true }), removeSocial: async () => true, addSlot: () => {} },
-    gameId, gameServer, googleAccount: '', telegramLink: undefined,
+    gameId, gameServer, gameVerified, onGameVerified: () => {},
+    googleAccount: '', telegramLink: undefined,
     onLinkGoogle: () => {}, onUnlinkTelegram: () => {}, onStartTelegram: () => {},
     onRefreshTelegram: () => {}, onLinkVk: () => {}, onLinkTikTok: () => {},
     socialNotice: '', onSocialNoticeShown: () => {}, onBack: () => {}, onEdit: () => {},
@@ -178,7 +179,9 @@ await test('T-AU-06 в профиле есть карточка игрового
   assert.match(card.textContent, /ИГРОВОЙ АККАУНТ/)
   assert.match(card.textContent, /Mobile Legends/)
   assert.match(card.textContent, /1340937090/, 'нет Game ID в карточке')
-  assert.match(card.textContent, /привязан/)
+  // Заполненный Game ID сам по себе НЕ даёт статус «привязан».
+  assert.match(card.textContent, /не подтверждён/)
+  assert.doesNotMatch(card.textContent, /подтверждён кодом/i, 'статус врёт без кода из игры')
   // Карточка стоит сразу после блока «СОЦСЕТИ», а не внутри него.
   const social = document.querySelector('.social-block')
   assert.ok(social, 'нет блока соцсетей')
@@ -187,14 +190,36 @@ await test('T-AU-06 в профиле есть карточка игрового
 
 await test('T-AU-07 кнопка в карточке открывает подтверждение кодом', async () => {
   const btn = Array.from(document.querySelectorAll('.game-account__btn'))
-    .find((b) => /Подтвердить входом в игру/.test(b.textContent))
+    .find((b) => /Подтвердить кодом из игры/.test(b.textContent))
   assert.ok(btn, 'нет кнопки подтверждения')
   click(btn)
   await settle()
   const html = document.body.innerHTML
   assert.match(html, /Вход через игру/, 'окно подтверждения не открылось')
-  assert.match(html, /Письмо в игре/, 'нет канала «письмо в игре»')
+  assert.match(html, /внутриигровую почту/, 'нет текста про почту в игре')
   assert.match(html, /Открыть игру и посмотреть ID/)
+  // Привязка идёт только кодом из игры: выбора канала и Telegram тут быть не должно.
+  assert.doesNotMatch(html, /Telegram-бот/, 'в привязке не должно быть Telegram-канала')
+  assert.doesNotMatch(html, /Прислать код в Telegram/)
+  assert.doesNotMatch(html, /Нет доступа к игре/)
+})
+
+await test('T-AU-10 подтверждённый аккаунт помечается как «подтверждён»', async () => {
+  mountProfile({ gameVerified: true })
+  await settle()
+  const card = document.querySelector('.game-account')
+  assert.match(card.textContent, /подтверждён/)
+  assert.match(card.textContent, /подтверждён кодом из внутриигровой почты/i)
+  assert.ok(card.className.includes('is-verified'), 'нет класса подтверждённой карточки')
+  assert.ok(card.querySelector('.game-account__badge.is-on'), 'нет золотого бейджа')
+})
+
+await test('T-AU-11 в карточке логотип игры, а не джойстик', () => {
+  const card = document.querySelector('.game-account')
+  const mark = card.querySelector('.brand.mlbb img')
+  assert.ok(mark, 'нет картинки логотипа MLBB')
+  assert.match(mark.getAttribute('src'), /mlbb-logo\.png$/)
+  assert.equal(card.querySelector('.brand.mlbb svg'), null, 'остался джойстик')
 })
 
 await test('T-AU-08 без Game ID карточка предлагает привязать аккаунт', async () => {
@@ -211,7 +236,7 @@ await test('T-AU-09 в окне подтверждения поля Game ID в �
   mountProfile()
   await settle()
   const btn = Array.from(document.querySelectorAll('.game-account__btn'))
-    .find((b) => /Подтвердить входом в игру/.test(b.textContent))
+    .find((b) => /Подтвердить кодом из игры/.test(b.textContent))
   click(btn)
   await settle()
   const card = document.querySelector('.modal__card')

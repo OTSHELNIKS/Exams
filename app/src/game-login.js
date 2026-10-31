@@ -52,7 +52,9 @@ export async function signInWithGameCode({ gameId, gameServer, code, channel = '
   if (!supabase) throw new Error('no_supabase')
   const { error } = await supabase.auth.verifyOtp({ type: 'magiclink', token_hash: data.tokenHash })
   if (error) throw new Error(error.message || 'verify_failed')
-  return true
+  // Сервер отвечает verified:true только за код из внутриигровой почты —
+  // это единственный вход, который подтверждает владение аккаунтом.
+  return { verified: data.verified === true }
 }
 
 // Технический код -> фраза для игрока.

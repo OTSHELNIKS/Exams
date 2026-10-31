@@ -23,6 +23,7 @@ const state = {
   // Игровой шлюз: что вернёт /send-vc и /login (код из письма в игре).
   gameApi: { up: true, sendOk: true, acceptCode: '123456', zone: '6634' },
   gameCalls: [],
+  profilePatches: [],
 }
 
 function J(status, json) {
@@ -52,6 +53,12 @@ function rest(table, url, init) {
   }
   if (table === 'player_profiles' && method === 'GET') {
     return J(200, state.profiles.filter((r) => eq(r, 'game_id') && eq(r, 'game_server')))
+  }
+  if (table === 'player_profiles' && method === 'PATCH') {
+    const patch = JSON.parse(init.body)
+    state.profilePatches.push({ params: Object.fromEntries(params), patch })
+    state.profiles.filter((r) => eq(r, 'user_id')).forEach((r) => Object.assign(r, patch))
+    return J(204, null)
   }
   if (table === 'telegram_links' && method === 'GET') {
     return J(200, state.links.filter((r) => eq(r, 'user_id')))
@@ -147,6 +154,7 @@ const reset = () => {
   state.linkOk = true
   state.gameApi = { up: true, sendOk: true, acceptCode: '123456', zone: '6634' }
   state.gameCalls = []
+  state.profilePatches = []
   state.admins = { u1: { id: 'u1', email: 'player@example.test' } }
 }
 
@@ -156,7 +164,7 @@ await test('T-GL-01 health отдаёт build функции', async () => {
   const data = await res.json()
   assert.equal(res.status, 200)
   assert.equal(data.ok, true)
-  assert.equal(data.build, 'game-login-v2')
+  assert.equal(data.build, 'game-login-v3')
 })
 
 // ---------- шаг 1: код ----------
@@ -515,7 +523,7 @@ await test('T-GL-36 openGame: игра открылась — в магазин 
   assert.equal(visited.length, 1)
 })
 
-await test('T-GL-37 модалка: выбор канала, кнопка игры и подсказка про Почту', () => {
+await test('T-GL-37 модалка: каналы, кнопка игры и подсказка про Почту', () => {
   const src = read('app/src/screens.jsx')
   assert.match(src, /gameChannel/, 'нет состояния канала')
   assert.match(src, /Письмо в игре/)
@@ -524,7 +532,8 @@ await test('T-GL-37 модалка: выбор канала, кнопка игр
   assert.match(src, /внутриигровую почту/)
   assert.match(src, /launchGame/)
   assert.match(src, /switchGameChannel/)
-  assert.match(src, /channel: gameChannel/)
+  // Канал, который реально уходит на сервер: при привязке — всегда ingame.
+  assert.match(src, /channel: onlyIngame \? 'ingame'|const channel = onlyIngame \? 'ingame' : gameChannel/)
 })
 
 await test('T-GL-38 тексты каналов без пароля Moonton', () => {
@@ -536,6 +545,60 @@ await test('T-GL-38 тексты каналов без пароля Moonton', ()
   assert.match(client, /На внутриигровую почту/)
   assert.match(client, /ingame_unavailable/)
   assert.match(client, /too_many_attempts/)
+})
+
+
+// ---------- подтверждение владения (статус «привязан») ----------
+await test('T-GL-39 код из игры ставит отметку подтверждения', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code: '123456' })
+  const data = await res.json()
+  assert.equal(data.ok, true)
+  assert.equal(data.verified, true)
+  const mark = state.profilePatches.find((p) => p.patch.game_verified_at)
+  assert.ok(mark, 'нет отметки game_verified_at')
+  assert.equal(mark.patch.game_verified_id, '1340937090', 'отметка привязана к Game ID')
+  assert.equal(mark.params.user_id, 'eq.u1')
+  assert.ok(Date.now() - new Date(mark.patch.game_verified_at).getTime() < 60000)
+})
+
+await test('T-GL-40 код в Telegram не даёт статус «подтверждён»', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634', channel: 'telegram' })
+  const code = state.codes[0].code
+  const res = await post('session', { gameId: '1340937090', gameServer: '6634', code, channel: 'telegram' })
+  const data = await res.json()
+  assert.equal(data.ok, true, 'вход через бота работает')
+  assert.equal(data.verified, false)
+  assert.equal(state.profilePatches.length, 0, 'бот не подтверждает владение аккаунтом')
+})
+
+await test('T-GL-41 неверный код не ставит отметку', async () => {
+  reset()
+  await post('code', { gameId: '1340937090', gameServer: '6634' })
+  await post('session', { gameId: '1340937090', gameServer: '6634', code: '000000' })
+  assert.equal(state.profilePatches.length, 0)
+})
+
+await test('T-GL-42 миграция: отметку нельзя поставить из браузера', () => {
+  const sql = read('supabase/migrations/20261031190000_game_verified.sql')
+  assert.match(sql, /add column if not exists game_verified_at/i)
+  assert.match(sql, /add column if not exists game_verified_id/i)
+  assert.match(sql, /create trigger protect_game_verification/i)
+  assert.match(sql, /auth\.role\(\) in \('anon', 'authenticated'\)/i)
+})
+
+await test('T-GL-43 клиент запоминает, что владение подтверждено', () => {
+  const src = read('app/src/game-login.js')
+  assert.match(src, /verified/, 'клиент не смотрит на флаг verified')
+})
+
+await test('T-GL-44 в привязке из профиля только код из игры', () => {
+  const src = read('app/src/screens.jsx')
+  assert.match(src, /onlyIngame/, 'нет режима «только код из игры»')
+  const profile = src.slice(src.indexOf('export function ProfileScreen'), src.indexOf('/* =============================================================== DRAFT'))
+  assert.match(profile, /onlyIngame/, 'профиль не включает режим «только из игры»')
 })
 
 console.log(`\n${passed}/${passed + failed} game-login tests passed`)

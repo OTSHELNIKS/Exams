@@ -115,6 +115,11 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false)
   // Реальная привязка Telegram (таблица telegram_links, её пишет бот).
   const [telegramLink, setTelegramLink] = useState(null)
+  // Владение игровым аккаунтом: храним тот Game ID, который игрок подтвердил
+  // кодом из внутриигровой почты (отметку ставит edge-функция game-login).
+  // Заполненный в анкете Game ID — не повод писать «привязан», поэтому статус
+  // сравнивает отметку с текущим ID: поменял ID — снова «не подтверждён».
+  const [gameVerifiedId, setGameVerifiedId] = useState('')
   const [tgLoaded, setTgLoaded] = useState(false)
   const [profile, setProfile] = useState(() => {
     try {
@@ -163,6 +168,8 @@ export default function App() {
           const legacy = splitCombinedGameId(data?.game_id || '')
           setGameId(legacy.gameId)
           setGameServer(data?.game_server || legacy.server)
+          // Отметка действует только для того Game ID, который подтверждали.
+          setGameVerifiedId(data?.game_verified_at ? String(data?.game_verified_id || '') : '')
 
           // Вернулись от Google после «Привязать»: аккаунт подтверждён — пишем
           // его в соцсети. Сохраняем сразу из свежезагруженного профиля, чтобы
@@ -193,7 +200,7 @@ export default function App() {
           if (!active || current !== generation) return
           setIsAdmin(!!adminRow)
         } else if (previousUserId) {
-          setProfile({ ...DEFAULT_PROFILE }); setGameId(''); setGameServer(''); setIsAdmin(false)
+          setProfile({ ...DEFAULT_PROFILE }); setGameId(''); setGameServer(''); setIsAdmin(false); setGameVerifiedId('')
           setTelegramLink(null)
         }
         setSaveError(''); setSessionLoading(false)
@@ -333,7 +340,26 @@ export default function App() {
     setTelegramLink(null)
   }
 
+  // «Подтверждён» — только если отметка есть и она про текущий Game ID.
+  const gameVerified = Boolean(gameVerifiedId) && String(gameVerifiedId) === String(gameId || '')
+
   const go = (id) => setScreen(id)
+
+  // Перечитать отметку о подтверждении аккаунта: её ставит edge-функция
+  // game-login, когда игрок ввёл код из внутриигровой почты.
+  const refreshGameVerification = async () => {
+    if (!supabase || !session?.user) return
+    try {
+      const { data } = await supabase.from('player_profiles')
+        .select('game_verified_at,game_verified_id')
+        .eq('user_id', session.user.id).maybeSingle()
+      setGameVerifiedId(data?.game_verified_at ? String(data?.game_verified_id || '') : '')
+    } catch (e) { /* статус просто останется прежним */ }
+  }
+  const handleGameVerified = (result) => {
+    if (result && result.verified) setGameVerifiedId(String(gameId || ''))
+    refreshGameVerification()
+  }
   const openApp = (id = 'auth') => { setScreen(id); setMode('app') }
 
   const profileFilled = Boolean(profile.nick && profile.nick.trim())
@@ -465,7 +491,7 @@ export default function App() {
       case 'home':
         return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
       case 'profile':
-        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
+        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} gameVerified={gameVerified} onGameVerified={handleGameVerified} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
         return <DraftScreen supabase={supabase} userId={session?.user?.id || null} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
       case 'match':
