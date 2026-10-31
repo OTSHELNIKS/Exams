@@ -111,6 +111,7 @@ test('T-LGL-10 страница-шпаргалка для формы TikTok: з�
   }
   assert.ok(helper.includes('user.info.basic'), 'не указан scope')
   assert.ok(helper.includes('Login Kit'), 'не указан продукт')
+  assert.ok(/Redirect URI/.test(helper), 'нет отдельного поля Redirect URI для Login Kit')
   assert.ok(helper.includes('Sandbox'), 'не напомнила про Sandbox')
   assert.ok(helper.includes('tiktok-icon-1024.png'), 'нет ссылки на иконку')
   assert.ok(/data-copy="/.test(helper) && /clipboard/.test(helper), 'кнопки копирования не работают')
