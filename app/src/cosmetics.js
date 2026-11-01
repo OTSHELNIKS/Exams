@@ -1,4 +1,5 @@
-// Оформление профиля: рамки, шапки профиля (баннеры), титулы и цвет ника.
+// Оформление профиля: рамки аватара, шапки (баннеры), рамки имени, титулы и
+// цвет ника.
 //
 // Правила, которые заложены здесь и проверяются тестами:
 //   • бесплатное открывается только за то, что реально считается на сервере
@@ -13,11 +14,12 @@
 
 import { mmrTier } from './rating.js'
 
-export const COSMETIC_KINDS = ['frame', 'banner', 'title', 'color']
+export const COSMETIC_KINDS = ['frame', 'banner', 'nameplate', 'title', 'color']
 
 export const KIND_LABEL = {
   frame: 'Рамка',
   banner: 'Шапка профиля',
+  nameplate: 'Рамка имени',
   title: 'Титул',
   color: 'Цвет ника',
 }
@@ -25,6 +27,7 @@ export const KIND_LABEL = {
 export const KINDS_TITLE = {
   frame: 'РАМКИ АВАТАРА',
   banner: 'ШАПКИ ПРОФИЛЯ',
+  nameplate: 'РАМКИ ИМЕНИ',
   title: 'ТИТУЛЫ',
   color: 'ЦВЕТ НИКА',
 }
@@ -72,6 +75,9 @@ export const REQ = {
 // ------------------------------------------------------------------- каталог
 
 // frame: палитра + уровень орнамента для рамки (рисует frames.jsx).
+// nameplate: css-класс рамки вокруг ника + shine (анимированный блеск).
+//   Рамка может отсутствовать (`noFrame`) — тогда переливается сам текст:
+//   так сделан «Золотой ник», как золотая плашка имени в MLBB без подложки.
 // banner: css-класс шапки профиля (градиент-полоса над аватаром, как в Discord).
 // title: текст под ником. color: цвет ника. Платные помечаются premium: true —
 // интерфейс показывает их, но никогда не рисует кнопку «купить» в приложении.
@@ -101,6 +107,18 @@ export const COSMETICS = [
   { id: 'banner-photo', kind: 'banner', label: 'Своя картинка', req: { kind: 'entitlement' }, media: 'image', premium: true },
   { id: 'banner-motion', kind: 'banner', label: 'Анимация', req: { kind: 'entitlement' }, media: 'animated', premium: true },
 
+  // ----- рамки имени: вокруг ника, с бегущим бликом (shine) или без него
+  { id: 'plate-none', kind: 'nameplate', label: 'Без рамки', req: { kind: 'always' }, css: '', noFrame: true, shine: false },
+  // Матовая, без анимации — для тех, кому блеск мешает читать ник.
+  { id: 'plate-steel', kind: 'nameplate', label: 'Сталь', req: { kind: 'matches', value: 100 }, css: 'plate-steel', shine: false },
+  { id: 'plate-gold', kind: 'nameplate', label: 'Золото', req: { kind: 'entitlement' }, css: 'plate-gold', shine: true, premium: true },
+  // Без рамки: только золотой переливающийся ник.
+  { id: 'plate-gold-nick', kind: 'nameplate', label: 'Золотой ник', req: { kind: 'entitlement' }, css: 'plate-gold-nick', noFrame: true, shine: true, premium: true },
+  { id: 'plate-emerald', kind: 'nameplate', label: 'Изумруд', req: { kind: 'entitlement' }, css: 'plate-emerald', shine: true, premium: true },
+  { id: 'plate-ice', kind: 'nameplate', label: 'Иней', req: { kind: 'entitlement' }, css: 'plate-ice', shine: true, premium: true },
+  { id: 'plate-crimson', kind: 'nameplate', label: 'Багрянец', req: { kind: 'entitlement' }, css: 'plate-crimson', shine: true, premium: true },
+  { id: 'plate-aurora', kind: 'nameplate', label: 'Аврора', req: { kind: 'entitlement' }, css: 'plate-aurora', shine: true, premium: true },
+
   // ----- титулы
   { id: 'title-none', kind: 'title', label: 'Без титула', req: { kind: 'always' }, value: '' },
   { id: 'title-verified', kind: 'title', label: 'Проверенный', req: { kind: 'verified' }, value: 'ПРОВЕРЕН' },
@@ -119,6 +137,7 @@ export const COSMETICS = [
 export const DEFAULTS = {
   frame: 'frame-default',
   banner: 'banner-none',
+  nameplate: 'plate-none',
   title: 'title-none',
   color: 'color-default',
 }
@@ -137,6 +156,7 @@ export function equippedFromRow(row) {
     banner: (row && row.banner_id) || DEFAULTS.banner,
     // Своя картинка/анимация шапки: адрес в нашем хранилище, не чужая ссылка.
     bannerUrl: (row && row.banner_url) || '',
+    nameplate: (row && row.plate_id) || DEFAULTS.nameplate,
     title: (row && row.title_id) || DEFAULTS.title,
     color: (row && row.color_id) || DEFAULTS.color,
   }
@@ -204,17 +224,24 @@ export function look(equipped, state = {}) {
   }
   const frame = pick('frame')
   const banner = pick('banner')
+  const plate = pick('nameplate')
   const title = pick('title')
   const color = pick('color')
   return {
     frameId: frame ? frame.id : DEFAULTS.frame,
     framePalette: frame && frame.palette ? frame.palette : 'steel',
     frameMotif: frame && frame.motif ? frame.motif : 'classic',
+    // Коллекционные рамки переливаются: бегущий блик по орнаменту.
+    frameShine: Boolean(frame && frame.premium),
     bannerId: banner ? banner.id : DEFAULTS.banner,
     bannerCss: banner && banner.css ? banner.css : 'pbanner-none',
     // Картинку показываем только если надет предмет, который её разрешает.
     bannerUrl: banner && banner.media && eq.bannerUrl ? eq.bannerUrl : '',
     bannerMedia: banner && banner.media ? banner.media : '',
+    plateId: plate ? plate.id : DEFAULTS.nameplate,
+    plateCss: plate && plate.css ? plate.css : '',
+    plateShine: Boolean(plate && plate.shine),
+    plateFrame: Boolean(plate && !plate.noFrame),
     titleText: title && title.value ? title.value : '',
     colorValue: color && color.value ? color.value : '#f4f1ea',
     tierColor: mmrTier(st.mmr).color,
@@ -243,6 +270,12 @@ export function nextReward(state) {
   return first ? { id: first.item.id, label: first.item.label, kind: first.item.kind, left: first.req.left, text: first.req.text } : null
 }
 
+/** Рамка имени другого игрока: css-класс, блеск и есть ли подложка. */
+export function plateOf(row) {
+  const item = cosmeticById(row && row.plate_id) || cosmeticById(DEFAULTS.nameplate)
+  return { id: item.id, css: item.css || '', shine: Boolean(item.shine), frame: !item.noFrame }
+}
+
 /** Рамка другого игрока: палитра и орнамент по id из вьюхи. */
 export function frameOf(row) {
   const item = cosmeticById(row && row.frame_id) || cosmeticById(DEFAULTS.frame)
@@ -255,15 +288,21 @@ export function lookFromRow(row) {
   const src = row || {}
   const frame = cosmeticById(src.frame_id) || cosmeticById(DEFAULTS.frame)
   const banner = cosmeticById(src.banner_id) || cosmeticById(DEFAULTS.banner)
+  const plate = cosmeticById(src.plate_id) || cosmeticById(DEFAULTS.nameplate)
   const title = cosmeticById(src.title_id) || cosmeticById(DEFAULTS.title)
   const color = cosmeticById(src.color_id) || cosmeticById(DEFAULTS.color)
   return {
     frameId: frame.id,
     framePalette: frame.palette || 'steel',
     frameMotif: frame.motif || 'classic',
+    frameShine: Boolean(frame.premium),
     bannerId: banner.id,
     bannerCss: banner.css || 'pbanner-none',
     bannerUrl: banner.media && src.banner_url ? src.banner_url : '',
+    plateId: plate.id,
+    plateCss: plate.css || '',
+    plateShine: Boolean(plate.shine),
+    plateFrame: !plate.noFrame,
     titleText: title.value || '',
     colorValue: color.value || '#f4f1ea',
     tierColor: '',

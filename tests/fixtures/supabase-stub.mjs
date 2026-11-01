@@ -5,7 +5,7 @@ export const supabase = { from() {}, rpc() {}, auth: {} }
 export const TELEGRAM_BOT_USERNAME = 'name_mlbb_bot'
 
 export const state = (globalThis.__stubState = {
-  loadout: { user_id: 'u1', frame_id: 'frame-default', banner_id: 'banner-none', title_id: 'title-none', color_id: 'color-default' },
+  loadout: { user_id: 'u1', frame_id: 'frame-default', banner_id: 'banner-none', plate_id: 'plate-none', title_id: 'title-none', color_id: 'color-default' },
   entitlements: [],
   calls: [],
   failNext: null,
@@ -18,7 +18,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export function resetStub(overrides = {}) {
   Object.assign(state, {
-    loadout: { user_id: 'u1', frame_id: 'frame-default', banner_id: 'banner-none', title_id: 'title-none', color_id: 'color-default' },
+    loadout: { user_id: 'u1', frame_id: 'frame-default', banner_id: 'banner-none', plate_id: 'plate-none', title_id: 'title-none', color_id: 'color-default' },
     entitlements: [],
     calls: [],
     failNext: null,
@@ -52,8 +52,10 @@ export async function equipCosmetic(itemId) {
     state.failNext = null
     return { error }
   }
-  const kind = itemId.split('-')[0]
-  const key = kind === 'banner' ? 'banner_id' : `${kind}_id`
+  // plate-* — это рамка имени; в базе слот называется plate_id, а вид — nameplate.
+  const raw = itemId.split('-')[0]
+  const kind = raw === 'plate' ? 'nameplate' : raw
+  const key = kind === 'banner' ? 'banner_id' : kind === 'nameplate' ? 'plate_id' : `${kind}_id`
   state.loadout = { ...state.loadout, [key]: itemId }
   return { ok: true, kind, itemId }
 }
@@ -91,7 +93,12 @@ export async function equipBannerMedia(itemId, url) {
 // Админ: одно нажатие — все права на платные предметы.
 export async function adminGrantAllPremium() {
   if (!state.admin) return { error: 'forbidden' }
-  const ids = ['frame-neon', 'frame-diamond', 'banner-neon', 'banner-aurora', 'banner-photo', 'banner-motion', 'title-pioneer', 'color-neon']
+  const ids = [
+    'frame-neon', 'frame-diamond',
+    'banner-neon', 'banner-aurora', 'banner-photo', 'banner-motion',
+    'plate-gold', 'plate-gold-nick', 'plate-emerald', 'plate-ice', 'plate-crimson', 'plate-aurora',
+    'title-pioneer', 'color-neon',
+  ]
   for (const id of ids) if (!state.entitlements.includes(id)) state.entitlements.push(id)
   return { ok: true, entitlements: state.entitlements.length }
 }

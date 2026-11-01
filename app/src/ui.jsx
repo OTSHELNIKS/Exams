@@ -296,15 +296,16 @@ export function Steps({ current = 1, total = 3 }) {
 
 /**
  * Аватар. `frame` — палитра рамки ('gold', 'neon'…), `frameMotif` — форма
- * орнамента ('wings', 'horns'…); саму рамку рисует ProfileFrame (frames.jsx).
+ * орнамента ('wings', 'horns'…); `frameShine` включает блеск коллекционной
+ * рамки; саму рамку рисует ProfileFrame (frames.jsx).
  */
-export function Avatar({ src, initials = '?', size = 96, ring = true, level = null, frame = null, frameMotif = 'classic' }) {
+export function Avatar({ src, initials = '?', size = 96, ring = true, level = null, frame = null, frameMotif = 'classic', frameShine = false }) {
   return (
     <div
       className={`avatar ${ring && !frame ? 'avatar--ring' : ''} ${frame ? 'avatar--framed' : ''}`}
       style={{ width: size, height: size }}
     >
-      {frame ? <ProfileFrame palette={frame} art={frameMotif} /> : null}
+      {frame ? <ProfileFrame palette={frame} art={frameMotif} shine={frameShine} /> : null}
       {src
         ? <img src={src} alt="avatar" />
         : <span className="avatar__initials">{initials}</span>}

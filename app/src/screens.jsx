@@ -38,7 +38,7 @@ import {
   COSMETIC_KINDS, KIND_LABEL, KINDS_TITLE, itemsOf, itemStatus, equippedFromRow, playerState,
   nextReward, frameOf, cosmeticById, look as cosmeticsLook, lookFromRow,
 } from './cosmetics.js'
-import { ProfileFrame, ProfileBanner } from './frames.jsx'
+import { ProfileFrame, ProfileBanner, NickPlate } from './frames.jsx'
 import {
   REGIONS as LOBBY_REGIONS, LOBBY_CAPACITY, ROOM_HINT, normalizeLobbyCode, lobbyCodeValid,
   normalizeRoomId, normalizeRoomPassword, regionLabel, regionHint, describeLobbyError,
@@ -1247,9 +1247,17 @@ export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount
           size={104}
           frame={look ? look.framePalette : null}
           frameMotif={look ? look.frameMotif : 'classic'}
+          frameShine={Boolean(look && look.frameShine)}
         />
-        <h1 style={look && look.colorValue ? { color: look.colorValue } : undefined}>
-          {profile.nick || 'Новый игрок'}
+        <h1>
+          <NickPlate
+            css={look ? look.plateCss : ''}
+            shine={Boolean(look && look.plateShine)}
+            frame={Boolean(look && look.plateFrame)}
+            color={look ? look.colorValue : ''}
+          >
+            {profile.nick || 'Новый игрок'}
+          </NickPlate>
         </h1>
         {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
         {hasBadges && (
@@ -1476,10 +1484,18 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
             size={116}
             frame={look ? look.framePalette : null}
             frameMotif={look ? look.frameMotif : 'classic'}
+            frameShine={Boolean(look && look.frameShine)}
           />
           <div className="profile-card__id">
-            <h1 style={look && look.colorValue ? { color: look.colorValue } : undefined}>
-              {profile.nick || 'Новый игрок'}
+            <h1>
+              <NickPlate
+                css={look ? look.plateCss : ''}
+                shine={Boolean(look && look.plateShine)}
+                frame={Boolean(look && look.plateFrame)}
+                color={look ? look.colorValue : ''}
+              >
+                {profile.nick || 'Новый игрок'}
+              </NickPlate>
             </h1>
             {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
             {gameId || gameServer ? (
@@ -2236,10 +2252,18 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
               size={84}
               frame={look ? look.framePalette : null}
               frameMotif={look ? look.frameMotif : 'classic'}
+              frameShine={Boolean(look && look.frameShine)}
             />
             <div>
-              <h3 id="public-profile-title" style={look && look.colorValue ? { color: look.colorValue } : undefined}>
-                {row.nick}{isMe ? ' (вы)' : ''}
+              <h3 id="public-profile-title">
+                <NickPlate
+                  css={look ? look.plateCss : ''}
+                  shine={Boolean(look && look.plateShine)}
+                  frame={Boolean(look && look.plateFrame)}
+                  color={look ? look.colorValue : ''}
+                >
+                  {row.nick}{isMe ? ' (вы)' : ''}
+                </NickPlate>
               </h3>
               {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
             </div>
@@ -2376,8 +2400,15 @@ export function LeaderboardScreen({ supabase, userId }) {
               style={{ boxShadow: `0 0 0 2px ${mmrTier(r.pts).color}` }}
             >{r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}</span>
             <span className="rank-row__info">
-              <strong style={{ color: lookFromRow(r).colorValue }}>
-                {r.nick}{r.user_id === userId ? ' (вы)' : ''}
+              <strong>
+                <NickPlate
+                  css={lookFromRow(r).plateCss}
+                  shine={lookFromRow(r).plateShine}
+                  frame={lookFromRow(r).plateFrame}
+                  color={lookFromRow(r).colorValue}
+                >
+                  {r.nick}{r.user_id === userId ? ' (вы)' : ''}
+                </NickPlate>
                 {(r.title || rankTitle(r.position || i + 1)) && (
                   <em className={`tier-title tier-title--${(r.title || rankTitle(r.position || i + 1)).replace('ТОП-', 'top')}`}>
                     {r.title || rankTitle(r.position || i + 1)}
@@ -3027,9 +3058,19 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
             size={82}
             frame={look.framePalette}
             frameMotif={look.frameMotif}
+            frameShine={look.frameShine}
           />
           <div>
-            <strong style={{ color: look.colorValue }}>{profile.nick || 'Твой ник'}</strong>
+            <strong>
+              <NickPlate
+                css={look.plateCss}
+                shine={look.plateShine}
+                frame={look.plateFrame}
+                color={look.colorValue}
+              >
+                {profile.nick || 'Твой ник'}
+              </NickPlate>
+            </strong>
             {look.titleText && <em className="cosmetics__title">{look.titleText}</em>}
             <small>{mmrTier(fullState.mmr).label} · {fullState.matches} матчей</small>
           </div>
@@ -3066,7 +3107,12 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
               <span className="cosmetic-card__art">
                 {item.kind === 'frame' && (
                   <span className="cosmetic-card__frame">
-                    <ProfileFrame palette={item.palette} art={item.motif} glow={false} />
+                    <ProfileFrame
+                      palette={item.palette}
+                      art={item.motif}
+                      glow={false}
+                      shine={Boolean(item.premium)}
+                    />
                   </span>
                 )}
                 {item.kind === 'banner' && (item.media
@@ -3076,6 +3122,13 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
                         : <Upload size={16} />}
                     </span>
                   : <span className={`cosmetic-card__banner ${item.css}`} />)}
+                {item.kind === 'nameplate' && (
+                  <span className="cosmetic-card__plate">
+                    <NickPlate css={item.css} shine={item.shine} frame={!item.noFrame} color="#f4f1ea">
+                      НИК
+                    </NickPlate>
+                  </span>
+                )}
                 {item.kind === 'title' && <span className="cosmetic-card__title">{item.value || '—'}</span>}
                 {item.kind === 'color' && <span className="cosmetic-card__color" style={{ background: item.value }} />}
               </span>

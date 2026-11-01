@@ -465,7 +465,7 @@ export async function loadLeaderboardRanks(limit = 100) {
 export async function loadLoadout(userId) {
   const { data, error } = await supabase
     .from('cosmetic_loadout')
-    .select('frame_id, banner_id, banner_url, title_id, color_id')
+    .select('frame_id, banner_id, banner_url, plate_id, title_id, color_id')
     .eq('user_id', userId)
     .maybeSingle()
   if (error) return { error: 'server', detail: error.message }
@@ -525,7 +525,7 @@ export async function loadPublicLook(userId) {
   if (!supabase || !userId) return null
   const { data, error } = await supabase
     .from('cosmetic_loadouts_public')
-    .select('frame_id, banner_id, banner_url, title_id, color_id')
+    .select('frame_id, banner_id, banner_url, plate_id, title_id, color_id')
     .eq('user_id', userId)
     .maybeSingle()
   if (error) return null

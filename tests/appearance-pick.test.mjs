@@ -92,7 +92,10 @@ let host = null
 async function mount({ latency = 0, equipLatency = 0, failNext = null, entitlements = [], admin = false, player = PLAYER } = {}) {
   if (reactRoot) { reactRoot.unmount(); host.remove() }
   Object.assign(stub, {
-    loadout: { user_id: 'u1', frame_id: 'frame-default', banner_id: 'banner-none', title_id: 'title-none', color_id: 'color-default' },
+    loadout: {
+      user_id: 'u1', frame_id: 'frame-default', banner_id: 'banner-none',
+      plate_id: 'plate-none', title_id: 'title-none', color_id: 'color-default',
+    },
     entitlements,
     calls: [],
     failNext,
@@ -134,6 +137,8 @@ const previewPalette = () => {
   return m ? m[1] : null
 }
 const previewBanner = () => document.querySelector('.cosmetics__preview .pbanner')?.getAttribute('class') || null
+const previewNick = () => document.querySelector('.cosmetics__preview .nick')
+const previewNickClass = () => (previewNick()?.getAttribute('class') || '')
 const equippedTitles = () => cards().filter((c) => c.className.includes('is-equipped')).map(titleOf)
 const errorText = () => document.querySelector('.lobby__error')?.textContent || ''
 
@@ -340,7 +345,71 @@ test('T-PICK-17 «Забрать всю коллекцию» есть тольк
   grant.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
   await settle(200)
   // Права реально записались — теперь платное открыто и без админского флага.
-  assert.equal(stub.entitlements.length, 8)
+  assert.equal(stub.entitlements.length, 14)
+})
+
+// ------------------------------------------------------ рамка имени и блеск
+
+test('T-PICK-18 рамка имени надевается кликом и переливается', async () => {
+  await mount({ admin: true, player: ADMIN })
+  await clickChip('Рамка имени')
+  await clickCard('Золото')
+  assert.match(previewNickClass(), /nick--plate/, 'подложка плашки не появилась')
+  assert.match(previewNickClass(), /plate-gold/, 'не тот цвет плашки')
+  assert.match(previewNickClass(), /nick--shine/, 'нет анимации перелива')
+  assert.equal(previewNick().querySelectorAll('.nick__gem').length, 2, 'нет камней по краям')
+  assert.ok(previewNick().querySelector('.nick__gleam'), 'нет бегущего блика')
+  assert.deepEqual(stub.calls, ['plate-gold'])
+})
+
+test('T-PICK-19 «Золотой ник» переливается без рамки', async () => {
+  await mount({ admin: true, player: ADMIN })
+  await clickChip('Рамка имени')
+  await clickCard('Золотой ник')
+  const cls = previewNickClass()
+  assert.match(cls, /nick--bare/, 'у золотого ника не должно быть подложки')
+  assert.match(cls, /plate-gold-nick/)
+  assert.doesNotMatch(cls, /nick--plate/)
+  assert.equal(previewNick().querySelectorAll('.nick__gem').length, 0, 'у ника без рамки не должно быть камней')
+  assert.deepEqual(stub.calls, ['plate-gold-nick'])
+})
+
+test('T-PICK-20 «Сталь» — рамка без блеска (анимация не обязательна)', async () => {
+  await mount()
+  await clickChip('Рамка имени')
+  await clickCard('Сталь')
+  const cls = previewNickClass()
+  assert.match(cls, /nick--plate/)
+  assert.match(cls, /plate-steel/)
+  assert.doesNotMatch(cls, /nick--shine/, 'у «Стали» не должно быть перелива')
+  assert.deepEqual(stub.calls, ['plate-steel'])
+})
+
+test('T-PICK-21 закрытую плашку имени обычный игрок надеть не может', async () => {
+  await mount()
+  await clickChip('Рамка имени')
+  await clickCard('Изумруд')
+  assert.deepEqual(stub.calls, [], 'закрытая плашка ушла на сервер')
+  assert.match(errorText(), /коллекционное|покупк|код/i)
+  assert.doesNotMatch(previewNickClass(), /plate-emerald/)
+})
+
+test('T-PICK-22 у коллекционных рамок аватара есть блеск, у бесплатных нет', async () => {
+  await mount({ admin: true, player: ADMIN })
+  await clickChip('Рамка')
+  const shine = (label) => {
+    const card = cards().find((c) => titleOf(c) === label)
+    return Boolean(card?.querySelector('.pframe__shine'))
+  }
+  assert.equal(shine('Контур'), true, 'у коллекционной «Контур» нет блеска')
+  assert.equal(shine('Кристалл'), true, 'у коллекционной «Кристалл» нет блеска')
+  assert.equal(shine('Классика'), false, 'у бесплатной рамки появился блеск')
+  assert.equal(shine('Лавр'), false, 'у бесплатной рамки появился блеск')
+  // И в самом аватаре профиля блеск включается только для коллекционной.
+  await clickCard('Кристалл')
+  assert.ok(document.querySelector('.cosmetics__preview .pframe__shine'), 'превью без блеска')
+  await clickCard('Классика')
+  assert.equal(document.querySelector('.cosmetics__preview .pframe__shine'), null)
 })
 
 rmSync(bundle, { force: true })

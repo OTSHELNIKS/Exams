@@ -44,6 +44,7 @@ const sql = read('supabase/migrations/20261101180000_cosmetics.sql')
 const bannersSql = read('supabase/migrations/20261101210000_profile_banners.sql')
 const mediaSql = read('supabase/migrations/20261101220000_banner_media.sql')
 const adminSql = read('supabase/migrations/20261101230000_admin_premium.sql')
+const plateSql = read('supabase/migrations/20261101240000_nameplates.sql')
 
 let passed = 0
 let failed = 0
@@ -57,9 +58,9 @@ const богач = playerState({ verified: true, matches: 5000, wins: 5000, mmr:
 
 // ------------------------------------------------------------------- каталог
 
-test('T-COS-01 каталог: 30 предметов, четыре вида, уникальные id', () => {
-  assert.equal(COSMETICS.length, 30)
-  assert.deepEqual(COSMETIC_KINDS, ['frame', 'banner', 'title', 'color'])
+test('T-COS-01 каталог: 38 предметов, пять видов, уникальные id', () => {
+  assert.equal(COSMETICS.length, 38)
+  assert.deepEqual(COSMETIC_KINDS, ['frame', 'banner', 'nameplate', 'title', 'color'])
   const ids = COSMETICS.map((i) => i.id)
   assert.equal(new Set(ids).size, ids.length)
   for (const kind of COSMETIC_KINDS) {
@@ -67,7 +68,11 @@ test('T-COS-01 каталог: 30 предметов, четыре вида, у�
     assert.ok(KIND_LABEL[kind], `нет подписи вида ${kind}`)
     assert.ok(KINDS_TITLE[kind], `нет заголовка вида ${kind}`)
   }
-  assert.equal(itemsOf('frame').length + itemsOf('banner').length + itemsOf('title').length + itemsOf('color').length, 30)
+  assert.equal(
+    itemsOf('frame').length + itemsOf('banner').length + itemsOf('nameplate').length
+      + itemsOf('title').length + itemsOf('color').length,
+    38,
+  )
 })
 
 test('T-COS-02 рамки: у каждой своя палитра и СВОЯ ФОРМА', () => {
@@ -119,7 +124,7 @@ test('T-COS-02c слот шапки в базе называется banner_id',
 
 // id и условия сверяем по обоим файлам: 27 из первого + 9 шапок из второго.
 test('T-COS-02d id и условия в JS совпадают с таблицей cosmetic_items', () => {
-  const all = sql + '\n' + bannersSql
+  const all = sql + '\n' + bannersSql + '\n' + plateSql
   const rows = [...all.matchAll(/\('([a-z0-9-]+)',\s*'(frame|banner|hat|title|color)',\s*'([^']+)',\s*'(always|verified|matches|wins|mmr|entitlement)',\s*(\d+),\s*(true|false)\)/g)]
     .map((m) => ({ id: m[1], kind: m[2], label: m[3], reqKind: m[4], reqValue: Number(m[5]), premium: m[6] === 'true' }))
     .filter((row) => row.kind !== 'hat')
@@ -141,8 +146,9 @@ test('T-COS-03 базовое оформление открыто всем и б
   for (const kind of COSMETIC_KINDS) {
     assert.ok(isUnlocked(cosmeticById(DEFAULTS[kind]), никто), `базовый ${kind} закрыт`)
   }
-  // Без достижений доступны: базовая рамка, две шапки, цвет белый/фирменный, без титула.
-  assert.equal(unlockedIds(никто).length, 6)
+  // Без достижений доступны: базовая рамка, две шапки, ник без рамки,
+  // цвет белый/фирменный, без титула.
+  assert.equal(unlockedIds(никто).length, 7)
 })
 
 // ------------------------------------------------------------------ условия
@@ -184,7 +190,7 @@ test('T-COS-07 MMR-предметы открываются по непрерыв
 
 test('T-COS-08 коллекционные предметы не открываются прогрессом — только правом', () => {
   const premium = COSMETICS.filter((i) => i.premium)
-  assert.equal(premium.length, 8)
+  assert.equal(premium.length, 14)
   for (const item of premium) {
     assert.equal(isUnlocked(item, богач), false, `${item.id} открылся от матчей`)
     assert.equal(isUnlocked(item, playerState({ ...богач, entitlements: [item.id] })), true, `${item.id} не открылся правом`)
@@ -198,8 +204,8 @@ test('T-COS-31 админ видит весь платный контент от
     assert.equal(status.adminUnlocked, true, `${item.id}: нет отметки «доступно админу»`)
     assert.equal(status.requirement, 'Доступно админу')
   }
-  // Платных предметов восемь — все они доступны без покупки.
-  assert.equal(COSMETICS.filter((i) => i.premium).length, 8)
+  // Платных предметов четырнадцать — все они доступны без покупки.
+  assert.equal(COSMETICS.filter((i) => i.premium).length, 14)
 })
 
 test('T-COS-32 админский доступ не подменяет бесплатные условия', () => {
@@ -423,8 +429,96 @@ test('T-COS-25 в профиле и в таблице лидеров нет эм
   const css = read('app/src/styles.css')
   assert.doesNotMatch(css, /\.avatar__hat/)
   // А рамка рисуется вектором — в разметке это ProfileFrame, а не CSS-кольцо.
-  assert.match(screens, /<ProfileFrame /)
+  assert.match(screens, /<ProfileFrame\b/)
   assert.doesNotMatch(css, /\.frame-neon/)
+})
+
+// ------------------------------------------------ рамка имени и блеск
+
+test('T-COS-37 рамка имени: разные плашки, с блеском и без, рамка и без рамки', () => {
+  const plates = itemsOf('nameplate')
+  assert.equal(plates.length, 8)
+  const ids = plates.map((i) => i.id).join(',')
+  assert.equal(ids, 'plate-none,plate-steel,plate-gold,plate-gold-nick,plate-emerald,plate-ice,plate-crimson,plate-aurora')
+
+  // 1. Есть варианты с блеском и намеренно без него — блеск не должен быть
+  //    обязательным: кому-то он мешает читать ник.
+  assert.ok(plates.some((p) => p.shine === false && p.id !== 'plate-none'), 'нет варианта без блеска')
+  assert.ok(plates.filter((p) => p.shine).length >= 5, 'мало вариантов с блеском')
+
+  // 2. Есть рамка и есть «только золотой ник» без подложки — как в MLBB.
+  assert.ok(plates.some((p) => p.noFrame && p.shine), 'нет переливающегося ника без рамки')
+  assert.ok(plates.some((p) => !p.noFrame && p.css), 'нет плашки-рамки')
+
+  // 3. У каждой плашки свой css-класс, иначе варианты выглядели бы одинаково.
+  const css = plates.filter((p) => p.css).map((p) => p.css)
+  assert.equal(new Set(css).size, css.length, 'у двух рамок имени один класс')
+
+  // 4. Бесплатно — только «без рамки» и матовая «Сталь» за 100 матчей.
+  for (const p of plates) {
+    if (p.premium) assert.equal(p.req.kind, 'entitlement', `${p.id}: платное должно открываться правом`)
+  }
+  assert.equal(isUnlocked(cosmeticById('plate-steel'), playerState({ matches: 99 })), false)
+  assert.equal(isUnlocked(cosmeticById('plate-steel'), playerState({ matches: 100 })), true)
+})
+
+test('T-COS-38 все плашки и анимации описаны в styles.css', () => {
+  const css = read('app/src/styles.css')
+  for (const item of itemsOf('nameplate').filter((p) => p.css)) {
+    assert.ok(css.includes('.' + item.css), `в styles.css нет .${item.css}`)
+  }
+  // Перелив текста и бегущий блик — реальные анимации, а не «обещание».
+  assert.match(css, /@keyframes nickFlow/)
+  assert.match(css, /@keyframes nickGleam/)
+  assert.match(css, /\.nick--shine \.nick__text[\s\S]{0,200}animation: nickFlow/)
+  // Блеск коллекционных рамок — внутри SVG, чтобы масштабировался с аватаром.
+  assert.match(css, /\.pframe__shine/)
+  // И всё это выключается для тех, кому анимация мешает.
+  assert.match(css, /prefers-reduced-motion[\s\S]{0,200}\.nick--shine \.nick__text \{ animation: none; \}/)
+  assert.match(css, /prefers-reduced-motion[\s\S]{0,120}\.pframe__shine \{ display: none; \}/)
+})
+
+test('T-COS-39 в базе есть слот plate_id и вид nameplate', () => {
+  assert.match(plateSql, /kind in \('frame', 'banner', 'nameplate', 'title', 'color'\)/)
+  assert.match(plateSql, /add column if not exists plate_id text not null default 'plate-none'/)
+  // Надевание пишется в свой слот, остальные не трогаются.
+  assert.match(plateSql, /plate_id  = case when v_item\.kind = 'nameplate' then v_item\.id else plate_id end/)
+  // Вьюхи отдают рамку имени и в профиль, и в таблицу лидеров.
+  assert.match(plateSql, /plate_id,\n  title_id,/)
+  assert.match(plateSql, /coalesce\(cl\.plate_id, 'plate-none'\) as plate_id/)
+  // Плашки из SQL совпадают по виду/условию с каталогом (проверка T-COS-02d).
+  assert.match(plateSql, /\('plate-gold-nick',\s*'nameplate',\s*'Золотой ник',\s*'entitlement',\s*0,\s*true\)/)
+})
+
+test('T-COS-40 закрытая рамка имени откатывается к «без рамки»', () => {
+  const closed = look(equippedFromRow({ plate_id: 'plate-aurora' }), playerState({}))
+  assert.equal(closed.plateId, 'plate-none')
+  assert.equal(closed.plateCss, '')
+  assert.equal(closed.plateShine, false)
+  const open = look(equippedFromRow({ plate_id: 'plate-gold' }), playerState({ entitlements: ['plate-gold'] }))
+  assert.equal(open.plateCss, 'plate-gold')
+  assert.equal(open.plateShine, true)
+  assert.equal(open.plateFrame, true)
+  const nick = look(equippedFromRow({ plate_id: 'plate-gold-nick' }), playerState({ entitlements: ['plate-gold-nick'] }))
+  assert.equal(nick.plateFrame, false, 'у «Золотого ника» не должно быть подложки')
+  // Коллекционные рамки аватара переливаются, бесплатные — нет.
+  const ne = look(equippedFromRow({ frame_id: 'frame-neon' }), playerState({ entitlements: ['frame-neon'] }))
+  assert.equal(ne.frameShine, true)
+  assert.equal(look(equippedFromRow({ frame_id: 'frame-gold' }), playerState({ mmr: 2000 })).frameShine, false)
+})
+
+test('T-COS-41 рамка имени другого игрока приходит из вьюхи', () => {
+  const other = lookFromRow({ plate_id: 'plate-ice', color_id: 'color-neon' })
+  assert.equal(other.plateId, 'plate-ice')
+  assert.equal(other.plateCss, 'plate-ice')
+  assert.equal(other.plateShine, true)
+  assert.equal(other.plateFrame, true)
+  // Без записи в базе — обычный ник, без падений.
+  assert.equal(lookFromRow(null).plateId, 'plate-none')
+  // Экраны рисуют ник через NickPlate, а не голым текстом.
+  const screens = read('app/src/screens.jsx')
+  assert.match(screens, /<NickPlate/)
+  assert.match(screens, /lookFromRow\(r\)\.plateCss/)
 })
 
 // -------------------------------------- своя шапка: картинка и анимация
@@ -480,6 +574,94 @@ test('T-COS-30 своё оформление шапки — только за п
 })
 
 rmSync(framesBundle, { force: true })
+
+// ------------------------------------------------ рамка имени и блеск
+
+test('T-COS-37 рамка имени: разные плашки, с блеском и без, рамка и без рамки', () => {
+  const plates = itemsOf('nameplate')
+  assert.equal(plates.length, 8)
+  const ids = plates.map((i) => i.id).join(',')
+  assert.equal(ids, 'plate-none,plate-steel,plate-gold,plate-gold-nick,plate-emerald,plate-ice,plate-crimson,plate-aurora')
+
+  // 1. Есть варианты с блеском и намеренно без него — блеск не должен быть
+  //    обязательным: кому-то он мешает читать ник.
+  assert.ok(plates.some((p) => p.shine === false && p.id !== 'plate-none'), 'нет варианта без блеска')
+  assert.ok(plates.filter((p) => p.shine).length >= 5, 'мало вариантов с блеском')
+
+  // 2. Есть рамка и есть «только золотой ник» без подложки — как в MLBB.
+  assert.ok(plates.some((p) => p.noFrame && p.shine), 'нет переливающегося ника без рамки')
+  assert.ok(plates.some((p) => !p.noFrame && p.css), 'нет плашки-рамки')
+
+  // 3. У каждой плашки свой css-класс, иначе варианты выглядели бы одинаково.
+  const css = plates.filter((p) => p.css).map((p) => p.css)
+  assert.equal(new Set(css).size, css.length, 'у двух рамок имени один класс')
+
+  // 4. Бесплатно — только «без рамки» и матовая «Сталь» за 100 матчей.
+  for (const p of plates) {
+    if (p.premium) assert.equal(p.req.kind, 'entitlement', `${p.id}: платное должно открываться правом`)
+  }
+  assert.equal(isUnlocked(cosmeticById('plate-steel'), playerState({ matches: 99 })), false)
+  assert.equal(isUnlocked(cosmeticById('plate-steel'), playerState({ matches: 100 })), true)
+})
+
+test('T-COS-38 все плашки и анимации описаны в styles.css', () => {
+  const css = read('app/src/styles.css')
+  for (const item of itemsOf('nameplate').filter((p) => p.css)) {
+    assert.ok(css.includes('.' + item.css), `в styles.css нет .${item.css}`)
+  }
+  // Перелив текста и бегущий блик — реальные анимации, а не «обещание».
+  assert.match(css, /@keyframes nickFlow/)
+  assert.match(css, /@keyframes nickGleam/)
+  assert.match(css, /\.nick--shine \.nick__text[\s\S]{0,200}animation: nickFlow/)
+  // Блеск коллекционных рамок — внутри SVG, чтобы масштабировался с аватаром.
+  assert.match(css, /\.pframe__shine/)
+  // И всё это выключается для тех, кому анимация мешает.
+  assert.match(css, /prefers-reduced-motion[\s\S]{0,200}\.nick--shine \.nick__text \{ animation: none; \}/)
+  assert.match(css, /prefers-reduced-motion[\s\S]{0,120}\.pframe__shine \{ display: none; \}/)
+})
+
+test('T-COS-39 в базе есть слот plate_id и вид nameplate', () => {
+  assert.match(plateSql, /kind in \('frame', 'banner', 'nameplate', 'title', 'color'\)/)
+  assert.match(plateSql, /add column if not exists plate_id text not null default 'plate-none'/)
+  // Надевание пишется в свой слот, остальные не трогаются.
+  assert.match(plateSql, /plate_id  = case when v_item\.kind = 'nameplate' then v_item\.id else plate_id end/)
+  // Вьюхи отдают рамку имени и в профиль, и в таблицу лидеров.
+  assert.match(plateSql, /plate_id,\n  title_id,/)
+  assert.match(plateSql, /coalesce\(cl\.plate_id, 'plate-none'\) as plate_id/)
+  // Плашки из SQL совпадают по виду/условию с каталогом (проверка T-COS-02d).
+  assert.match(plateSql, /\('plate-gold-nick',\s*'nameplate',\s*'Золотой ник',\s*'entitlement',\s*0,\s*true\)/)
+})
+
+test('T-COS-40 закрытая рамка имени откатывается к «без рамки»', () => {
+  const closed = look(equippedFromRow({ plate_id: 'plate-aurora' }), playerState({}))
+  assert.equal(closed.plateId, 'plate-none')
+  assert.equal(closed.plateCss, '')
+  assert.equal(closed.plateShine, false)
+  const open = look(equippedFromRow({ plate_id: 'plate-gold' }), playerState({ entitlements: ['plate-gold'] }))
+  assert.equal(open.plateCss, 'plate-gold')
+  assert.equal(open.plateShine, true)
+  assert.equal(open.plateFrame, true)
+  const nick = look(equippedFromRow({ plate_id: 'plate-gold-nick' }), playerState({ entitlements: ['plate-gold-nick'] }))
+  assert.equal(nick.plateFrame, false, 'у «Золотого ника» не должно быть подложки')
+  // Коллекционные рамки аватара переливаются, бесплатные — нет.
+  const ne = look(equippedFromRow({ frame_id: 'frame-neon' }), playerState({ entitlements: ['frame-neon'] }))
+  assert.equal(ne.frameShine, true)
+  assert.equal(look(equippedFromRow({ frame_id: 'frame-gold' }), playerState({ mmr: 2000 })).frameShine, false)
+})
+
+test('T-COS-41 рамка имени другого игрока приходит из вьюхи', () => {
+  const other = lookFromRow({ plate_id: 'plate-ice', color_id: 'color-neon' })
+  assert.equal(other.plateId, 'plate-ice')
+  assert.equal(other.plateCss, 'plate-ice')
+  assert.equal(other.plateShine, true)
+  assert.equal(other.plateFrame, true)
+  // Без записи в базе — обычный ник, без падений.
+  assert.equal(lookFromRow(null).plateId, 'plate-none')
+  // Экраны рисуют ник через NickPlate, а не голым текстом.
+  const screens = read('app/src/screens.jsx')
+  assert.match(screens, /<NickPlate/)
+  assert.match(screens, /lookFromRow\(r\)\.plateCss/)
+})
 
 // -------------------------------------- своя шапка: картинка и анимация
 

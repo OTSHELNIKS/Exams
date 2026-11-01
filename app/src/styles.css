@@ -1480,6 +1480,11 @@ html.is-modal-open .rail { overflow: hidden !important; }
 }
 @media (prefers-reduced-motion: reduce) { .pframe--neon { animation: none; } }
 
+/* Коллекционные рамки переливаются: блик и искры живут внутри SVG. При
+   включённом «меньше движения» оставляем саму рамку, но гасим блеск. */
+.pframe__shine { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .pframe__shine { display: none; } }
+
 /* Шапка профиля (баннер) — полоса во всю ширину карточки, как в Discord. */
 .pbanner {
   position: relative; width: 100%; border-radius: 18px 18px 0 0; overflow: hidden;
@@ -1504,6 +1509,197 @@ html.is-modal-open .rail { overflow: hidden !important; }
   box-shadow: inset 0 0 24px rgba(57,240,255,.45);
 }
 .pbanner-aurora {
+
+/* ------------------------------------------------------- рамка имени (ник) */
+
+/* Ник в рамке — как плашка имени в MLBB: подложка-градиент, ромб-камень по
+   краям и бегущий блик. «Золотой ник» — тот же перелив, но без подложки:
+   рамки нет, переливается сам текст. */
+
+.nick {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42em;
+  max-width: 100%;
+  vertical-align: middle;
+  color: var(--nick-color, inherit);
+  line-height: 1.35;
+}
+
+.nick__text {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.nick--plate {
+  padding: 0.12em 0.72em;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), 0 4px 12px rgba(0, 0, 0, .35);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Ромб-камень по краям плашки: собран из бордера, поэтому масштабируется. */
+.nick__gem {
+  position: relative;
+  z-index: 3;
+  flex: 0 0 auto;
+  width: 0.62em;
+  height: 0.62em;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  background: linear-gradient(140deg, #ffffff, #ffe9a8 42%, #b57a12 100%);
+  box-shadow: 0 0 6px rgba(255, 236, 170, .85);
+  border: 1px solid rgba(255, 255, 255, .65);
+}
+
+/* Бегущий блик по подложке: широкая светлая полоса проходит слева направо. */
+.nick__gleam {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+.nick__gleam::after {
+  content: '';
+  position: absolute;
+  top: -70%;
+  left: -55%;
+  width: 38%;
+  height: 250%;
+  transform: rotate(16deg);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .9), rgba(255, 255, 255, 0));
+  animation: nickGleam 3.8s ease-in-out infinite;
+}
+@keyframes nickGleam {
+  0% { transform: translateX(0) rotate(16deg); }
+  55%, 100% { transform: translateX(420%) rotate(16deg); }
+}
+
+/* Переливающийся текст: у каждой плашки свой градиент краски. */
+.nick--shine .nick__text {
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: nickFlow 4.2s linear infinite;
+}
+@keyframes nickFlow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 240% 50%; }
+}
+
+/* ---- палитры плашек ---------------------------------------------------- */
+
+.nick--plate.plate-steel {
+  background: linear-gradient(178deg, #eef3fb 0%, #c2ccdb 42%, #8b95a6 78%, #5d6675 100%);
+  border-color: rgba(255, 255, 255, .55);
+  --nick-ink: #12161e;
+}
+.nick--plate.plate-steel .nick__text { color: var(--nick-ink); --nick-color: var(--nick-ink); }
+.nick--plate.plate-steel .nick__gem { background: linear-gradient(140deg, #ffffff, #cfd9e8 45%, #6d778a 100%); box-shadow: 0 0 5px rgba(220, 232, 248, .6); }
+
+.nick--plate.plate-gold {
+  background: linear-gradient(178deg, #fff6cf 0%, #ffdf8a 26%, #f2b52c 58%, #b3760a 82%, #8a5a06 100%);
+  border-color: #ffe9a8;
+  --nick-ink: #3a2405;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .85), 0 4px 14px rgba(255, 190, 60, .35);
+}
+.nick--plate.plate-gold .nick__text {
+  background-image: linear-gradient(100deg, #3a2405 0%, #7d5310 22%, #2c1a02 45%, #8a5f0d 68%, #3a2405 100%);
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  text-shadow: none;
+  font-weight: 900;
+}
+
+.nick--plate.plate-emerald {
+  background: linear-gradient(178deg, #c9ffe4 0%, #63e5a5 30%, #17a468 62%, #0a4b2d 100%);
+  border-color: #9dffcd;
+  --nick-ink: #04271a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 4px 14px rgba(35, 200, 130, .3);
+}
+.nick--plate.plate-emerald .nick__text {
+  background-image: linear-gradient(100deg, #04271a 0%, #0d6f47 25%, #022016 50%, #148a58 72%, #04271a 100%);
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  font-weight: 900;
+}
+
+.nick--plate.plate-ice {
+  background: linear-gradient(178deg, #ffffff 0%, #d8f4ff 28%, #8fd8ff 62%, #3b7ec4 100%);
+  border-color: #d9f6ff;
+  --nick-ink: #062133;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 4px 14px rgba(120, 200, 255, .35);
+}
+.nick--plate.plate-ice .nick__text {
+  background-image: linear-gradient(100deg, #062133 0%, #155c85 24%, #041725 48%, #1c7ba8 72%, #062133 100%);
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  font-weight: 900;
+}
+
+.nick--plate.plate-crimson {
+  background: linear-gradient(178deg, #ffd2c8 0%, #f2553c 30%, #b3121f 64%, #5d0710 100%);
+  border-color: #ffb3a2;
+  --nick-ink: #fff3ee;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), 0 4px 14px rgba(220, 60, 50, .35);
+}
+.nick--plate.plate-crimson .nick__text {
+  background-image: linear-gradient(100deg, #fff6f2 0%, #ffe0d4 22%, #ffffff 46%, #ffd9c9 70%, #fff6f2 100%);
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  font-weight: 900;
+}
+
+.nick--plate.plate-aurora {
+  background: linear-gradient(120deg, #a8ffe0 0%, #9ad4ff 32%, #d9b3ff 62%, #ffd6a8 100%);
+  border-color: #eaf6ff;
+  --nick-ink: #17122a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8), 0 4px 16px rgba(180, 160, 255, .4);
+}
+.nick--plate.plate-aurora .nick__text {
+  background-image: linear-gradient(100deg, #17122a 0%, #3d2c63 24%, #12101f 48%, #4b2f6b 72%, #17122a 100%);
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  font-weight: 900;
+}
+
+/* ---- без рамки: переливается сам ник («Золотой ник») ------------------- */
+
+.nick--bare.plate-gold-nick .nick__text {
+  background-image: linear-gradient(100deg, #f7c14a 0%, #fff8d2 22%, #ffb027 46%, #fff2b8 68%, #e39b17 88%, #f7c14a 100%);
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  font-weight: 900;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nick__gleam::after,
+  .nick--shine .nick__text { animation: none; }
+  .nick--shine .nick__text { background-position: 30% 50%; }
+}
   background:
     radial-gradient(120% 160% at 12% 10%, rgba(63,203,123,.85), transparent 55%),
     radial-gradient(110% 150% at 78% 20%, rgba(168,119,240,.85), transparent 60%),
@@ -1569,6 +1765,9 @@ html.is-modal-open .rail { overflow: hidden !important; }
 .cosmetic-card__banner { width: 100%; height: 34px; border-radius: 8px; }
 .cosmetic-card__title { font-size: 9.5px; font-weight: 800; letter-spacing: 1.2px; color: #ffd9a1; text-align: center; }
 .cosmetic-card__color { width: 34px; height: 34px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255,255,255,.2); }
+/* Мини-плашка имени в карточке каталога: ник «НИК» в реальной рамке. */
+.cosmetic-card__plate { display: flex; align-items: center; justify-content: center; min-height: 42px; }
+.cosmetic-card__plate .nick { font-size: 11.5px; font-weight: 900; letter-spacing: .6px; }
 .cosmetic-card__left { font-style: normal; font-size: 10px; color: #ff8a4c; }
 .cosmetic-card__badge {
   position: absolute; top: 8px; right: 8px;

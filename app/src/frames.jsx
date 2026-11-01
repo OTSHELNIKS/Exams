@@ -11,6 +11,10 @@
 // десять PNG на каждый тир.
 import React, { useId } from 'react'
 
+// Коллекционные рамки переливаются: `shine` добавляет бегущий блик по ободу и
+// искры. Анимация — на SVG (SMIL), поэтому работает и в приложении, и в вебе,
+// и отключается одним правилом CSS при `prefers-reduced-motion`.
+
 // Палитры: блик, основной тон, тень, кромка. Меняются от «стали» до «алмаза».
 export const FRAME_PALETTES = {
   steel: { hi: '#f4f8fd', mid: '#9aa6b6', lo: '#4d5563', edge: '#1b2029', accent: '#8fb6d9', glow: 'rgba(180,200,230,.30)' },
@@ -80,7 +84,7 @@ function Both({ children }) {
   )
 }
 
-function Paints({ uid, p }) {
+function Paints({ uid, p, shine = false }) {
   return (
     <defs>
       <linearGradient id={`${uid}-main`} x1="0.1" y1="0" x2="0.85" y2="1">
@@ -105,15 +109,89 @@ function Paints({ uid, p }) {
       <filter id={`${uid}-soft`} x="-40%" y="-40%" width="180%" height="180%">
         <feGaussianBlur stdDeviation="2.8" />
       </filter>
+      {shine && (
+        <>
+          {/* Блик: узкая белая полоса, которая едет по ободу. */}
+          <linearGradient id={`${uid}-glint`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#ffffff" stopOpacity="0" />
+            <stop offset="0.45" stopColor="#ffffff" stopOpacity="0.95" />
+            <stop offset="0.55" stopColor={p.hi} stopOpacity="0.9" />
+            <stop offset="1" stopColor="#ffffff" stopOpacity="0" />
+          </linearGradient>
+          {/* Перелив: цветная волна вокруг рамки, вращается медленнее блика. */}
+          <linearGradient id={`${uid}-shimmer`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor={p.hi} stopOpacity="0.9" />
+            <stop offset="0.33" stopColor="#ffffff" stopOpacity="0.15" />
+            <stop offset="0.66" stopColor={p.accent} stopOpacity="0.85" />
+            <stop offset="1" stopColor={p.hi} stopOpacity="0.9" />
+            <animateTransform
+              attributeName="gradientTransform"
+              type="rotate"
+              from="0 0.5 0.5"
+              to="360 0.5 0.5"
+              dur="9s"
+              repeatCount="indefinite"
+            />
+          </linearGradient>
+        </>
+      )}
     </defs>
+  )
+}
+
+// Точка на окружности обода: 0° — верх, дальше по часовой стрелке.
+const onRing = (deg, r = RING_R) => at(deg, r).map((n) => n.toFixed(2)).join(' ')
+
+/** Искра: четырёхлучевая звёздочка, мигает в своей фазе. */
+function Spark({ deg, r, size = 1, delay = 0, dur = 3.4 }) {
+  return (
+    <Place deg={deg} r={r} scale={size}>
+      <path d="M0 -9 L2 -2 L9 0 L2 2 L0 9 L-2 2 L-9 0 L-2 -2 Z" fill="#ffffff">
+        <animate attributeName="opacity" values="0;1;0" dur={`${dur}s`} begin={`${delay}s`} repeatCount="indefinite" />
+      </path>
+    </Place>
+  )
+}
+
+/**
+ * Блеск коллекционной рамки: блик обходит обод по кругу, по ободу едет цветная
+ * волна, в нескольких местах вспыхивают искры. Всё живёт внутри SVG, поэтому
+ * масштабируется вместе с аватаром и не тянет ни одного лишнего файла.
+ */
+function Shine({ uid }) {
+  return (
+    <g className="pframe__shine" aria-hidden="true">
+      {/* Цветная волна по ободу. */}
+      <circle cx="0" cy="0" r={RING_R} fill="none" stroke={`url(#${uid}-shimmer)`} strokeWidth="6.5" opacity=".55" />
+      {/* Бегущий блик: дуга в 60°, полный оборот за 6.5 секунды. Стартуем не с
+          верхней точки, чтобы в статичном кадре блик не прятался за камнем. */}
+      <g transform="rotate(40)">
+        <animateTransform attributeName="transform" type="rotate" from="40 0 0" to="400 0 0" dur="6.5s" repeatCount="indefinite" />
+        <path
+          d={`M${onRing(-30)} A${RING_R} ${RING_R} 0 0 1 ${onRing(30)}`}
+          fill="none"
+          stroke={`url(#${uid}-glint)`}
+          strokeWidth="4.4"
+          strokeLinecap="round"
+          opacity=".95"
+        />
+        {/* Голова «кометы» — яркая точка на конце блика. */}
+        <circle cx={at(30, RING_R)[0]} cy={at(30, RING_R)[1]} r="3.4" fill="#ffffff" opacity=".95" />
+      </g>
+      <Spark deg={28} r={RING_R + 6} size={0.9} delay={0} dur={3.8} />
+      <Spark deg={142} r={RING_R + 9} size={0.7} delay={1.3} dur={4.2} />
+      <Spark deg={228} r={RING_R + 4} size={1} delay={2.1} dur={3.4} />
+      <Spark deg={310} r={RING_R + 8} size={0.8} delay={0.7} dur={4.6} />
+    </g>
   )
 }
 
 /**
  * Рамка вокруг аватара. Размер задаётся родителем (`.avatar`), здесь только
- * рисунок в системе координат 200×200.
+ * рисунок в системе координат 200×200. `shine` — анимированный блеск для
+ * коллекционных рамок.
  */
-export function ProfileFrame({ palette = 'steel', art = 'classic', glow = true }) {
+export function ProfileFrame({ palette = 'steel', art = 'classic', glow = true, shine = false }) {
   const raw = useId()
   const uid = 'pf' + raw.replace(/[^a-zA-Z0-9]/g, '')
   const p = FRAME_PALETTES[palette] || FRAME_PALETTES.steel
@@ -345,12 +423,12 @@ export function ProfileFrame({ palette = 'steel', art = 'classic', glow = true }
 
   return (
     <svg
-      className={`pframe pframe--${palette} pframe--${motif} ${glow ? 'pframe--glow' : ''}`}
+      className={`pframe pframe--${palette} pframe--${motif} ${glow ? 'pframe--glow' : ''} ${shine ? 'pframe--shine' : ''}`}
       viewBox={`${-FRAME_VIEW} ${-FRAME_VIEW} ${FRAME_VIEW * 2} ${FRAME_VIEW * 2}`}
       aria-hidden="true"
       focusable="false"
     >
-      <Paints uid={uid} p={p} />
+      <Paints uid={uid} p={p} shine={shine} />
 
       {/* Свечение вокруг обода: рамка светится, но не режет глаз. */}
       {glow && <circle cx="0" cy="0" r={RING_R + 2} fill="none" stroke={p.glow} strokeWidth="14" filter={`url(#${uid}-soft)`} />}
@@ -366,7 +444,48 @@ export function ProfileFrame({ palette = 'steel', art = 'classic', glow = true }
       <circle cx="0" cy="0" r={RING_R - 4} fill="none" stroke={edge} strokeWidth="1.4" opacity=".55" />
       {/* Блик по левой верхней четверти обода — объём. */}
       <path d={`M0 ${-RING_R} A${RING_R} ${RING_R} 0 0 0 ${-RING_R} 0`} fill="none" stroke="#ffffff" strokeWidth="1.6" opacity=".26" strokeLinecap="round" />
+
+      {shine && <Shine uid={uid} />}
     </svg>
+  )
+}
+
+/**
+ * Рамка имени (ник) — как плашка имени в MLBB.
+ *
+ * Три состояния:
+ *   • просто ник (`plate-none`) — обычный текст выбранного цвета;
+ *   • рамка без блеска («Сталь») — матовая подложка, ник читается спокойно;
+ *   • рамка с блеском (золото, изумруд, иней, багрянец, аврора) — по подложке
+ *     бежит блик, а ник переливается;
+ *   • «Золотой ник» — рамки нет, переливается сам текст.
+ *
+ * Анимации отключаются при `prefers-reduced-motion` — рамка остаётся, просто
+ * становится статичной.
+ */
+export function NickPlate({
+  css = '',
+  shine = false,
+  frame = false,
+  color = '',
+  className = '',
+  children,
+}) {
+  const classes = [
+    'nick',
+    frame && css ? `nick--plate ${css}` : '',
+    !frame && css ? `nick--bare ${css}` : '',
+    shine ? 'nick--shine' : '',
+    className,
+  ].filter(Boolean).join(' ')
+
+  return (
+    <span className={classes} style={color ? { '--nick-color': color } : undefined}>
+      {frame && <span className="nick__gem nick__gem--l" aria-hidden="true" />}
+      <span className="nick__text">{children}</span>
+      {frame && <span className="nick__gem nick__gem--r" aria-hidden="true" />}
+      {frame && shine && <span className="nick__gleam" aria-hidden="true" />}
+    </span>
   )
 }
 
