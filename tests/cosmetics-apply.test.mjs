@@ -364,6 +364,25 @@ test('T-APPLY-11 компактная рамка имени в карточке 
   assert.ok(plate.classList.contains('nick--shine'), 'анимация плашки сохранилась')
 })
 
+test('T-APPLY-12 рейтинг показывает ТОП по фактическому месту, а не старую категорию', async () => {
+  const places = [1, 2, 3, 4, 10, 11]
+  stub.leaderboardRows = places.map((position, i) => ({
+    user_id: `u${position}`, nick: `PLAYER${position}`, pts: 2000 - i,
+    position, title: position <= 3 ? 'ТОП-3' : 'ТОП-10',
+  }))
+  stub.leaderboardRows.push({ user_id: 'missing', nick: 'MISSING', pts: 1000, position: null, title: 'ТОП-3' })
+  await mount(React.createElement(S.LeaderboardScreen, { ...baseProps, supabase: {}, userId: 'u2' }))
+  const rows = [...document.querySelectorAll('.rank-row')]
+  assert.equal(rows.length, 7)
+  for (const [i, position] of places.entries()) {
+    assert.equal(rows[i].querySelector('.rank-row__num').textContent, `#${position}`)
+    assert.equal(rows[i].querySelector('.tier-title').textContent, `ТОП-${position}`)
+  }
+  assert.ok(rows[1].querySelector('.tier-title--top2'), 'второе место не выделено')
+  assert.ok(rows[2].querySelector('.tier-title--top3'), 'третье место не выделено')
+  assert.equal(rows[6].querySelector('.tier-title'), null, 'без подтверждённой позиции титул не выдумывается')
+})
+
 rmSync(bundle, { force: true })
 
 for (const { name, fn } of queue) {

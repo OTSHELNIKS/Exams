@@ -2,7 +2,7 @@
 //
 // Проверяем правила, которые легко сломать незаметно:
 //   • шкала MMR без потолка (легенда продолжается ступенями);
-//   • титул ТОП-1/3/10 выдаётся только по месту, вручную его не поставить;
+//   • титул ТОП-N выдаётся только по фактическому месту, вручную его не поставить;
 //   • капитаном драфта становится тот, кто собрал лобби;
 //   • результат матча не двигает рейтинг, пока соперник не подтвердил;
 //   • клиент не может записать себе pts/матчи напрямую.
@@ -84,22 +84,25 @@ test('T-MMR-05 цвет рейтинга доступен отдельной ф�
 
 test('T-MMR-06 титул зависит только от места', () => {
   assert.equal(rankTitle(1), 'ТОП-1')
-  assert.equal(rankTitle(2), 'ТОП-3')
+  assert.equal(rankTitle(2), 'ТОП-2')
   assert.equal(rankTitle(3), 'ТОП-3')
-  assert.equal(rankTitle(4), 'ТОП-10')
+  assert.equal(rankTitle(4), 'ТОП-4')
   assert.equal(rankTitle(10), 'ТОП-10')
-  assert.equal(rankTitle(11), '')
+  assert.equal(rankTitle(11), 'ТОП-11')
+  assert.equal(rankTitle('2'), 'ТОП-2')
+  assert.equal(rankTitle(2.5), '')
+  assert.equal(rankTitle(-1), '')
   assert.equal(rankTitle(0), '')
   assert.equal(rankTitle(null), '')
 })
 
 test('T-MMR-07 титул считает база, а не клиент', () => {
-  const sql = read('supabase/migrations/20261101150000_matches.sql')
-  assert.match(sql, /view public\.leaderboard_ranks/i)
-  assert.match(sql, /row_number\(\) over \(order by l\.pts desc/)
-  assert.match(sql, /'ТОП-1'/)
-  assert.match(sql, /'ТОП-3'/)
-  assert.match(sql, /'ТОП-10'/)
+  const sql = read('supabase/migrations/20261101290000_exact_rank_titles.sql')
+  assert.match(sql, /create or replace view public\.leaderboard_ranks/i)
+  assert.match(sql, /row_number\(\) over \(order by l\.pts desc/i)
+  assert.match(sql, /'ТОП-'\s*\|\|\s*row_number\(\)/i)
+  assert.doesNotMatch(sql, /drop view/i)
+
 })
 
 // ------------------------------------------------------------- капитаны

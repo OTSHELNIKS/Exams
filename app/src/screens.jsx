@@ -2490,9 +2490,9 @@ export function LeaderboardScreen({ supabase, userId }) {
             <span className="rank-row__info">
               <strong style={{ color: lookFromRow(r).colorValue }}>
                 {r.nick}{r.user_id === userId ? ' (вы)' : ''}
-                {(r.title || rankTitle(r.position || i + 1)) && (
-                  <em className={`tier-title tier-title--${(r.title || rankTitle(r.position || i + 1)).replace('ТОП-', 'top')}`}>
-                    {r.title || rankTitle(r.position || i + 1)}
+                {rankTitle(r.position) && (
+                  <em className={`tier-title tier-title--${r.position <= 3 ? `top${r.position}` : 'other'}`}>
+                    {rankTitle(r.position)}
                   </em>
                 )}
               </strong>

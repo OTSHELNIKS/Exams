@@ -453,7 +453,7 @@ export async function loadMatchHistory(limit = 20) {
   return { matches: data || [] }
 }
 
-/** Рейтинг с местом и титулом ТОП-1 / ТОП-3 / ТОП-10. */
+/** Рейтинг с местом и подписью ТОП-N по фактической позиции. */
 export async function loadLeaderboardRanks(limit = 100) {
   const { data, error } = await supabase
     .from('leaderboard_ranks')

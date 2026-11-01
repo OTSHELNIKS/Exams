@@ -1452,8 +1452,9 @@ html.is-modal-open .rail { overflow: hidden !important; }
   padding: 2px 6px; border-radius: 6px; white-space: nowrap;
 }
 .tier-title--top1 { background: linear-gradient(100deg, #ffd76a, #ff9a1f); color: #1a0d02; }
-.tier-title--top3 { background: #cfd6e2; color: #12141b; }
-.tier-title--top10 { background: #b07a4a; color: #1a1008; }
+.tier-title--top2 { background: #cfd6e2; color: #12141b; }
+.tier-title--top3 { background: #b07a4a; color: #1a1008; }
+.tier-title--other { background: #333846; color: #f4f1ea; }
 .rank-row__tier { display: block; font-size: 11px; font-weight: 800; margin-top: 2px; }
 .rank-row__tier .prize { margin-left: 8px; font-size: 10px; color: var(--dim); font-weight: 700; }
 

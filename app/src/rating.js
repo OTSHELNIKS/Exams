@@ -85,18 +85,14 @@ export function mmrColor(mmr) {
 // Титул по месту в рейтинге. То же правило повторяет база во вьюхе
 // leaderboard_ranks, поэтому цифра на экране и титул не разъедутся.
 export function rankTitle(position) {
-  const n = Math.round(Number(position))
-  if (!Number.isFinite(n) || n < 1) return ''
-  if (n === 1) return 'ТОП-1'
-  if (n <= 3) return 'ТОП-3'
-  if (n <= 10) return 'ТОП-10'
-  return ''
+  const n = Number(position)
+  return Number.isSafeInteger(n) && n > 0 ? `ТОП-${n}` : ''
 }
 
 export const TITLE_TONE = {
   'ТОП-1': 'gold',
-  'ТОП-3': 'silver',
-  'ТОП-10': 'bronze',
+  'ТОП-2': 'silver',
+  'ТОП-3': 'bronze',
 }
 
 // «+16» / «−12» / «0».
