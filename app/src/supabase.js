@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { parseLobbyReply, normalizeLobbyCode, normalizeRoomId, normalizeRoomPassword } from './lobby.js'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -265,4 +266,79 @@ export async function notifyLobbyToTelegram(lobbyId) {
   const j = await r.json().catch(() => ({}))
   if (!r.ok || j.ok === false) throw new Error(j.error || 'notify_failed')
   return true
+}
+
+/* ------------------------------------------------------------------ лобби */
+
+/**
+ * Создать лобби в выбранном регионе. Код приглашения выдаёт база
+ * (create_lobby), поэтому он всегда уникальный.
+ * Возвращает { lobbyId, code, region } или { error }.
+ */
+export async function createLobby(region) {
+  const { data, error } = await supabase.rpc('create_lobby', { p_region: region })
+  if (error) return { error: 'server', detail: error.message }
+  return parseLobbyReply(data)
+}
+
+/** Войти в лобби по шестизначному коду приглашения. */
+export async function joinLobby(code) {
+  const { data, error } = await supabase.rpc('join_lobby', { p_code: normalizeLobbyCode(code) })
+  if (error) return { error: 'server', detail: error.message }
+  return parseLobbyReply(data)
+}
+
+/** Выйти из лобби (хост при выходе закрывает комнату). */
+export async function leaveLobby(lobbyId) {
+  const { data, error } = await supabase.rpc('leave_lobby', { p_lobby_id: lobbyId })
+  if (error) return { error: 'server', detail: error.message }
+  return { ok: true, ...(data || {}) }
+}
+
+/** Само лобби: регион, Room ID и пароль из игры. */
+export async function loadLobby(lobbyId) {
+  const { data, error } = await supabase
+    .from('lobbies')
+    .select('id, code, region, host_id, room_id, room_password, status, created_at')
+    .eq('id', lobbyId)
+    .maybeSingle()
+  if (error) return { error: 'server', detail: error.message }
+  if (!data) return { error: 'not_found' }
+  return { lobby: data }
+}
+
+/** Состав лобби: ники без номеров серверов (только флаг same_server). */
+export async function loadLobbyMembers(lobbyId) {
+  const { data, error } = await supabase
+    .from('lobby_members_public')
+    .select('user_id, nick, avatar_url, rank, roles, checked_in, same_server, is_host, joined_at')
+    .eq('lobby_id', lobbyId)
+    .order('joined_at', { ascending: true })
+  if (error) return { error: 'server', detail: error.message }
+  return { members: data || [] }
+}
+
+/** Хост записывает Room ID и пароль, которые создал в игре. */
+export async function setLobbyRoom(lobbyId, roomId, roomPassword) {
+  const { error } = await supabase
+    .from('lobbies')
+    .update({
+      room_id: normalizeRoomId(roomId),
+      room_password: normalizeRoomPassword(roomPassword),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', lobbyId)
+  if (error) return { error: 'server', detail: error.message }
+  return { ok: true }
+}
+
+/** «Я в игре»: игрок сам отмечается, что уже внутри комнаты MLBB. */
+export async function setLobbyCheckedIn(lobbyId, userId, checkedIn) {
+  const { error } = await supabase
+    .from('lobby_members')
+    .update({ checked_in: Boolean(checkedIn) })
+    .eq('lobby_id', lobbyId)
+    .eq('user_id', userId)
+  if (error) return { error: 'server', detail: error.message }
+  return { ok: true }
 }

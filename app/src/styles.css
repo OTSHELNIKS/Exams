@@ -1419,3 +1419,18 @@ html.is-modal-open .rail { overflow: hidden !important; }
   .social-flow__again { font-size: 13px; }
   .home__id-server { font-size: 11.5px; }
 }
+
+/* ------------------------------------------------------------------ лобби */
+.lobby__regions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 6px; }
+.lobby__regions .chip { flex: 0 1 auto; }
+.lobby__join { margin-top: 22px; display: grid; gap: 8px; }
+.lobby__join .input-wrap { margin-bottom: 0; }
+.lobby__row { display: flex; gap: 8px; }
+.lobby__row .btn { flex: 1; }
+.lobby__room { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 15px; margin-bottom: 14px; display: grid; gap: 8px; }
+.lobby__room .input-wrap { margin-bottom: 0; }
+.lobby__room-id { font-family: var(--display); font-weight: 900; font-size: 26px; letter-spacing: 1px; margin: 4px 0 0; }
+.lobby__room-id em { font-style: normal; font-family: inherit; font-size: 13px; color: var(--dim); font-weight: 600; }
+.lobby__servers { font-size: 12.5px; color: var(--green); text-align: center; margin: 10px 0; }
+.lobby__servers.is-warn { color: var(--gold, #ffc83d); }
+.lobby__error { color: #ff7a6b; font-size: 12.5px; text-align: center; margin: 10px 0 0; }

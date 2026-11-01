@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Home, UserRound, Swords, Gamepad2, Trophy, Globe, ChevronLeft, Sparkles,
-  ClipboardList, LogIn, ShieldCheck, LifeBuoy, LogOut,
+  ClipboardList, LogIn, ShieldCheck, LifeBuoy, LogOut, Users,
 } from 'lucide-react'
 import { AppFrame, Logo } from './ui.jsx'
 import { Landing } from './landing.jsx'
 import {
   AuthScreen, WizardScreen, HomeScreen, ProfileScreen, DraftScreen,
-  MatchScreen, LeaderboardScreen, BannedScreen, SupportScreen,
+  MatchScreen, LeaderboardScreen, BannedScreen, SupportScreen, LobbyScreen,
 } from './screens.jsx'
 import { AdminScreen } from './admin.jsx'
 import { DEFAULT_PROFILE, splitCombinedGameId, SOCIAL_IDS, parseSocial, formatSocial } from './data.js'
@@ -74,6 +74,7 @@ const SCREENS = [
   { id: 'home', label: 'Главная игрока', short: 'Главная', icon: Home },
   { id: 'profile', label: 'Профиль игрока', short: 'Профиль', icon: UserRound },
   { id: 'draft', label: "Captain's Draft", short: 'Драфт', icon: Swords },
+  { id: 'lobby', label: 'Лобби по региону', short: 'Лобби', icon: Users },
   { id: 'match', label: 'Матч готов', short: 'Матч', icon: Gamepad2 },
   { id: 'leaderboard', label: 'Таблица лидеров', short: 'Рейтинг', icon: Trophy },
   { id: 'support', label: 'Поддержка', short: 'Помощь', icon: LifeBuoy },
@@ -116,6 +117,11 @@ export default function App() {
   const [saveError, setSaveError] = useState('')
   // Ошибка возврата из системного браузера после OAuth в приложении.
   const [nativeAuthError, setNativeAuthError] = useState('')
+  // Код лобби, в котором игрок сейчас: живёт в localStorage, чтобы после
+  // перезапуска приложения вернуться в ту же комнату.
+  const [lobbyCode, setLobbyCode] = useState(() => {
+    try { return localStorage.getItem(STORAGE_KEY + ':lobby') || '' } catch { return '' }
+  })
   const [isAdmin, setIsAdmin] = useState(false)
   // Реальная привязка Telegram (таблица telegram_links, её пишет бот).
   const [telegramLink, setTelegramLink] = useState(null)
@@ -474,6 +480,7 @@ export default function App() {
 
   const actions = {
     goDraft: () => go('draft'),
+    goLobby: () => go('lobby'),
     goLeaderboard: () => go('leaderboard'),
     addSlot: () => setProfile((p) => ({ ...p, extraSlots: Math.min(3, (p.extraSlots || 0) + 1) })),
     // Соцсеть добавляется только с ником: [provider, handle]. Без ника
@@ -526,8 +533,26 @@ export default function App() {
         return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} gameVerified={gameVerified} onGameVerified={handleGameVerified} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
         return <DraftScreen supabase={supabase} userId={session?.user?.id || null} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
+      case 'lobby':
+        return (
+          <LobbyScreen
+            supabase={supabase}
+            userId={session?.user?.id || null}
+            gameServer={gameServer}
+            lobbyCode={lobbyCode}
+            onLobbyChange={(code) => {
+              setLobbyCode(code || '')
+              try {
+                if (code) localStorage.setItem(STORAGE_KEY + ':lobby', code)
+                else localStorage.removeItem(STORAGE_KEY + ':lobby')
+              } catch { /* приватный режим */ }
+            }}
+            onBack={() => go('home')}
+            onMatch={() => go('match')}
+          />
+        )
       case 'match':
-        return <MatchScreen onBack={() => go('draft')} onLeaderboard={() => go('leaderboard')} onProfile={() => go('profile')} supabase={supabase} teams={draftTeams} userId={session?.user?.id || null} />
+        return <MatchScreen onBack={() => go('draft')} onLeaderboard={() => go('leaderboard')} onProfile={() => go('profile')} onLobby={() => go('lobby')} supabase={supabase} teams={draftTeams} userId={session?.user?.id || null} lobbyCode={lobbyCode} />
       case 'leaderboard':
         return <LeaderboardScreen supabase={supabase} userId={session?.user?.id || null} />
       case 'support':
@@ -618,7 +643,7 @@ export default function App() {
           <AppFrame>{renderScreen()}</AppFrame>
 
           <nav className="bottom-nav">
-            {SCREENS.filter((s) => ['home', 'draft', 'leaderboard', 'support'].includes(s.id)).map((s) => {
+            {SCREENS.filter((s) => ['home', 'draft', 'lobby', 'leaderboard'].includes(s.id)).map((s) => {
               const Icon = s.icon
               return (
                 <button key={s.id} type="button" className={screen === s.id ? 'is-active' : ''} onClick={() => go(s.id)}>

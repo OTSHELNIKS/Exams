@@ -3,7 +3,7 @@ import {
   Gamepad2, Send, ChevronLeft, Camera, Settings, Clock3, Lock, Plus, Copy, Mic,
   MicOff, Headphones, LogOut, Crown, RotateCcw, Check, ShieldCheck, Zap, Bot,
   Trophy, Sparkles, ArrowRight, X, UserRound, Upload, Coins, Server, Image as ImageIcon,
-  RefreshCw, Ban, LifeBuoy, MessageSquare,
+  RefreshCw, Ban, LifeBuoy, MessageSquare, Users,
 } from 'lucide-react'
 import {
   Logo, BrandMark, Chip, Label, PrimaryButton, BackHeader, Avatar, VerificationCard,
@@ -25,7 +25,13 @@ import {
   TELEGRAM_BOT_USERNAME, createTelegramLinkCode, getTelegramLink,
   deleteTelegramLink, notifyLobbyToTelegram, getPublicProfile,
   createSupportTicket, fetchSupportTickets, announceSupportTicket,
+  createLobby, joinLobby, leaveLobby, loadLobby, loadLobbyMembers, setLobbyRoom, setLobbyCheckedIn,
 } from './supabase.js'
+import {
+  REGIONS as LOBBY_REGIONS, LOBBY_CAPACITY, ROOM_HINT, normalizeLobbyCode, lobbyCodeValid,
+  normalizeRoomId, normalizeRoomPassword, regionLabel, regionHint, describeLobbyError,
+  lobbyProgress, serverMismatch, lobbyRoomState, lobbyInvite,
+} from './lobby.js'
 
 /* ================================================================ AUTH ==== */
 export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callbackError, onLogin, onPreview, supabase, session, onSignOut, authReady }) {
@@ -1771,7 +1777,7 @@ export function DraftScreen({ supabase, userId, onReady, onBack }) {
 }
 
 /* =============================================================== MATCH ==== */
-export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase, teams, userId }) {
+export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, supabase, teams, userId, lobbyCode }) {
   const [copied, setCopied] = useState(false)
   const [micOn, setMicOn] = useState(true)
   const [muted, setMuted] = useState({})
@@ -1785,7 +1791,9 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase, teams,
   const inB = userId ? teamB.some((m) => m && m.user_id === userId) : false
   const myLabel = inB ? 'Team B' : 'Team A'
   const members = (inB ? teamB : teamA).filter((m) => m && m.nick)
-  const lobbyId = useMemo(() => String(Math.floor(1000000 + Math.random() * 9000000)), [])
+  // Код лобби — настоящий, из таблицы lobbies: раньше здесь было случайное
+  // число и подпись «бот создал лобби», хотя никакого лобби не существовало.
+  const lobbyId = lobbyCode || ''
 
   useEffect(() => {
     if (!toast) return
@@ -1834,20 +1842,30 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase, teams,
 
   return (
     <div className="screen match">
-      <div className="match__badges"><span className="match__badge"><i /> Матч найден</span></div>
+      <div className="match__badges"><span className="match__badge"><i /> Состав собран</span></div>
       <h1 className="match__title">Матч готов</h1>
-      <p className="match__sub"><Bot size={16} /> Бот создал лобби в игре</p>
+      <p className="match__sub"><Bot size={16} /> Комната создаётся в разделе «Лобби»</p>
 
-      <div className="lobby-card">
-        <span className="lobby-card__label">ID ЛОББИ</span>
-        <strong>{lobbyId}</strong>
-        <button type="button" className="btn btn--primary btn--glow" onClick={copy}>
-          {copied ? <Check size={18} /> : <Copy size={18} />}
-          {copied ? 'Скопировано!' : 'Скопировать'}
-        </button>
-      </div>
+      {lobbyId ? (
+        <div className="lobby-card">
+          <span className="lobby-card__label">КОД ЛОББИ</span>
+          <strong>{lobbyId}</strong>
+          <button type="button" className="btn btn--primary btn--glow" onClick={copy}>
+            {copied ? <Check size={18} /> : <Copy size={18} />}
+            {copied ? 'Скопировано!' : 'Скопировать'}
+          </button>
+        </div>
+      ) : (
+        <div className="lobby-card">
+          <span className="lobby-card__label">КОД ЛОББИ</span>
+          <p className="field-hint">Лобби ещё не создано: выбери регион и получи код приглашения.</p>
+          <button type="button" className="btn btn--primary btn--glow" onClick={onLobby}>
+            <Users size={18} /> СОЗДАТЬ ЛОББИ
+          </button>
+        </div>
+      )}
 
-      {supabase && (
+      {supabase && lobbyId && (
         <button type="button" className="btn btn--ghost" disabled={sending} onClick={sendToTg}>
           <Send size={16} /> {sending ? 'Отправка…' : 'ID лобби в Telegram'}
         </button>
@@ -1855,6 +1873,7 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, supabase, teams,
       {needLink && (
         <button type="button" className="link-btn" onClick={onProfile}>Привязать Telegram в профиле <ArrowRight size={15} /></button>
       )}
+      <button type="button" className="link-btn" onClick={onLobby}>Лобби: регион и Room ID <ArrowRight size={15} /></button>
 
       <div className="voice-card">
         <div className="voice-card__head">
@@ -2234,6 +2253,299 @@ export function SupportScreen({ supabase, userId, onBack, onAuth }) {
       <div className="support-foot">
         <LifeBuoy size={15} /> Срочно? Напиши боту /support — заявка попадёт к тому же админу.
       </div>
+    </div>
+  )
+}
+
+/* ================================================================ LOBBY ==== */
+// Лобби по региону. Матчмейкинг MLBB снаружи не переключить — регион привязан к
+// аккаунту. Зато в игре есть Custom Room: хост создаёт комнату, а приложение
+// собирает состав, сверяет серверы и раздаёт Room ID. См. src/lobby.js.
+export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCode, onLobbyChange, onBack, onMatch }) {
+  const [region, setRegion] = useState('ru')
+  const [joinCode, setJoinCode] = useState('')
+  const [lobby, setLobby] = useState(null)
+  const [members, setMembers] = useState([])
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const [toast, setToast] = useState('')
+  const [roomId, setRoomId] = useState('')
+  const [roomPassword, setRoomPassword] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [openingGame, setOpeningGame] = useState(false)
+
+  const isHost = Boolean(lobby && userId && lobby.host_id === userId)
+  const room = lobbyRoomState(lobby)
+  const progress = lobbyProgress(members)
+  const servers = serverMismatch(members)
+  const me = members.find((m) => m.user_id === userId)
+
+  useEffect(() => {
+    if (!toast) return undefined
+    const t = setTimeout(() => setToast(''), 2400)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  const refresh = async (id) => {
+    const [l, m] = await Promise.all([loadLobby(id), loadLobbyMembers(id)])
+    if (l.lobby) {
+      setLobby(l.lobby)
+      setRoomId(l.lobby.room_id || '')
+      setRoomPassword(l.lobby.room_password || '')
+    } else if (l.error === 'not_found') {
+      setLobby(null)
+      onLobbyChange?.('')
+    }
+    if (m.members) setMembers(m.members)
+  }
+
+  // Вернулись в приложение — показываем сохранённое лобби, иначе вводим код.
+  useEffect(() => {
+    if (!supabase || !userId) return
+    if (initialCode) { enterByCode(initialCode); return }
+    let alive = true
+    ;(async () => {
+      const { data } = await supabase
+        .from('lobby_members')
+        .select('lobby_id')
+        .eq('user_id', userId)
+        .order('joined_at', { ascending: false })
+        .limit(1)
+      if (!alive || !data || !data.length) return
+      await refresh(data[0].lobby_id)
+    })()
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, userId])
+
+  // Живые обновления: новый игрок вошёл, отметился, хост вписал Room ID.
+  useEffect(() => {
+    if (!supabase || !lobby || !lobby.id) return undefined
+    const onChange = () => refresh(lobby.id)
+    const channel = supabase
+      .channel('lobby:' + lobby.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lobby_members', filter: 'lobby_id=eq.' + lobby.id }, onChange)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'lobbies', filter: 'id=eq.' + lobby.id }, onChange)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, lobby && lobby.id])
+
+  const create = async () => {
+    if (!supabase || !userId) { setError('Войди в аккаунт, чтобы собрать лобби.'); return }
+    setBusy('create'); setError('')
+    const reply = await createLobby(region)
+    setBusy('')
+    if (reply.error) { setError(describeLobbyError(reply.error)); return }
+    setLobby({ id: reply.lobbyId, code: reply.code, region: reply.region, host_id: userId, room_id: '', room_password: '', status: 'open' })
+    setMembers([])
+    onLobbyChange?.(reply.code)
+    await refresh(reply.lobbyId)
+  }
+
+  const enterByCode = async (raw) => {
+    const code = normalizeLobbyCode(raw || joinCode)
+    if (!lobbyCodeValid(code)) { setError('Код приглашения — шесть цифр.'); return }
+    setBusy('join'); setError('')
+    const reply = await joinLobby(code)
+    setBusy('')
+    if (reply.error) { setError(describeLobbyError(reply.error)); return }
+    setJoinCode('')
+    onLobbyChange?.(reply.code)
+    await refresh(reply.lobbyId)
+    setToast('Ты в лобби')
+  }
+
+  const leave = async () => {
+    if (!lobby) return
+    setBusy('leave')
+    await leaveLobby(lobby.id)
+    setBusy('')
+    setLobby(null); setMembers([])
+    onLobbyChange?.('')
+  }
+
+  const saveRoom = async () => {
+    if (!lobby) return
+    setBusy('room'); setError('')
+    const reply = await setLobbyRoom(lobby.id, roomId, roomPassword)
+    setBusy('')
+    if (reply.error) { setError(describeLobbyError(reply.error)); return }
+    setToast('Room ID увидит весь состав')
+    await refresh(lobby.id)
+  }
+
+  const toggleIn = async () => {
+    if (!lobby || !userId) return
+    setBusy('check')
+    await setLobbyCheckedIn(lobby.id, userId, !(me && me.checked_in))
+    setBusy('')
+    await refresh(lobby.id)
+  }
+
+  const copyInvite = () => {
+    const text = lobbyInvite({ code: lobby.code, region: lobby.region })
+    navigator.clipboard?.writeText(text).catch(() => {})
+    setCopied(true)
+    setToast('Приглашение скопировано')
+    setTimeout(() => setCopied(false), 1800)
+  }
+
+  const openGameNow = async () => {
+    setOpeningGame(true)
+    const result = await openGame({ launcher: isNativeApp() ? openGameApp : null })
+    setOpeningGame(false)
+    setToast(result.opened ? 'Открываем MLBB' : 'Игры нет на телефоне — открыли магазин')
+  }
+
+  if (!lobby) {
+    return (
+      <div className="screen lobby">
+        <BackHeader title="Лобби по региону" onBack={onBack} />
+        <p className="social-hint">
+          Выбери регион, собери состав — и все зайдут в одну комнату MLBB.
+          Переключить матчмейкинг игры нельзя: регион привязан к аккаунту,
+          поэтому играем через Custom Room.
+        </p>
+
+        <span className="lobby-card__label">1 · ГДЕ ИГРАЕМ</span>
+        <div className="chips lobby__regions">
+          {LOBBY_REGIONS.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              className={`chip ${region === r.id ? 'chip--active' : ''}`}
+              onClick={() => setRegion(r.id)}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <p className="field-hint">{regionHint(region)}</p>
+        <PrimaryButton icon={Users} onClick={create} disabled={busy === 'create'}>
+          {busy === 'create' ? 'СОЗДАЁМ…' : 'СОЗДАТЬ ЛОББИ'}
+        </PrimaryButton>
+
+        <div className="lobby__join">
+          <span className="lobby-card__label">2 · ИЛИ ВОЙТИ ПО КОДУ</span>
+          <div className="input-wrap">
+            <input
+              value={joinCode}
+              onChange={(e) => setJoinCode(normalizeLobbyCode(e.target.value))}
+              placeholder="6 цифр"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              aria-label="Код приглашения"
+            />
+          </div>
+          <button type="button" className="btn btn--ghost" onClick={() => enterByCode()} disabled={busy === 'join' || joinCode.length !== 6}>
+            <ArrowRight size={16} /> {busy === 'join' ? 'Входим…' : 'Войти в лобби'}
+          </button>
+        </div>
+
+        {error && <p className="lobby__error" role="alert">{error}</p>}
+        {toast && <div className="toast toast--fixed">{toast}</div>}
+      </div>
+    )
+  }
+
+  return (
+    <div className="screen lobby">
+      <BackHeader title="Лобби по региону" onBack={onBack} />
+
+      <div className="lobby-card">
+        <span className="lobby-card__label">КОД ПРИГЛАШЕНИЯ · {regionLabel(lobby.region)}</span>
+        <strong>{lobby.code}</strong>
+        <div className="lobby__row">
+          <button type="button" className="btn btn--primary btn--glow" onClick={copyInvite}>
+            {copied ? <Check size={18} /> : <Copy size={18} />} {copied ? 'Скопировано!' : 'Приглашение'}
+          </button>
+          <button type="button" className="btn btn--ghost" onClick={copyInvite} aria-label="Скопировать только код">Код</button>
+        </div>
+        <p className="field-hint">
+          {progress.total}/{LOBBY_CAPACITY} в лобби · {progress.checked} отметили «я в игре»
+        </p>
+      </div>
+
+      <div className="lobby__room">
+        <span className="lobby-card__label">{isHost ? 'ROOM ID ИЗ MLBB' : 'КОМНАТА В MLBB'}</span>
+        {isHost ? (
+          <>
+            <div className="input-wrap">
+              <input
+                value={roomId}
+                onChange={(e) => setRoomId(normalizeRoomId(e.target.value))}
+                placeholder="Room ID"
+                inputMode="numeric"
+                aria-label="Room ID"
+              />
+            </div>
+            <div className="input-wrap">
+              <input
+                value={roomPassword}
+                onChange={(e) => setRoomPassword(normalizeRoomPassword(e.target.value))}
+                placeholder="Пароль комнаты (если есть)"
+                aria-label="Пароль комнаты"
+              />
+            </div>
+            <button type="button" className="btn btn--ghost" onClick={saveRoom} disabled={busy === 'room'}>
+              <Check size={16} /> {busy === 'room' ? 'Сохраняем…' : 'Показать составу'}
+            </button>
+            <p className="field-hint">{ROOM_HINT}</p>
+          </>
+        ) : room.ready ? (
+          <p className="lobby__room-id">{room.roomId}{room.password ? <em> · пароль {room.password}</em> : null}</p>
+        ) : (
+          <p className="field-hint">{room.title}. {room.text}</p>
+        )}
+      </div>
+
+      <button type="button" className="btn btn--primary btn--glow" onClick={openGameNow} disabled={openingGame}>
+        <Gamepad2 size={18} /> {openingGame ? 'ОТКРЫВАЕМ…' : 'ОТКРЫТЬ MLBB'}
+      </button>
+
+      {servers.message && (
+        <p className={`lobby__servers ${servers.ok ? '' : 'is-warn'}`} role="status">{servers.message}</p>
+      )}
+
+      <div className="voice-card">
+        <div className="voice-card__head">
+          <span><Users size={17} /> Состав лобби</span>
+          <b>{progress.total}</b>
+        </div>
+        {members.length === 0 && <p className="field-hint">Пока только ты. Отправь код приглашения команде.</p>}
+        {members.map((m) => (
+          <div key={m.user_id} className="voice-row">
+            <span className={`voice-row__avatar ${m.checked_in ? 'is-speaking' : ''}`}>{(m.nick?.[0] || '?').toUpperCase()}</span>
+            <span className="voice-row__text">
+              <strong>{m.nick || 'Игрок'}{m.user_id === userId ? ' (вы)' : ''}{m.is_host ? ' · хост' : ''}</strong>
+              <small>
+                {m.checked_in ? 'в игре' : 'ещё не зашёл'}
+                {m.same_server === false ? ' · другой сервер' : ''}
+                {m.same_server === null || m.same_server === undefined ? ' · сервер не указан' : ''}
+              </small>
+            </span>
+          </div>
+        ))}
+        <div className="voice-card__foot">
+          <button type="button" className={`btn btn--small ${me && me.checked_in ? 'btn--ghost' : ''}`} onClick={toggleIn} disabled={busy === 'check'}>
+            <Check size={16} /> {me && me.checked_in ? 'Я в игре' : 'Отметить «я в игре»'}
+          </button>
+          <button type="button" className="btn btn--small btn--danger" onClick={leave} disabled={busy === 'leave'}>
+            <LogOut size={16} /> {isHost ? 'Закрыть' : 'Выйти'}
+          </button>
+        </div>
+      </div>
+
+      {progress.allIn && <p className="lobby__servers">Все отметились — можно стартовать в игре.</p>}
+      {onMatch && (
+        <button type="button" className="link-btn" onClick={onMatch}>
+          Смотреть карточку матча <ArrowRight size={15} />
+        </button>
+      )}
+      {error && <p className="lobby__error" role="alert">{error}</p>}
+      {toast && <div className="toast toast--fixed">{toast}</div>}
     </div>
   )
 }
