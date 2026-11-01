@@ -27,7 +27,7 @@ import {
   createSupportTicket, fetchSupportTickets, announceSupportTicket,
   createLobby, joinLobby, leaveLobby, loadLobby, loadLobbyMembers, setLobbyRoom, setLobbyCheckedIn,
   loadLeaderboardRanks, reportMatch, confirmMatch, disputeMatch, loadMatchHistory,
-  loadLoadout, loadEntitlements, equipCosmetic, redeemCosmeticCode, transferLobbyHost,
+  loadLoadout, loadEntitlements, loadPublicLook, equipCosmetic, redeemCosmeticCode, transferLobbyHost,
 } from './supabase.js'
 import {
   mmrTier, rankTitle, formatDelta, playerForm, draftCaptains,
@@ -35,8 +35,9 @@ import {
 } from './rating.js'
 import {
   COSMETIC_KINDS, KIND_LABEL, KINDS_TITLE, itemsOf, itemStatus, equippedFromRow, playerState,
-  nextReward, look as cosmeticsLook, lookFromRow,
+  nextReward, frameOf, look as cosmeticsLook, lookFromRow,
 } from './cosmetics.js'
+import { ProfileFrame, ProfileBanner } from './frames.jsx'
 import {
   REGIONS as LOBBY_REGIONS, LOBBY_CAPACITY, ROOM_HINT, normalizeLobbyCode, lobbyCodeValid,
   normalizeRoomId, normalizeRoomPassword, regionLabel, regionHint, describeLobbyError,
@@ -1243,8 +1244,8 @@ export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount
           initials={(profile.nick?.[0] || '?').toUpperCase()}
           level={profile.level}
           size={104}
-          frame={look ? look.frameClass : null}
-          hat={look ? look.hatGlyph : ''}
+          frame={look ? look.framePalette : null}
+          frameArt={look ? look.frameArt : 1}
         />
         <h1 style={look && look.colorValue ? { color: look.colorValue } : undefined}>
           {profile.nick || 'Новый игрок'}
@@ -1268,11 +1269,6 @@ export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount
         <button type="button" className="btn btn--ghost" onClick={actions.goLeaderboard}>
           <Trophy size={17} /> ТАБЛИЦА ЛИДЕРОВ
         </button>
-        {onCosmetics && (
-          <button type="button" className="btn btn--ghost" onClick={onCosmetics}>
-            <Sparkles size={17} /> КОСМЕТИКА И ТИТУЛЫ
-          </button>
-        )}
       </div>
       </div>
 
@@ -1469,35 +1465,40 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
       </div>
 
       <div className="home__col home__col--main">
-      <div className="profile__center">
-        <Avatar
-          src={profile.avatarUrl || profile.avatar || null}
-          initials={(profile.nick?.[0] || '?').toUpperCase()}
-          level={profile.level}
-          size={128}
-          frame={look ? look.frameClass : null}
-          hat={look ? look.hatGlyph : ''}
-        />
-        <h1 style={look && look.colorValue ? { color: look.colorValue } : undefined}>
-          {profile.nick || 'Новый игрок'}
-        </h1>
-        {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
-        <button type="button" className="btn btn--small" onClick={onCosmetics}>
-          <Sparkles size={15} /> Косметика
-        </button>
-        {gameId || gameServer ? (
-          <p className="profile__gameid">
-            Game ID • {gameId || '—'}
-            <span className="profile__server"> · сервер {gameServer || '—'}</span>
-          </p>
-        ) : null}
-        {hasBadges && (
-          <div className="home__badges">
-            {profile.elo != null && <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>}
-            {(profile.roles || []).length > 0 && <StatBadge tone="dark"><UserRound size={14} /> {profile.roles[0]}</StatBadge>}
+      <div className="profile-card">
+        <ProfileBanner css={look ? look.bannerCss : 'pbanner-none'} height={128} />
+        <div className="profile-card__body">
+          <Avatar
+            src={profile.avatarUrl || profile.avatar || null}
+            initials={(profile.nick?.[0] || '?').toUpperCase()}
+            level={profile.level}
+            size={116}
+            frame={look ? look.framePalette : null}
+            frameArt={look ? look.frameArt : 1}
+          />
+          <div className="profile-card__id">
+            <h1 style={look && look.colorValue ? { color: look.colorValue } : undefined}>
+              {profile.nick || 'Новый игрок'}
+            </h1>
+            {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
+            {gameId || gameServer ? (
+              <p className="profile__gameid">
+                Game ID • {gameId || '—'}
+                <span className="profile__server"> · сервер {gameServer || '—'}</span>
+              </p>
+            ) : null}
+            {hasBadges && (
+              <div className="home__badges">
+                {profile.elo != null && <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>}
+                {(profile.roles || []).length > 0 && <StatBadge tone="dark"><UserRound size={14} /> {profile.roles[0]}</StatBadge>}
+              </div>
+            )}
+            {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
+            <button type="button" className="btn btn--small profile-card__style" onClick={onCosmetics}>
+              <Sparkles size={15} /> Оформление профиля
+            </button>
           </div>
-        )}
-        {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
+        </div>
       </div>
 
       <div className="section-head"><span>ЛЮБИМЫЕ ГЕРОИ</span><b>{(profile.heroes || []).length}/6</b></div>
@@ -2177,15 +2178,25 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
   const [row, setRow] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // Рамка и шапка другого игрока: сервер уже проверил условие при надевании.
+  const [look, setLook] = useState(null)
 
   useEffect(() => {
     if (!userId) return undefined
     let alive = true
-    setRow(null); setError(''); setLoading(true)
+    setRow(null); setError(''); setLoading(true); setLook(null)
     getPublicProfile(userId)
-      .then((data) => { if (alive) { if (data) setRow(data); else setError('Профиль закрыт: игрок скрыл данные или забанен.') } })
+      .then((data) => {
+        if (!alive) return
+        if (!data) { setError('Профиль закрыт: игрок скрыл данные или забанен.'); return }
+        setRow(data)
+      })
       .catch((e) => { if (alive) setError('Не удалось открыть профиль: ' + (e.message || e)) })
       .finally(() => { if (alive) setLoading(false) })
+    // Оформление грузим отдельно: если оно не пришло, карточка всё равно откроется.
+    loadPublicLook(userId)
+      .then((data) => { if (alive && data) setLook(lookFromRow(data)) })
+      .catch(() => {})
     return () => { alive = false }
   }, [userId])
 
@@ -2216,8 +2227,22 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
       )}
       {!loading && !error && row && (
         <>
-          <Avatar src={row.avatar_url || null} initials={(row.nick?.[0] || '?').toUpperCase()} size={88} />
-          <h3 id="public-profile-title">{row.nick}{isMe ? ' (вы)' : ''}</h3>
+          <ProfileBanner css={look ? look.bannerCss : 'pbanner-none'} height={96} />
+          <div className="pub__head">
+            <Avatar
+              src={row.avatar_url || null}
+              initials={(row.nick?.[0] || '?').toUpperCase()}
+              size={84}
+              frame={look ? look.framePalette : null}
+              frameArt={look ? look.frameArt : 1}
+            />
+            <div>
+              <h3 id="public-profile-title" style={look && look.colorValue ? { color: look.colorValue } : undefined}>
+                {row.nick}{isMe ? ' (вы)' : ''}
+              </h3>
+              {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
+            </div>
+          </div>
           <p className="modal__role">
             {roles.length ? roles.join(' · ') : 'Роли не указаны'} · {row.rank || 'ранг не указан'}
           </p>
@@ -2346,12 +2371,11 @@ export function LeaderboardScreen({ supabase, userId }) {
           >
             <span className="rank-row__num">#{r.position || i + 1}</span>
             <span
-              className={`rank-row__avatar rank-row__avatar--tier ${lookFromRow(r).frameClass}`}
+              className={`rank-row__avatar rank-row__avatar--tier `}
               style={{ boxShadow: `0 0 0 2px ${mmrTier(r.pts).color}` }}
             >{r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}</span>
             <span className="rank-row__info">
               <strong style={{ color: lookFromRow(r).colorValue }}>
-                {lookFromRow(r).hatGlyph ? lookFromRow(r).hatGlyph + ' ' : ''}
                 {r.nick}{r.user_id === userId ? ' (вы)' : ''}
                 {(r.title || rankTitle(r.position || i + 1)) && (
                   <em className={`tier-title tier-title--${(r.title || rankTitle(r.position || i + 1)).replace('ТОП-', 'top')}`}>
@@ -2839,12 +2863,13 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
   )
 }
 
-/* ============================================================ COSMETICS ==== */
-// Косметика: рамки, шапки, титулы и цвет ника. Всё, что даётся бесплатно, —
-// только за реальные достижения; коллекционное приходит правом (покупка на
-// сайте или код активации). Внутри приложения ничего не продаётся — этого
-// требуют правила App Store и Google Play.
-export function CosmeticsScreen({ supabase, userId, playerState: state, onEquip, onBack }) {
+/* =========================================================== ОФОРМЛЕНИЕ ==== */
+// Оформление профиля: рамка аватара, шапка профиля (баннер), титул и цвет
+// ника. Живёт внутри профиля — отдельного раздела в навигации нет.
+// Бесплатное открывается только за реальные достижения; коллекционное приходит
+// правом (покупка на сайте или код активации). Внутри приложения ничего не
+// продаётся — этого требуют правила App Store и Google Play.
+export function AppearanceScreen({ supabase, userId, playerState: state, profile = {}, onEquip, onBack }) {
   const [loadout, setLoadout] = useState(null)
   const [entitlements, setEntitlements] = useState([])
   const [busy, setBusy] = useState('')
@@ -2915,16 +2940,23 @@ export function CosmeticsScreen({ supabase, userId, playerState: state, onEquip,
 
   return (
     <div className="screen cosmetics">
-      <BackHeader title="Косметика" onBack={onBack} />
+      <BackHeader title="Оформление профиля" onBack={onBack} />
 
       <div className="cosmetics__preview">
-        <Avatar src={null} initials="Я" size={84} frame={look.frameClass} hat={look.hatGlyph} />
-        <div>
-          <strong style={{ color: look.colorValue }}>
-            {look.hatGlyph ? look.hatGlyph + ' ' : ''}Твой ник
-          </strong>
-          {look.titleText && <em className="cosmetics__title">{look.titleText}</em>}
-          <small>{mmrTier(fullState.mmr).label} · {fullState.matches} матчей</small>
+        <ProfileBanner css={look.bannerCss} height={92} />
+        <div className="cosmetics__preview-body">
+          <Avatar
+            src={profile.avatarUrl || null}
+            initials={(profile.nick?.[0] || '?').toUpperCase()}
+            size={82}
+            frame={look.framePalette}
+            frameArt={look.frameArt}
+          />
+          <div>
+            <strong style={{ color: look.colorValue }}>{profile.nick || 'Твой ник'}</strong>
+            {look.titleText && <em className="cosmetics__title">{look.titleText}</em>}
+            <small>{mmrTier(fullState.mmr).label} · {fullState.matches} матчей</small>
+          </div>
         </div>
       </div>
 
@@ -2949,8 +2981,12 @@ export function CosmeticsScreen({ supabase, userId, playerState: state, onEquip,
               aria-label={`${KIND_LABEL[item.kind]} ${item.label}${status.unlocked ? '' : ' — закрыто'}`}
             >
               <span className="cosmetic-card__art">
-                {item.kind === 'frame' && <span className={`cosmetic-card__frame ${item.css}`} />}
-                {item.kind === 'hat' && <span className="cosmetic-card__hat">{item.glyph || '—'}</span>}
+                {item.kind === 'frame' && (
+                  <span className="cosmetic-card__frame">
+                    <ProfileFrame palette={item.palette} art={item.art} glow={false} />
+                  </span>
+                )}
+                {item.kind === 'banner' && <span className={`cosmetic-card__banner ${item.css}`} />}
                 {item.kind === 'title' && <span className="cosmetic-card__title">{item.value || '—'}</span>}
                 {item.kind === 'color' && <span className="cosmetic-card__color" style={{ background: item.value }} />}
               </span>

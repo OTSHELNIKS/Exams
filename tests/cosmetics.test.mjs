@@ -1,7 +1,8 @@
-// NAME MLBB — косметика за достижения.
+// NAME MLBB — оформление профиля за достижения.
 //
 // Проверяем то, что обещано игроку и легко ломается:
 //   • каталог в JS и в базе — один и тот же список предметов;
+//   • рамка — настоящая (палитра + орнамент), шапка — баннер как в Discord;
 //   • бесплатные предметы открываются только по реальному прогрессу
 //     (матчи, победы, MMR), а не «сами по себе»;
 //   • коллекционные (premium) не открываются никаким количеством матчей —
@@ -12,21 +13,35 @@
 //
 // Run: node tests/cosmetics.test.mjs
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
 const read = (p) => readFileSync(join(root, p), 'utf8')
+const esbuild = (await import(join(root, 'app/node_modules/esbuild/lib/main.js'))).default
 
 const {
   COSMETICS, COSMETIC_KINDS, DEFAULTS, REQ, KIND_LABEL, KINDS_TITLE,
   itemsOf, cosmeticById, equippedFromRow, playerState, requirement,
-  isUnlocked, itemStatus, catalogue, look, lookFromRow, unlockedIds, nextReward,
+  isUnlocked, itemStatus, catalogue, look, lookFromRow, unlockedIds, nextReward, frameOf,
 } = await import('../app/src/cosmetics.js')
+// frames.jsx — JSX, поэтому сначала собираем его esbuild'ом (он есть в app).
+const framesBundle = join(root, 'app', '.cosmetics-frames.mjs')
+await esbuild.build({
+  entryPoints: [join(root, 'app/src/frames.jsx')],
+  bundle: true,
+  format: 'esm',
+  outfile: framesBundle,
+  jsx: 'automatic',
+  external: ['react', 'react-dom', 'react/jsx-runtime'],
+  logLevel: 'silent',
+})
+const { FRAME_PALETTES, FRAME_ART } = await import(framesBundle)
 
 const sql = read('supabase/migrations/20261101180000_cosmetics.sql')
+const bannersSql = read('supabase/migrations/20261101210000_profile_banners.sql')
 
 let passed = 0
 let failed = 0
@@ -38,9 +53,9 @@ const богач = playerState({ verified: true, matches: 5000, wins: 5000, mmr:
 
 // ------------------------------------------------------------------- каталог
 
-test('T-COS-01 каталог: 27 предметов, четыре вида, уникальные id', () => {
-  assert.equal(COSMETICS.length, 27)
-  assert.deepEqual(COSMETIC_KINDS, ['frame', 'hat', 'title', 'color'])
+test('T-COS-01 каталог: 28 предметов, четыре вида, уникальные id', () => {
+  assert.equal(COSMETICS.length, 28)
+  assert.deepEqual(COSMETIC_KINDS, ['frame', 'banner', 'title', 'color'])
   const ids = COSMETICS.map((i) => i.id)
   assert.equal(new Set(ids).size, ids.length)
   for (const kind of COSMETIC_KINDS) {
@@ -48,13 +63,52 @@ test('T-COS-01 каталог: 27 предметов, четыре вида, у�
     assert.ok(KIND_LABEL[kind], `нет подписи вида ${kind}`)
     assert.ok(KINDS_TITLE[kind], `нет заголовка вида ${kind}`)
   }
-  assert.equal(itemsOf('frame').length + itemsOf('hat').length + itemsOf('title').length + itemsOf('color').length, 27)
+  assert.equal(itemsOf('frame').length + itemsOf('banner').length + itemsOf('title').length + itemsOf('color').length, 28)
 })
 
-test('T-COS-02 id и условия в JS совпадают с таблицей cosmetic_items', () => {
-  const rows = [...sql.matchAll(/\('([a-z0-9-]+)',\s*'(frame|hat|title|color)',\s*'([^']+)',\s*'(always|verified|matches|wins|mmr|entitlement)',\s*(\d+),\s*(true|false)\)/g)]
+test('T-COS-02 рамки: у каждой своя палитра и уровень орнамента', () => {
+  for (const item of itemsOf('frame')) {
+    assert.ok(FRAME_PALETTES[item.palette], `${item.id}: нет палитры ${item.palette}`)
+    assert.ok(item.art >= 1 && item.art <= 4, `${item.id}: уровень орнамента ${item.art}`)
+  }
+  // Дорогие достижения — богаче орнамент: 10/100 матчей проще, чем 1600 MMR.
+  assert.equal(cosmeticById('frame-default').art, 1)
+  assert.equal(cosmeticById('frame-gold').art, 3)
+  assert.equal(cosmeticById('frame-diamond').art, 4)
+  // Палитры не повторяются — рамки визуально различимы.
+  const palette = itemsOf('frame').map((i) => i.palette)
+  assert.equal(new Set(palette).size, palette.length)
+})
+
+test('T-COS-02b шапка профиля — баннер, а не эмодзи рядом с ником', () => {
+  const banners = itemsOf('banner')
+  assert.equal(banners.length, 9)
+  for (const item of banners) {
+    assert.match(item.css, /^pbanner-[a-z]+$/, `${item.id}: css-класс ${item.css}`)
+    assert.equal(item.glyph, undefined, `${item.id}: у шапки не должно быть глифа`)
+  }
+  // Все css-классы шапок описаны в styles.css, иначе шапка будет пустой.
+  const css = read('app/src/styles.css')
+  for (const item of banners) {
+    assert.match(css, new RegExp('\\.' + item.css + ' \\{'), `в styles.css нет .${item.css}`)
+  }
+  assert.equal(DEFAULTS.banner, 'banner-none')
+  assert.equal(cosmeticById('banner-none').css, 'pbanner-none')
+})
+
+test('T-COS-02c слот шапки в базе называется banner_id', () => {
+  assert.match(bannersSql, /rename column hat_id to banner_id/)
+  assert.match(bannersSql, /'banner-none'/)
+  assert.match(bannersSql, /kind in \('frame', 'banner', 'title', 'color'\)/)
+})
+
+// id и условия сверяем по обоим файлам: 27 из первого + 9 шапок из второго.
+test('T-COS-02d id и условия в JS совпадают с таблицей cosmetic_items', () => {
+  const all = sql + '\n' + bannersSql
+  const rows = [...all.matchAll(/\('([a-z0-9-]+)',\s*'(frame|banner|hat|title|color)',\s*'([^']+)',\s*'(always|verified|matches|wins|mmr|entitlement)',\s*(\d+),\s*(true|false)\)/g)]
     .map((m) => ({ id: m[1], kind: m[2], label: m[3], reqKind: m[4], reqValue: Number(m[5]), premium: m[6] === 'true' }))
-  assert.equal(rows.length, 27)
+    .filter((row) => row.kind !== 'hat')
+  assert.equal(rows.length, 28)
   const byId = new Map(COSMETICS.map((i) => [i.id, i]))
   for (const row of rows) {
     const item = byId.get(row.id)
@@ -71,7 +125,8 @@ test('T-COS-03 базовое оформление открыто всем и б
   for (const kind of COSMETIC_KINDS) {
     assert.ok(isUnlocked(cosmeticById(DEFAULTS[kind]), никто), `базовый ${kind} закрыт`)
   }
-  assert.equal(unlockedIds(никто).length, 5)
+  // Без достижений доступны: базовая рамка, две шапки, цвет белый/фирменный, без титула.
+  assert.equal(unlockedIds(никто).length, 6)
 })
 
 // ------------------------------------------------------------------ условия
@@ -84,9 +139,14 @@ test('T-COS-04 порог матчей: 9 не открывает, 10 откры
 })
 
 test('T-COS-05 победы считаются отдельно от матчей', () => {
-  const hat = cosmeticById('hat-champion')
-  assert.equal(isUnlocked(hat, playerState({ matches: 999, wins: 49 })), false)
-  assert.equal(isUnlocked(hat, playerState({ matches: 50, wins: 50 })), true)
+  // Победный предмет — рамка «Чемпион» для 50 побед (появляется только по wins).
+  const champion = COSMETICS.find((i) => i.req.kind === 'wins')
+  if (champion) {
+    assert.equal(isUnlocked(champion, playerState({ matches: 999, wins: 49 })), false)
+    assert.equal(isUnlocked(champion, playerState({ matches: 50, wins: 50 })), true)
+  }
+  // И в любом случае победы без матчей не открывают предметы «за матчи».
+  assert.equal(isUnlocked(cosmeticById('frame-bronze'), playerState({ matches: 0, wins: 999 })), false)
 })
 
 test('T-COS-06 «проверенный» требует подтверждённого игрового аккаунта', () => {
@@ -102,8 +162,8 @@ test('T-COS-07 MMR-предметы открываются по непрерыв
   assert.equal(isUnlocked(gold, playerState({ mmr: 1600 })), true)
   // 9999 — не предел шкалы: предмет просто остаётся открытым.
   assert.equal(isUnlocked(gold, богач), true)
-  assert.equal(isUnlocked(cosmeticById('hat-top'), playerState({ mmr: 2499 })), false)
-  assert.equal(isUnlocked(cosmeticById('hat-top'), playerState({ mmr: 2500 })), true)
+  assert.equal(isUnlocked(cosmeticById('frame-emerald'), playerState({ mmr: 1799 })), false)
+  assert.equal(isUnlocked(cosmeticById('frame-emerald'), playerState({ mmr: 1800 })), true)
 })
 
 test('T-COS-08 коллекционные предметы не открываются прогрессом — только правом', () => {
@@ -132,33 +192,39 @@ test('T-COS-10 справочник условий полный и не соде
 // ---------------------------------------------------------------- отображение
 
 test('T-COS-11 закрытый предмет не рисуется: look() откатывается к базовому', () => {
-  const хочу = equippedFromRow({ frame_id: 'frame-ruby', hat_id: 'hat-legend', title_id: 'title-legend', color_id: 'color-gold' })
+  const хочу = equippedFromRow({ frame_id: 'frame-ruby', banner_id: 'banner-legend', title_id: 'title-legend', color_id: 'color-gold' })
   const shown = look(хочу, playerState({ matches: 3, mmr: 1010 }))
-  assert.equal(shown.frameClass, 'frame-default')
-  assert.equal(shown.hatGlyph, '')
+  assert.equal(shown.framePalette, 'steel')
+  assert.equal(shown.frameArt, 1)
+  assert.equal(shown.bannerCss, 'pbanner-none')
   assert.equal(shown.titleText, '')
   assert.equal(shown.colorValue, cosmeticById('color-default').value)
 })
 
 test('T-COS-12 открытый предмет рисуется как выбран', () => {
   const state = playerState({ matches: 500, mmr: 2000 })
-  const shown = look(equippedFromRow({ frame_id: 'frame-ruby', hat_id: 'hat-legend', title_id: 'title-legend', color_id: 'color-emerald' }), state)
-  assert.equal(shown.frameClass, 'frame-ruby')
-  assert.equal(shown.hatGlyph, '🏆')
+  const shown = look(equippedFromRow({ frame_id: 'frame-ruby', banner_id: 'banner-legend', title_id: 'title-legend', color_id: 'color-emerald' }), state)
+  assert.equal(shown.framePalette, 'ruby')
+  assert.equal(shown.frameArt, 3)
+  assert.equal(shown.bannerCss, 'pbanner-legend')
   assert.equal(shown.titleText, 'ЛЕГЕНДА')
   assert.equal(shown.colorValue, '#3fcb7b')
-  assert.equal(shown.tierColor, cosmeticById('color-emerald').value ? shown.tierColor : null)
+  assert.equal(shown.tierColor, '#3fcb7b')
 })
 
 test('T-COS-13 lookFromRow рисует оформление другого игрока как есть', () => {
-  const other = lookFromRow({ frame_id: 'frame-neon', hat_id: 'hat-crown', title_id: 'title-pioneer', color_id: 'color-neon' })
-  assert.equal(other.frameClass, 'frame-neon')
-  assert.equal(other.hatGlyph, '🜲')
+  const other = lookFromRow({ frame_id: 'frame-neon', banner_id: 'banner-neon', title_id: 'title-pioneer', color_id: 'color-neon' })
+  assert.equal(other.framePalette, 'neon')
+  assert.equal(other.frameArt, 4)
+  assert.equal(other.bannerCss, 'pbanner-neon')
   assert.equal(other.titleText, 'ПЕРВОПРОХОДЕЦ')
   assert.equal(other.colorValue, '#39f0ff')
   // Пустая строка (игрок ничего не надевал) — базовый вид, без падений.
-  assert.equal(lookFromRow({}).frameClass, 'frame-default')
-  assert.equal(lookFromRow(null).frameClass, 'frame-default')
+  assert.equal(lookFromRow({}).framePalette, 'steel')
+  assert.equal(lookFromRow(null).framePalette, 'steel')
+  // Таблица лидеров берёт рамку тем же способом.
+  assert.deepEqual(frameOf({ frame_id: 'frame-gold' }), { palette: 'gold', art: 3, id: 'frame-gold' })
+  assert.equal(frameOf({}).palette, 'steel')
 })
 
 test('T-COS-14 itemStatus честно говорит «надето / открыто / ещё N»', () => {
@@ -192,6 +258,7 @@ test('T-COS-16 catalogue группирует всё и отмечает premium
     assert.equal(all[kind].length, itemsOf(kind).length)
   }
   assert.equal(all.frame.filter((i) => i.premium).length, 2)
+  assert.equal(all.banner.filter((i) => i.premium).length, 2)
 })
 
 test('T-COS-17 ближайшая награда — та, до которой меньше всего осталось', () => {
@@ -241,6 +308,47 @@ test('T-COS-22 передача лобби — только хост и толь
   // Передача — не самоцель: себе же передавать бессмысленно.
   assert.match(mig, /p_user_id = v_uid/)
 })
+
+// --------------------------------------------- где живёт оформление в приложении
+
+test('T-COS-23 оформление — часть профиля, а не отдельный раздел', () => {
+  const app = read('app/src/App.jsx')
+  // В навигации (SCREENS) раздела «косметика/оформление» быть не должно.
+  const screensBlock = app.slice(app.indexOf('const SCREENS'), app.indexOf(']', app.indexOf('const SCREENS')))
+  assert.doesNotMatch(screensBlock, /cosmetics|Косметика|Оформление/, 'оформление снова стало отдельным разделом')
+  // Зато из профиля оно открывается, и назад ведёт в профиль.
+  assert.match(app, /onCosmetics=\{\(\) => go\('cosmetics'\)\}/)
+  assert.match(app, /case 'cosmetics':/)
+  assert.match(app, /<AppearanceScreen[\s\S]{0,400}onBack=\{\(\) => go\('profile'\)\}/)
+})
+
+test('T-COS-24 слово «косметика» из интерфейса убрано, профиль — карточка с шапкой', () => {
+  const screens = read('app/src/screens.jsx')
+  assert.match(screens, /Оформление профиля/)
+  // Заголовков «Косметика» в интерфейсе больше нет.
+  assert.doesNotMatch(screens, /title="Косметика"/)
+  assert.doesNotMatch(screens, />\s*Косметика\s*</)
+  assert.doesNotMatch(screens, /КОСМЕТИКА И ТИТУЛЫ/)
+  // Карточка профиля: баннер сверху и рамка на аватаре.
+  assert.match(screens, /className="profile-card"/)
+  assert.match(screens, /<ProfileBanner css=\{look \? look\.bannerCss : 'pbanner-none'\}/)
+  assert.match(screens, /frame=\{look \? look\.framePalette : null\}/)
+  assert.match(screens, /frameArt=\{look \? look\.frameArt : 1\}/)
+})
+
+test('T-COS-25 в профиле и в таблице лидеров нет эмодзи-шапок', () => {
+  const screens = read('app/src/screens.jsx')
+  assert.doesNotMatch(screens, /hatGlyph|hat_id|avatar__hat|className="cosmetic-card__hat"/)
+  const css = read('app/src/styles.css')
+  assert.doesNotMatch(css, /\.avatar__hat/)
+  // А рамка рисуется вектором — в разметке это ProfileFrame, а не CSS-кольцо.
+  assert.match(screens, /<ProfileFrame /)
+  assert.doesNotMatch(css, /\.frame-neon/)
+})
+
+rmSync(framesBundle, { force: true })
+
+rmSync(framesBundle, { force: true })
 
 for (const { name, fn } of queue) {
   try {

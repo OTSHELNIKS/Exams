@@ -1,4 +1,4 @@
-// Косметика: рамки, шапки, титулы и цвет ника.
+// Оформление профиля: рамки, шапки профиля (баннеры), титулы и цвет ника.
 //
 // Правила, которые заложены здесь и проверяются тестами:
 //   • бесплатное открывается только за то, что реально считается на сервере
@@ -13,18 +13,18 @@
 
 import { mmrTier } from './rating.js'
 
-export const COSMETIC_KINDS = ['frame', 'hat', 'title', 'color']
+export const COSMETIC_KINDS = ['frame', 'banner', 'title', 'color']
 
 export const KIND_LABEL = {
-  frame: 'Рамка аватара',
-  hat: 'Шапка',
+  frame: 'Рамка',
+  banner: 'Шапка профиля',
   title: 'Титул',
   color: 'Цвет ника',
 }
 
 export const KINDS_TITLE = {
   frame: 'РАМКИ АВАТАРА',
-  hat: 'ШАПКИ',
+  banner: 'ШАПКИ ПРОФИЛЯ',
   title: 'ТИТУЛЫ',
   color: 'ЦВЕТ НИКА',
 }
@@ -65,30 +65,32 @@ export const REQ = {
 
 // ------------------------------------------------------------------- каталог
 
-// frame: gradient / border для аватара. hat: глиф рядом с ником. title: текст.
-// color: цвет ника. Платные помечаются premium: true — интерфейс показывает их
-// в отдельном разделе и никогда не рисует кнопку «купить» внутри приложения.
+// frame: палитра + уровень орнамента для рамки (рисует frames.jsx).
+// banner: css-класс шапки профиля (градиент-полоса над аватаром, как в Discord).
+// title: текст под ником. color: цвет ника. Платные помечаются premium: true —
+// интерфейс показывает их, но никогда не рисует кнопку «купить» в приложении.
 export const COSMETICS = [
-  // ----- рамки
-  { id: 'frame-default', kind: 'frame', label: 'Классика', req: { kind: 'always' }, css: 'frame-default' },
-  { id: 'frame-verified', kind: 'frame', label: 'Проверенный', req: { kind: 'verified' }, css: 'frame-verified' },
-  { id: 'frame-bronze', kind: 'frame', label: 'Бронза', req: { kind: 'matches', value: 10 }, css: 'frame-bronze' },
-  { id: 'frame-silver', kind: 'frame', label: 'Серебро', req: { kind: 'matches', value: 100 }, css: 'frame-silver' },
-  { id: 'frame-ruby', kind: 'frame', label: 'Рубин', req: { kind: 'matches', value: 500 }, css: 'frame-ruby' },
-  { id: 'frame-gold', kind: 'frame', label: 'Золото', req: { kind: 'mmr', value: 1600 }, css: 'frame-gold' },
-  { id: 'frame-emerald', kind: 'frame', label: 'Изумруд', req: { kind: 'mmr', value: 1800 }, css: 'frame-emerald' },
-  { id: 'frame-neon', kind: 'frame', label: 'Неон', req: { kind: 'entitlement' }, css: 'frame-neon', premium: true },
-  { id: 'frame-diamond', kind: 'frame', label: 'Алмаз', req: { kind: 'entitlement' }, css: 'frame-diamond', premium: true },
+  // ----- рамки аватара: палитра + уровень орнамента (см. frames.jsx)
+  { id: 'frame-default', kind: 'frame', label: 'Классика', req: { kind: 'always' }, palette: 'steel', art: 1 },
+  { id: 'frame-verified', kind: 'frame', label: 'Проверенный', req: { kind: 'verified' }, palette: 'azure', art: 2 },
+  { id: 'frame-bronze', kind: 'frame', label: 'Бронза', req: { kind: 'matches', value: 10 }, palette: 'bronze', art: 2 },
+  { id: 'frame-silver', kind: 'frame', label: 'Серебро', req: { kind: 'matches', value: 100 }, palette: 'silver', art: 2 },
+  { id: 'frame-ruby', kind: 'frame', label: 'Рубин', req: { kind: 'matches', value: 500 }, palette: 'ruby', art: 3 },
+  { id: 'frame-gold', kind: 'frame', label: 'Золото', req: { kind: 'mmr', value: 1600 }, palette: 'gold', art: 3 },
+  { id: 'frame-emerald', kind: 'frame', label: 'Изумруд', req: { kind: 'mmr', value: 1800 }, palette: 'emerald', art: 3 },
+  { id: 'frame-neon', kind: 'frame', label: 'Неон', req: { kind: 'entitlement' }, palette: 'neon', art: 4, premium: true },
+  { id: 'frame-diamond', kind: 'frame', label: 'Алмаз', req: { kind: 'entitlement' }, palette: 'diamond', art: 4, premium: true },
 
-  // ----- шапки
-  { id: 'hat-none', kind: 'hat', label: 'Без шапки', req: { kind: 'always' }, glyph: '' },
-  { id: 'hat-rookie', kind: 'hat', label: 'Новобранец', req: { kind: 'matches', value: 10 }, glyph: '🎖' },
-  { id: 'hat-veteran', kind: 'hat', label: 'Ветеран', req: { kind: 'matches', value: 100 }, glyph: '🛡' },
-  { id: 'hat-legend', kind: 'hat', label: 'Легенда', req: { kind: 'matches', value: 500 }, glyph: '🏆' },
-  { id: 'hat-champion', kind: 'hat', label: 'Чемпион', req: { kind: 'wins', value: 50 }, glyph: '👑' },
-  { id: 'hat-top', kind: 'hat', label: 'Вершина', req: { kind: 'mmr', value: 2500 }, glyph: '💠' },
-  { id: 'hat-crown', kind: 'hat', label: 'Корона фаундера', req: { kind: 'entitlement' }, glyph: '🜲', premium: true },
-  { id: 'hat-halo', kind: 'hat', label: 'Неоновый ореол', req: { kind: 'entitlement' }, glyph: '✨', premium: true },
+  // ----- шапки профиля: полоса-баннер над аватаром, как в Discord
+  { id: 'banner-none', kind: 'banner', label: 'Без шапки', req: { kind: 'always' }, css: 'pbanner-none' },
+  { id: 'banner-ember', kind: 'banner', label: 'Закат', req: { kind: 'always' }, css: 'pbanner-ember' },
+  { id: 'banner-verified', kind: 'banner', label: 'Проверенный', req: { kind: 'verified' }, css: 'pbanner-verified' },
+  { id: 'banner-bronze', kind: 'banner', label: 'Бронза', req: { kind: 'matches', value: 10 }, css: 'pbanner-bronze' },
+  { id: 'banner-legend', kind: 'banner', label: 'Легенда', req: { kind: 'matches', value: 500 }, css: 'pbanner-legend' },
+  { id: 'banner-gold', kind: 'banner', label: 'Золото', req: { kind: 'mmr', value: 1600 }, css: 'pbanner-gold' },
+  { id: 'banner-emerald', kind: 'banner', label: 'Изумруд', req: { kind: 'mmr', value: 1800 }, css: 'pbanner-emerald' },
+  { id: 'banner-neon', kind: 'banner', label: 'Неон', req: { kind: 'entitlement' }, css: 'pbanner-neon', premium: true },
+  { id: 'banner-aurora', kind: 'banner', label: 'Аврора', req: { kind: 'entitlement' }, css: 'pbanner-aurora', premium: true },
 
   // ----- титулы
   { id: 'title-none', kind: 'title', label: 'Без титула', req: { kind: 'always' }, value: '' },
@@ -107,7 +109,7 @@ export const COSMETICS = [
 
 export const DEFAULTS = {
   frame: 'frame-default',
-  hat: 'hat-none',
+  banner: 'banner-none',
   title: 'title-none',
   color: 'color-default',
 }
@@ -123,7 +125,7 @@ export function cosmeticById(id) {
 export function equippedFromRow(row) {
   return {
     frame: (row && row.frame_id) || DEFAULTS.frame,
-    hat: (row && row.hat_id) || DEFAULTS.hat,
+    banner: (row && row.banner_id) || DEFAULTS.banner,
     title: (row && row.title_id) || DEFAULTS.title,
     color: (row && row.color_id) || DEFAULTS.color,
   }
@@ -178,14 +180,15 @@ export function look(equipped, state = {}) {
     return isUnlocked(item, st) ? item : cosmeticById(DEFAULTS[kind])
   }
   const frame = pick('frame')
-  const hat = pick('hat')
+  const banner = pick('banner')
   const title = pick('title')
   const color = pick('color')
   return {
     frameId: frame ? frame.id : DEFAULTS.frame,
-    frameClass: frame && frame.css ? frame.css : 'frame-default',
-    hatGlyph: hat && hat.glyph ? hat.glyph : '',
-    hatId: hat ? hat.id : DEFAULTS.hat,
+    framePalette: frame && frame.palette ? frame.palette : 'steel',
+    frameArt: frame && frame.art ? frame.art : 1,
+    bannerId: banner ? banner.id : DEFAULTS.banner,
+    bannerCss: banner && banner.css ? banner.css : 'pbanner-none',
     titleText: title && title.value ? title.value : '',
     colorValue: color && color.value ? color.value : '#f4f1ea',
     tierColor: mmrTier(st.mmr).color,
@@ -214,19 +217,26 @@ export function nextReward(state) {
   return first ? { id: first.item.id, label: first.item.label, kind: first.item.kind, left: first.req.left, text: first.req.text } : null
 }
 
+/** Рамка другого игрока: палитра и орнамент по id из вьюхи. */
+export function frameOf(row) {
+  const item = cosmeticById(row && row.frame_id) || cosmeticById(DEFAULTS.frame)
+  return { palette: item.palette || 'steel', art: item.art || 1, id: item.id }
+}
+
 // Оформление другого игрока: сервер уже проверил условие при надевании
 // (equip_cosmetic), поэтому здесь перепроверять нечего — просто рисуем.
 export function lookFromRow(row) {
   const src = row || {}
   const frame = cosmeticById(src.frame_id) || cosmeticById(DEFAULTS.frame)
-  const hat = cosmeticById(src.hat_id) || cosmeticById(DEFAULTS.hat)
+  const banner = cosmeticById(src.banner_id) || cosmeticById(DEFAULTS.banner)
   const title = cosmeticById(src.title_id) || cosmeticById(DEFAULTS.title)
   const color = cosmeticById(src.color_id) || cosmeticById(DEFAULTS.color)
   return {
     frameId: frame.id,
-    frameClass: frame.css || 'frame-default',
-    hatGlyph: hat.glyph || '',
-    hatId: hat.id,
+    framePalette: frame.palette || 'steel',
+    frameArt: frame.art || 1,
+    bannerId: banner.id,
+    bannerCss: banner.css || 'pbanner-none',
     titleText: title.value || '',
     colorValue: color.value || '#f4f1ea',
     tierColor: '',

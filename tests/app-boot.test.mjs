@@ -146,13 +146,14 @@ test('T-BOOT-07 каждый экран монтируется отдельно 
     teamB: [{ user_id: 'u3', nick: 'B1', isCaptain: true }, { user_id: 'u4', nick: 'B2' }],
     lobbyCode: '123456',
   }
+  const look = { framePalette: 'gold', frameArt: 3, bannerCss: 'pbanner-ember', titleText: 'ВЕТЕРАН', colorValue: '#ffc83d' }
   const cases = [
-    ['HomeScreen', { profile, actions: { goLeaderboard() {}, goDraft() {} }, look: null }],
-    ['ProfileScreen', { profile, actions: {}, look: null }],
+    ['HomeScreen', { profile, actions: { goLeaderboard() {}, goDraft() {} }, look }],
+    ['ProfileScreen', { profile, actions: {}, look }],
     ['DraftScreen', {}],
     ['MatchScreen', { teams }],
     ['LeaderboardScreen', {}],
-    ['CosmeticsScreen', { playerState: { verified: false, matches: 12, wins: 7, mmr: 1016, entitlements: [] } }],
+    ['AppearanceScreen', { playerState: { verified: false, matches: 12, wins: 7, mmr: 1016, entitlements: [] }, profile }],
   ]
   for (const [name, props] of cases) {
     assert.equal(typeof S[name], 'function', `экран ${name} не экспортируется`)
@@ -169,8 +170,37 @@ test('T-BOOT-07 каждый экран монтируется отдельно 
   rmSync(screensBundle, { force: true })
 })
 
+test('T-BOOT-08 все девять рамок рисуются и не ломают разметку', async () => {
+  const framesBundle = join(app, '.app-boot-frames.mjs')
+  await esbuild.build({
+    entryPoints: [join(app, 'src/frames.jsx')],
+    bundle: true,
+    format: 'esm',
+    outfile: framesBundle,
+    jsx: 'automatic',
+    external: ['react', 'react-dom', 'react/jsx-runtime'],
+    define: { 'import.meta.env': '{}' },
+    logLevel: 'silent',
+  })
+  const { ProfileFrame, FRAME_PALETTES } = await import(framesBundle)
+  const palettes = Object.keys(FRAME_PALETTES)
+  assert.equal(palettes.length, 9)
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const r = createRoot(host)
+  r.render(React.createElement('div', null, palettes.map((palette, i) => React.createElement(ProfileFrame, { key: palette, palette, art: (i % 4) + 1 }))))
+  await new Promise((resolve) => setTimeout(resolve, 90))
+  assert.equal(host.querySelectorAll('svg.pframe').length, 9, 'часть рамок не отрисовалась')
+  // Градиенты у каждой рамки свои, иначе цвета «перетекают» между аватарами.
+  const ids = Array.from(host.querySelectorAll('linearGradient')).map((n) => n.id)
+  assert.equal(new Set(ids).size, ids.length, 'дубли id в SVG-градиентах')
+  r.unmount()
+  host.remove()
+  rmSync(framesBundle, { force: true })
+})
+
 test('T-BOOT-06 ни один модуль приложения не падает при импорте', async () => {
-  for (const file of ['cosmetics.js', 'rating.js', 'screens.jsx', 'ui.jsx', 'data.js']) {
+  for (const file of ['cosmetics.js', 'rating.js', 'frames.jsx', 'screens.jsx', 'ui.jsx', 'data.js']) {
     const out = join(app, `.app-boot-${file.replace(/\W/g, '_')}.mjs`)
     await esbuild.build({
       entryPoints: [join(app, 'src', file)],

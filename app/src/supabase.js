@@ -401,7 +401,7 @@ export async function loadLeaderboardRanks(limit = 100) {
 export async function loadLoadout(userId) {
   const { data, error } = await supabase
     .from('cosmetic_loadout')
-    .select('frame_id, hat_id, title_id, color_id')
+    .select('frame_id, banner_id, title_id, color_id')
     .eq('user_id', userId)
     .maybeSingle()
   if (error) return { error: 'server', detail: error.message }
@@ -454,4 +454,16 @@ export async function transferLobbyHostByCode(code, userId) {
   if (error) return { error: 'server', detail: error.message }
   if (!data) return { error: 'not_found' }
   return transferLobbyHost(data.id, userId)
+}
+
+/** Оформление другого игрока: рамка и шапка видны в чужой карточке. */
+export async function loadPublicLook(userId) {
+  if (!supabase || !userId) return null
+  const { data, error } = await supabase
+    .from('cosmetic_loadouts_public')
+    .select('frame_id, banner_id, title_id, color_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) return null
+  return data || null
 }

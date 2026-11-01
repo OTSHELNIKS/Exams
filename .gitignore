@@ -46,3 +46,4 @@ app/*.jks
 # временные бандлы тестов (esbuild)
 .*-under-test.mjs
 .probe-*.mjs
+.*-frames.mjs

@@ -7,7 +7,7 @@ import { AppFrame, Logo } from './ui.jsx'
 import { Landing } from './landing.jsx'
 import {
   AuthScreen, WizardScreen, HomeScreen, ProfileScreen, DraftScreen,
-  MatchScreen, LeaderboardScreen, BannedScreen, SupportScreen, LobbyScreen, CosmeticsScreen,
+  MatchScreen, LeaderboardScreen, BannedScreen, SupportScreen, LobbyScreen, AppearanceScreen,
 } from './screens.jsx'
 import { equippedFromRow, playerState, look as computeLook } from './cosmetics.js'
 import { transferCaptain } from './rating.js'
@@ -80,7 +80,6 @@ const SCREENS = [
   { id: 'lobby', label: 'Лобби по региону', short: 'Лобби', icon: Users },
   { id: 'match', label: 'Матч готов', short: 'Матч', icon: Gamepad2 },
   { id: 'leaderboard', label: 'Таблица лидеров', short: 'Рейтинг', icon: Trophy },
-  { id: 'cosmetics', label: 'Косметика и титулы', short: 'Стиль', icon: Sparkles },
   { id: 'support', label: 'Поддержка', short: 'Помощь', icon: LifeBuoy },
   { id: 'admin', label: 'Админка', short: 'Админ', icon: ShieldCheck, admin: true },
 ]
@@ -280,7 +279,8 @@ export default function App() {
     const onBack = (event) => {
       if (screen !== 'home' && screen !== 'auth') {
         event.preventDefault()
-        setScreen('home')
+        // Оформление — часть профиля: назад ведёт туда, откуда пришли.
+        setScreen(screen === 'cosmetics' ? 'profile' : 'home')
       }
     }
     window.addEventListener('name:back', onBack)
@@ -562,7 +562,7 @@ export default function App() {
       case 'wizard':
         return <WizardScreen profile={profile} setProfile={setProfile} gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
-        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} look={look} onCosmetics={() => go('cosmetics')} supabase={supabase} userId={session?.user?.id || null} />
+        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} look={look} supabase={supabase} userId={session?.user?.id || null} />
       case 'profile':
         return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} gameVerified={gameVerified} onGameVerified={handleGameVerified} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onBack={() => go('home')} onEdit={() => go('wizard')} onCosmetics={() => go('cosmetics')} look={look} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
@@ -620,12 +620,14 @@ export default function App() {
       case 'leaderboard':
         return <LeaderboardScreen supabase={supabase} userId={session?.user?.id || null} />
       case 'cosmetics':
-        return <CosmeticsScreen
+        // Оформление — часть профиля, не отдельный раздел приложения.
+        return <AppearanceScreen
           supabase={supabase}
           userId={session?.user?.id || null}
           playerState={playerCosmeticState}
+          profile={profile}
           onEquip={reloadCosmetics}
-          onBack={() => go('home')}
+          onBack={() => go('profile')}
         />
       case 'support':
         return <SupportScreen supabase={supabase} userId={session?.user?.id || null} onBack={() => go('home')} onAuth={() => go('auth')} />
@@ -664,7 +666,9 @@ export default function App() {
     )
   }
 
+  // Оформление не входит в список разделов — у него свой заголовок.
   const current = SCREENS.find((s) => s.id === screen)
+    || (screen === 'cosmetics' ? { label: 'Оформление профиля', short: 'Стиль' } : null)
   const visibleScreens = SCREENS.filter((s) => {
     if (s.admin && !isAdmin) return false
     if (hideEntry(s.id)) return false
@@ -723,7 +727,7 @@ export default function App() {
                 </button>
               )
             })}
-            <button key="profile" type="button" className={screen === 'profile' ? 'is-active' : ''} onClick={() => go('profile')}>
+            <button key="profile" type="button" className={screen === 'profile' || screen === 'cosmetics' ? 'is-active' : ''} onClick={() => go('profile')}>
               <UserRound size={20} /><span>Профиль</span>
             </button>
             {isAdmin && (

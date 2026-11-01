@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { GoogleIcon, TelegramIcon, TikTokIcon, VkIcon, FacebookIcon, BRAND_TINT } from './brand-icons.jsx'
 import { HERO_BY_NAME } from './data.js'
+import { ProfileFrame } from './frames.jsx'
 
 /* ------------------------------------------------------------------ logo */
 export function Logo({ size = 'md', light = false }) {
@@ -293,17 +294,20 @@ export function Steps({ current = 1, total = 3 }) {
   )
 }
 
-export function Avatar({ src, initials = '?', size = 96, ring = true, level = null, frame = null, hat = '' }) {
+/**
+ * Аватар. `frame` — палитра рамки ('gold', 'neon'…), `frameArt` — уровень
+ * орнамента 1…4; саму рамку рисует ProfileFrame (frames.jsx).
+ */
+export function Avatar({ src, initials = '?', size = 96, ring = true, level = null, frame = null, frameArt = 1 }) {
   return (
     <div
       className={`avatar ${ring && !frame ? 'avatar--ring' : ''} ${frame ? 'avatar--framed' : ''}`}
       style={{ width: size, height: size }}
     >
+      {frame ? <ProfileFrame palette={frame} art={frameArt} /> : null}
       {src
         ? <img src={src} alt="avatar" />
         : <span className="avatar__initials">{initials}</span>}
-      {frame && <span className={`avatar__frame ${frame}`} aria-hidden="true" />}
-      {hat ? <span className="avatar__hat" aria-hidden="true">{hat}</span> : null}
       {level != null && <span className="avatar__level">LVL<br /><b>{level}</b></span>}
     </div>
   )

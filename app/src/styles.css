@@ -667,9 +667,12 @@ html.is-modal-open .rail { overflow: hidden !important; }
 .rank-row--first .rank-row__num { color: var(--orange); }
 .rank-row--first .rank-row__avatar { background: linear-gradient(100deg, #ff5317, #ff4b12); color: #180a05; }
 .rank-row__avatar {
+  position: relative;
   width: 40px; height: 40px; border-radius: 50%; flex: none; background: #252733;
   display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 15px;
 }
+/* В строке лидеров рамка чуть крупнее, но не выходит за отступы строки. */
+.rank-row__avatar .pframe { width: 124%; height: 124%; }
 .rank-row__info { flex: 1; min-width: 0; }
 .rank-row__info strong { display: flex; align-items: center; gap: 6px; font-size: 14px; }
 .prize { display: inline-block; margin-top: 5px; font-size: 10px; font-weight: 700; color: #7be0a4; background: rgba(63,203,123,.1); border: 1px solid rgba(63,203,123,.28); border-radius: 7px; padding: 3px 7px; }
@@ -1459,56 +1462,88 @@ html.is-modal-open .rail { overflow: hidden !important; }
 .result-card__changes b.is-down { color: #ff7a6b; }
 .result-card__changes em { font-style: normal; color: var(--dim); font-size: 11.5px; }
 
-/* ------------------------------------------------------ косметика (рамки/шапки) */
+/* ------------------------------------------------- оформление профиля */
 
-/* Рамка — кольцо вокруг аватара через ::after: картинка не обрезается и не
-   дёргается при загрузке. Шапка сидит сверху справа, поверх кольца. */
-.avatar__frame { position: absolute; inset: -5px; border-radius: 50%; pointer-events: none; }
-.avatar__hat {
-  position: absolute; top: -10px; right: -6px; z-index: 2;
-  font-size: 20px; line-height: 1; filter: drop-shadow(0 2px 6px rgba(0,0,0,.55));
+/* Рамка аватара — SVG поверх картинки. Отступ минусовой: обод выходит за круг
+   аватара, поэтому в layout ничего не сдвигается. */
+.pframe {
+  position: absolute; left: 50%; top: 50%;
+  width: 128%; height: 128%; transform: translate(-50%, -50%);
+  pointer-events: none; overflow: visible;
 }
-.frame-default { box-shadow: 0 0 0 2px rgba(244,241,234,.35); }
-.frame-verified { box-shadow: 0 0 0 3px #4a9cf0, 0 0 14px rgba(74,156,240,.45); }
-.frame-bronze { box-shadow: 0 0 0 3px #b07a4a, 0 0 12px rgba(176,122,74,.4); }
-.frame-silver { box-shadow: 0 0 0 3px #c3c8d4, 0 0 14px rgba(195,200,212,.45); }
-.frame-ruby { box-shadow: 0 0 0 3px #f0334f, 0 0 18px rgba(240,51,79,.5); }
-.frame-gold { box-shadow: 0 0 0 3px #ffc83d, 0 0 20px rgba(255,200,61,.55); }
-.frame-emerald { box-shadow: 0 0 0 3px #3fcb7b, 0 0 18px rgba(63,203,123,.5); }
-.frame-neon {
-  box-shadow: 0 0 0 3px #39f0ff, 0 0 22px rgba(57,240,255,.6), inset 0 0 12px rgba(57,240,255,.35);
-  animation: neonPulse 2.6s ease-in-out infinite;
+.pframe--neon { animation: framePulse 3.2s ease-in-out infinite; }
+@keyframes framePulse {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(57,240,255,.55)); }
+  50% { filter: drop-shadow(0 0 9px rgba(57,240,255,.95)); }
 }
-.frame-diamond {
-  box-shadow: 0 0 0 3px #cfefff, 0 0 24px rgba(191,232,255,.7), inset 0 0 10px rgba(255,255,255,.4);
-  background: conic-gradient(from 0deg, #cfefff, #7fd8ff, #ffffff, #b48cff, #cfefff);
-  opacity: .55;
+@media (prefers-reduced-motion: reduce) { .pframe--neon { animation: none; } }
+
+/* Шапка профиля (баннер) — полоса во всю ширину карточки, как в Discord. */
+.pbanner {
+  position: relative; width: 100%; border-radius: 18px 18px 0 0; overflow: hidden;
+  background: linear-gradient(120deg, #20222c, #14161d);
 }
-@keyframes neonPulse {
-  0%, 100% { box-shadow: 0 0 0 3px #39f0ff, 0 0 18px rgba(57,240,255,.5); }
-  50% { box-shadow: 0 0 0 3px #39f0ff, 0 0 30px rgba(57,240,255,.85); }
+.pbanner__sheen {
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg, rgba(255,255,255,.16), rgba(255,255,255,0) 42%);
+  mix-blend-mode: screen;
 }
-@media (prefers-reduced-motion: reduce) {
-  .frame-neon { animation: none; }
+.pbanner-none { background: linear-gradient(120deg, #1b1d26, #101218); }
+.pbanner-ember { background: linear-gradient(120deg, #ff5317 0%, #b3250a 55%, #2a1420 100%); }
+.pbanner-verified { background: linear-gradient(120deg, #4a9cf0 0%, #1c4e86 55%, #0d1b2e 100%); }
+.pbanner-bronze { background: linear-gradient(120deg, #b07a4a 0%, #6a4526 55%, #241610 100%); }
+.pbanner-legend { background: linear-gradient(120deg, #ff6a1b 0%, #f0334f 45%, #3a0a2a 100%); }
+.pbanner-gold { background: linear-gradient(120deg, #ffc83d 0%, #a86400 50%, #2a1c05 100%); }
+.pbanner-emerald { background: linear-gradient(120deg, #3fcb7b 0%, #12663a 55%, #04211a 100%); }
+.pbanner-neon {
+  background: linear-gradient(120deg, #39f0ff 0%, #4a2bff 55%, #06121f 100%);
+  box-shadow: inset 0 0 24px rgba(57,240,255,.45);
+}
+.pbanner-aurora {
+  background:
+    radial-gradient(120% 160% at 12% 10%, rgba(63,203,123,.85), transparent 55%),
+    radial-gradient(110% 150% at 78% 20%, rgba(168,119,240,.85), transparent 60%),
+    linear-gradient(120deg, #0a2b3a, #140b2e);
 }
 
-/* -------------------------------------------------------------- экран косметики */
+/* Карточка профиля: баннер сверху, аватар внахлёст, данные ниже. */
+.profile-card {
+  border: 1px solid var(--line); border-radius: 20px; overflow: hidden;
+  background: var(--surface);
+}
+.profile-card__body { position: relative; padding: 0 18px 18px; }
+.profile-card__body .avatar {
+  margin: -58px 0 0; border: 4px solid #101218; background: #101218;
+  box-shadow: 0 10px 26px rgba(0,0,0,.55);
+}
+.profile-card__id { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 12px; }
+.profile-card__id h1 {
+  font-family: var(--display); font-weight: 900; font-size: 26px; line-height: 1.1; margin: 0;
+  letter-spacing: -.6px; word-break: break-word;
+}
+.profile-card__id .home__bio { margin: 4px 0 0; }
+.profile-card__id .home__badges { margin-top: 2px; }
+.profile-card__style { margin-top: 8px; }
 
+/* Экран «Оформление профиля». */
 .cosmetics__preview {
-  display: flex; align-items: center; gap: 18px;
-  padding: 18px; border-radius: 20px;
-  background: linear-gradient(140deg, rgba(255,75,18,.1), rgba(255,255,255,.02));
-  border: 1px solid var(--line); margin: 8px 0 4px;
+  border: 1px solid var(--line); border-radius: 20px; overflow: hidden;
+  background: var(--surface); margin: 8px 0 4px;
 }
-.cosmetics__preview > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.cosmetics__preview strong { font-size: 17px; font-weight: 900; }
-.cosmetics__preview small { color: var(--muted); font-size: 12px; }
+.cosmetics__preview-body { display: flex; align-items: flex-end; gap: 14px; padding: 0 16px 16px; }
+.cosmetics__preview-body .avatar {
+  margin-top: -46px; border: 4px solid #101218; background: #101218; flex: none;
+}
+.cosmetics__preview-body > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-bottom: 4px; }
+.cosmetics__preview-body strong { font-size: 16px; font-weight: 900; }
+.cosmetics__preview-body small { color: var(--muted); font-size: 12px; }
 .cosmetics__title {
-  font-style: normal; font-size: 10.5px; font-weight: 800; letter-spacing: 1.6px;
+  font-style: normal; font-size: 10px; font-weight: 800; letter-spacing: 1.6px;
   color: var(--orange); text-transform: uppercase;
 }
 .cosmetics__tabs { margin: 14px 0 4px; }
 .cosmetics__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(122px, 1fr)); gap: 10px; }
+.cosmetics__code { margin: 22px 0 8px; display: flex; flex-direction: column; gap: 9px; }
 
 .cosmetic-card {
   position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
@@ -1521,9 +1556,13 @@ html.is-modal-open .rail { overflow: hidden !important; }
 .cosmetic-card.is-locked { opacity: .62; }
 .cosmetic-card strong { font-size: 12.5px; font-weight: 800; }
 .cosmetic-card small { font-size: 11px; color: var(--muted); line-height: 1.3; }
-.cosmetic-card__art { display: flex; align-items: center; justify-content: center; width: 100%; height: 52px; margin-bottom: 4px; }
-.cosmetic-card__frame { width: 42px; height: 42px; border-radius: 50%; background: #14151c; }
-.cosmetic-card__hat { font-size: 26px; line-height: 1; }
+.cosmetic-card__art {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 62px; margin-bottom: 4px;
+}
+.cosmetic-card__frame { position: relative; width: 44px; height: 44px; }
+.cosmetic-card__frame .pframe { width: 128%; height: 128%; }
+.cosmetic-card__banner { width: 100%; height: 34px; border-radius: 8px; }
 .cosmetic-card__title { font-size: 9.5px; font-weight: 800; letter-spacing: 1.2px; color: #ffd9a1; text-align: center; }
 .cosmetic-card__color { width: 34px; height: 34px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255,255,255,.2); }
 .cosmetic-card__left { font-style: normal; font-size: 10px; color: #ff8a4c; }
@@ -1532,7 +1571,6 @@ html.is-modal-open .rail { overflow: hidden !important; }
   font-size: 8px; font-weight: 900; letter-spacing: .8px; padding: 2px 6px; border-radius: 6px;
   background: linear-gradient(100deg, #ff5317, #ffb03a); color: #180a05;
 }
-.cosmetics__code { margin: 22px 0 8px; display: flex; flex-direction: column; gap: 9px; }
 
 /* Передача капитанства: кнопки-ники внутри карточки команды. */
 .team-card__handover {
@@ -1546,7 +1584,15 @@ html.is-modal-open .rail { overflow: hidden !important; }
   .cosmetics__grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
   .cosmetic-card strong { font-size: 13.5px; }
   .cosmetic-card small { font-size: 12px; }
-  .cosmetics__preview strong { font-size: 19px; }
-  .cosmetics__preview small,
+  .profile-card__id h1 { font-size: 30px; }
+  .cosmetics__preview-body strong { font-size: 18px; }
+  .cosmetics__preview-body small,
   .team-card__handover small { font-size: 12.5px; }
 }
+
+/* Чужая карточка: та же логика, что в своём профиле — шапка и аватар внахлёст. */
+.modal--player .pbanner { margin: -6px 0 0; border-radius: 14px 14px 0 0; }
+.pub__head { display: flex; align-items: flex-end; gap: 14px; margin-top: -42px; padding: 0 4px; }
+.pub__head .avatar { border: 4px solid #14151c; background: #14151c; flex: none; }
+.pub__head > div { display: flex; flex-direction: column; gap: 3px; padding-bottom: 6px; min-width: 0; }
+.pub__head h3 { margin: 0; font-family: var(--display); font-weight: 900; font-size: 20px; line-height: 1.15; }
