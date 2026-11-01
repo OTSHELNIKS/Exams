@@ -39,6 +39,7 @@ import {
   nextReward, frameOf, titleOf, cosmeticById, look as cosmeticsLook, lookFromRow,
 } from './cosmetics.js'
 import { ProfileFrame, ProfileBanner, NickPlate, frameMask } from './frames.jsx'
+import { watchCosmeticChanges } from './cosmetics-sync.js'
 import {
   REGIONS as LOBBY_REGIONS, LOBBY_CAPACITY, ROOM_HINT, normalizeLobbyCode, lobbyCodeValid,
   normalizeRoomId, normalizeRoomPassword, regionLabel, regionHint, describeLobbyError,
@@ -2304,6 +2305,7 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
   useEffect(() => {
     if (!userId) return undefined
     let alive = true
+    let lookRevision = 0
     setRow(null); setError(''); setLoading(true); setLook(null)
     getPublicProfile(userId)
       .then((data) => {
@@ -2313,12 +2315,17 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
       })
       .catch((e) => { if (alive) setError('Не удалось открыть профиль: ' + (e.message || e)) })
       .finally(() => { if (alive) setLoading(false) })
-    // Оформление грузим отдельно: если оно не пришло, карточка всё равно откроется.
-    loadPublicLook(userId)
-      .then((data) => { if (alive && data) setLook(lookFromRow(data)) })
-      .catch(() => {})
-    return () => { alive = false }
-  }, [userId])
+    const refreshLook = async () => {
+      const request = ++lookRevision
+      try {
+        const data = await loadPublicLook(userId)
+        if (alive && request === lookRevision) setLook(data ? lookFromRow(data) : null)
+      } catch { /* карточка по-прежнему доступна */ }
+    }
+    refreshLook()
+    const stop = watchCosmeticChanges(supabase, userId, refreshLook)
+    return () => { alive = false; lookRevision++; stop() }
+  }, [userId, supabase])
 
   const heroes = (row && row.heroes) || []
   const regions = (row && row.regions) || []
@@ -2412,23 +2419,28 @@ export function LeaderboardScreen({ supabase, userId }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const load = async () => {
+  const loadRevision = useRef(0)
+  const leaderboardLoaded = useRef(false)
+  const load = async (silent = false) => {
+    const request = ++loadRevision.current
     if (!supabase) { setLoading(false); setError('Нет подключения к серверу.'); return }
-    setLoading(true); setError('')
+    if (!silent || !leaderboardLoaded.current) { setLoading(true); setError('') }
     try {
-      // leaderboard_ranks считает место и титул на сервере, чтобы «ТОП-3»
-      // нельзя было получить никаким другим путём.
       const ranked = await loadLeaderboardRanks(100)
       if (ranked.error) throw new Error('ranked')
-      setPlayers(ranked.rows)
+      if (request === loadRevision.current) { leaderboardLoaded.current = true; setPlayers(ranked.rows); setError('') }
     } catch (e) {
-      setError('Не удалось загрузить рейтинг: ' + (e.message || e))
+      if ((!silent || !leaderboardLoaded.current) && request === loadRevision.current) setError('Не удалось загрузить рейтинг: ' + (e.message || e))
     } finally {
-      setLoading(false)
+      if (request === loadRevision.current) setLoading(false)
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    const stop = watchCosmeticChanges(supabase, null, () => load(true))
+    return () => { loadRevision.current++; stop() }
+  }, [supabase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const list = players || []
   const lowCount = list.filter((p) => (p.pts || 0) < 4000).length
@@ -2454,7 +2466,7 @@ export function LeaderboardScreen({ supabase, userId }) {
         {!loading && error && (
           <div className="empty-block">
             <p>{error}</p>
-            <button type="button" className="btn btn--ghost" onClick={load}>Повторить</button>
+            <button type="button" className="btn btn--ghost" onClick={() => load()}>Повторить</button>
           </div>
         )}
         {!loading && !error && rows.length === 0 && (
@@ -2996,8 +3008,11 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
   // Пока игрок сам не выбрал предмет, поздний ответ сервера может перезаписать
   // его выбор — поэтому помним, что выбор уже сделан.
   const pickedRef = useRef(false)
-  const [entitlements, setEntitlements] = useState([])
+  const appearanceRevision = useRef(0)
+  const appearanceRefresh = useRef(null)
+  const [entitlements, setEntitlements] = useState(() => state?.entitlements || [])
   const [busy, setBusy] = useState('')
+  const busyRef = useRef(false)
   // Нажатие на карточку — маленький «всплеск»: рамка/плашка дёргается и
   // подсвечивается, чтобы на телефоне было видно, что тап дошёл.
   const [pop, setPop] = useState('')
@@ -3025,14 +3040,22 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
   useEffect(() => {
     if (!supabase || !userId) return undefined
     let alive = true
-    ;(async () => {
-      const [l, e] = await Promise.all([loadLoadout(userId), loadEntitlements(userId)])
-      if (!alive) return
-      // Если игрок уже успел что-то надеть, ответ сервера не должен откатывать выбор.
-      if (l.loadout && !pickedRef.current) setEquipped(equippedFromRow(l.loadout))
-      if (e.entitlements) setEntitlements(e.entitlements)
-    })()
-    return () => { alive = false }
+    pickedRef.current = false
+    const refresh = async () => {
+      const request = ++appearanceRevision.current
+      const hadPicked = pickedRef.current
+      try {
+        const [l, e] = await Promise.all([loadLoadout(userId), loadEntitlements(userId)])
+        if (!alive || request !== appearanceRevision.current || busyRef.current) return
+        // An initial slow read must not undo a choice made while it was pending.
+        if (!l.error && (!pickedRef.current || hadPicked)) setEquipped(equippedFromRow(l.loadout))
+        if (!e.error && e.entitlements) setEntitlements(e.entitlements)
+      } catch { /* keep the current selection when a read fails */ }
+    }
+    appearanceRefresh.current = refresh
+    refresh()
+    const stop = watchCosmeticChanges(supabase, userId, refresh)
+    return () => { alive = false; appearanceRevision.current++; appearanceRefresh.current = null; stop() }
   }, [supabase, userId])
 
   const fullState = playerState({ ...state, entitlements })
@@ -3043,6 +3066,7 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
   const reward = nextReward(fullState)
 
   const equip = async (item) => {
+    if (busyRef.current) return
     if (!userId) { setError('Войди в аккаунт, чтобы выбрать оформление.'); return }
     const status = itemStatus(item, fullState, equipped)
     if (!status.unlocked) {
@@ -3051,33 +3075,38 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
         : `Ещё не открыто: ${status.requirement}${status.left ? ` (осталось ${status.left})` : ''}.`)
       return
     }
-    // «Своя картинка» и «Анимация» — это не готовый фон, а слот под файл.
     if (item.media) {
       pendingItemRef.current = item.id
       setError('')
       if (fileRef.current) fileRef.current.click()
       return
     }
+    appearanceRevision.current++
+    busyRef.current = true
     setBusy(item.id); setError('')
-    // Сразу показываем выбор, а если сервер откажет — вернём как было.
     const before = equipped
     setEquipped((prev) => ({ ...prev, [item.kind]: item.id }))
     pickedRef.current = true
-    const reply = await equipCosmetic(item.id)
-    setBusy('')
-    if (reply.error) {
-      setEquipped(before)
-      setError(reply.error === 'locked'
-        ? 'Сервер не подтвердил условие — обнови профиль и попробуй снова.'
-        : 'Не удалось надеть. Попробуй ещё раз.')
-      return
-    }
-    // Тип берём из ответа сервера: он знает, в какой слот предмет лёг.
-    if (reply.kind && reply.itemId) {
+    try {
+      const reply = await equipCosmetic(item.id)
+      if (reply.error || !reply.kind || !reply.itemId) {
+        setEquipped(before)
+        setError(reply.error === 'locked'
+          ? 'Сервер не подтвердил условие — обнови профиль и попробуй снова.'
+          : 'Не удалось надеть. Попробуй ещё раз.')
+        return
+      }
       setEquipped((prev) => ({ ...prev, [reply.kind]: reply.itemId }))
+      setToast('Готово')
+      if (onEquip) onEquip({ userId, kind: reply.kind, itemId: reply.itemId, entitlements })
+    } catch {
+      setEquipped(before)
+      setError('Не удалось надеть. Попробуй ещё раз.')
+    } finally {
+      busyRef.current = false
+      setBusy('')
+      appearanceRefresh.current?.()
     }
-    setToast('Готово')
-    if (onEquip) onEquip()
   }
 
   // Загрузка своей шапки: файл → наш bucket → RPC (он проверит право и формат).
@@ -3085,10 +3114,12 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
     const file = event.target.files && event.target.files[0]
     event.target.value = '' // чтобы можно было выбрать тот же файл снова
     const itemId = pendingItemRef.current
-    if (!file || !itemId) return
+    if (!file || !itemId || busyRef.current) return
     const bad = validateBanner(file)
     if (bad) { setError(bad); return }
     if (!userId) { setError('Войди в аккаунт, чтобы загрузить шапку.'); return }
+    appearanceRevision.current++
+    busyRef.current = true
     setBusy(itemId); setError('')
     try {
       const url = await uploadBanner(file, userId)
@@ -3104,41 +3135,53 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
       pickedRef.current = true
       setEquipped((prev) => ({ ...prev, banner: itemId, bannerUrl: reply.url || url }))
       setToast('Шапка обновлена')
-      if (onEquip) onEquip()
+      if (onEquip) onEquip({ userId, kind: 'banner', itemId, bannerUrl: reply.url || url, entitlements })
     } catch (e) {
       setError(e && e.message ? e.message : 'Не удалось загрузить файл.')
     } finally {
+      busyRef.current = false
       setBusy('')
+      appearanceRefresh.current?.()
     }
   }
 
   // Убрать свою картинку — вернуться к градиентной шапке.
   const removeBannerMedia = async () => {
+    if (busyRef.current) return
+    appearanceRevision.current++
+    busyRef.current = true
     setBusy('banner-none'); setError('')
-    const reply = await clearBannerMedia()
-    setBusy('')
-    if (reply.error) { setError('Не удалось убрать картинку. Попробуй ещё раз.'); return }
-    setEquipped((prev) => ({ ...prev, bannerUrl: '' }))
-    setToast('Своя шапка убрана')
-    if (onEquip) onEquip()
+    try {
+      const reply = await clearBannerMedia()
+      if (reply.error) { setError('Не удалось убрать картинку. Попробуй ещё раз.'); return }
+      pickedRef.current = true
+      setEquipped((prev) => ({ ...prev, bannerUrl: '' }))
+      setToast('Своя шапка убрана')
+      if (onEquip) onEquip({ userId, bannerUrl: '', entitlements })
+    } catch { setError('Не удалось убрать картинку. Попробуй ещё раз.') }
+    finally { busyRef.current = false; setBusy(''); appearanceRefresh.current?.() }
   }
 
   const redeem = async () => {
+    if (busyRef.current) return
     const value = String(code || '').trim().toUpperCase()
     if (value.length < 6) { setError('Код активации — от 6 символов.'); return }
+    appearanceRevision.current++
+    busyRef.current = true
     setBusy('code'); setError('')
-    const reply = await redeemCosmeticCode(value)
-    setBusy('')
-    if (reply.error) {
-      setError(reply.error === 'used' ? 'Этот код уже активирован.' : reply.error === 'bad_code' ? 'Код не найден. Проверь буквы и цифры.' : 'Не удалось активировать. Попробуй ещё раз.')
-      return
-    }
-    setCode('')
-    setToast('Код принят — оформление открыто')
-    if (userId) {
-      const e = await loadEntitlements(userId)
-      if (e.entitlements) setEntitlements(e.entitlements)
-    }
+    try {
+      const reply = await redeemCosmeticCode(value)
+      if (reply.error) {
+        setError(reply.error === 'used' ? 'Этот код уже активирован.' : reply.error === 'bad_code' ? 'Код не найден. Проверь буквы и цифры.' : 'Не удалось активировать. Попробуй ещё раз.')
+        return
+      }
+      const next = reply.itemId ? [...new Set([...entitlements, reply.itemId])] : entitlements
+      setEntitlements(next)
+      if (onEquip) onEquip({ userId, entitlements: next })
+      setCode('')
+      setToast('Код принят — оформление открыто')
+    } catch { setError('Не удалось активировать. Попробуй ещё раз.') }
+    finally { busyRef.current = false; setBusy(''); appearanceRefresh.current?.() }
   }
 
   return (
@@ -3199,7 +3242,7 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
               className={`cosmetic-card ${status.equipped ? 'is-equipped' : ''} ${status.unlocked ? '' : 'is-locked'} ${pop === item.id ? 'is-pop' : ''}`}
               onClick={() => equip(item)}
               onPointerDown={() => markPop(item.id)}
-              disabled={busy === item.id}
+              disabled={Boolean(busy)}
               aria-label={`${KIND_LABEL[item.kind]} ${item.label}${status.unlocked ? '' : ' — закрыто'}`}
             >
               <span className="cosmetic-card__art">
@@ -3262,7 +3305,7 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
                 pendingItemRef.current = 'banner-photo'
                 if (fileRef.current) fileRef.current.click()
               }}
-              disabled={busy === 'banner-photo'}
+              disabled={Boolean(busy)}
             >
               <Upload size={15} /> {busy === 'banner-photo' ? 'Загружаем…' : 'Загрузить картинку'}
             </button>
@@ -3275,12 +3318,12 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
                 pendingItemRef.current = 'banner-motion'
                 if (fileRef.current) fileRef.current.click()
               }}
-              disabled={busy === 'banner-motion'}
+              disabled={Boolean(busy)}
             >
               <ImageIcon size={15} /> {busy === 'banner-motion' ? 'Загружаем…' : 'Загрузить GIF'}
             </button>
             {equipped.bannerUrl && (
-              <button type="button" className="btn btn--ghost" onClick={removeBannerMedia} disabled={busy === 'banner-none'}>
+              <button type="button" className="btn btn--ghost" onClick={removeBannerMedia} disabled={Boolean(busy)}>
                 <X size={15} /> Убрать свою шапку
               </button>
             )}
@@ -3290,16 +3333,23 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
                 type="button"
                 className="btn btn--ghost"
                 onClick={async () => {
+                  if (busyRef.current) return
+                  appearanceRevision.current++
+                  busyRef.current = true
                   setBusy('admin'); setError('')
-                  const reply = await adminGrantAllPremium()
-                  setBusy('')
-                  if (reply.error) { setError('Не удалось выдать: ' + reply.error); return }
-                  const e = await loadEntitlements(userId)
-                  if (e.entitlements) setEntitlements(e.entitlements)
-                  setToast(`Платный контент закреплён: ${reply.entitlements}`)
-                  if (onEquip) onEquip()
+                  try {
+                    const reply = await adminGrantAllPremium()
+                    if (reply.error) { setError('Не удалось выдать: ' + reply.error); return }
+                    const e = await loadEntitlements(userId)
+                    if (e.entitlements) {
+                      setEntitlements(e.entitlements)
+                      if (onEquip) onEquip({ userId, entitlements: e.entitlements })
+                    }
+                    setToast(`Платный контент закреплён: ${reply.entitlements}`)
+                  } catch { setError('Не удалось выдать права. Попробуй ещё раз.') }
+                  finally { busyRef.current = false; setBusy(''); appearanceRefresh.current?.() }
                 }}
-                disabled={busy === 'admin'}
+                disabled={Boolean(busy)}
               >
                 <ShieldCheck size={15} /> {busy === 'admin' ? 'Выдаём…' : 'Забрать всю коллекцию'}
               </button>
@@ -3330,7 +3380,7 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
             aria-label="Код активации"
           />
         </div>
-        <button type="button" className="btn btn--ghost" onClick={redeem} disabled={busy === 'code'}>
+        <button type="button" className="btn btn--ghost" onClick={redeem} disabled={Boolean(busy)}>
           <Sparkles size={16} /> {busy === 'code' ? 'Проверяем…' : 'Активировать'}
         </button>
         <p className="field-hint">

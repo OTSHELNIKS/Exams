@@ -533,7 +533,7 @@ export async function loadPublicLook(userId) {
     .select('frame_id, banner_id, banner_url, plate_id, title_id, color_id')
     .eq('user_id', userId)
     .maybeSingle()
-  if (error) return null
+  if (error) throw error
   return data || null
 }
 

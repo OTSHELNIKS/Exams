@@ -10,13 +10,14 @@ import {
   MatchScreen, LeaderboardScreen, BannedScreen, SupportScreen, LobbyScreen, AppearanceScreen,
 } from './screens.jsx'
 import { equippedFromRow, playerState, look as computeLook } from './cosmetics.js'
+import { confirmedLoadoutPatch, watchCosmeticChanges } from './cosmetics-sync.js'
 import { transferCaptain } from './rating.js'
 import { AdminScreen } from './admin.jsx'
 import { DEFAULT_PROFILE, splitCombinedGameId, SOCIAL_IDS, parseSocial, formatSocial } from './data.js'
 import {
   supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews,
   getTelegramLink, deleteTelegramLink, createTelegramLinkCode,
-  transferLobbyHostByCode,
+  transferLobbyHostByCode, loadLoadout, loadEntitlements,
 } from './supabase.js'
 import { parseVkReturn, completeVkAuth, startVkAuth, describeVkError, vkConfigured } from './vk-auth.js'
 import { parseTikTokReturn, completeTikTokAuth, startTikTokAuth, describeTikTokError } from './tiktok-auth.js'
@@ -292,16 +293,43 @@ export default function App() {
   // коду давало ReferenceError (TDZ) и белый экран при первом же рендере.
   const gameVerified = Boolean(gameVerifiedId) && String(gameVerifiedId) === String(gameId || '')
 
-  // Косметика грузится один раз на сессию; после смены обновляем вручную.
+  // Общий источник оформления для главной и профиля. Старые запросы не
+  // должны откатывать подтверждённый выбор или попадать в другую сессию.
+  const cosmeticUserId = session?.user?.id || null
+  const cosmeticUserRef = useRef(cosmeticUserId)
+  cosmeticUserRef.current = cosmeticUserId
+  const cosmeticRevision = useRef(0)
   const reloadCosmetics = async () => {
-    if (!supabase || !session?.user?.id) return
+    const revision = ++cosmeticRevision.current
+    const userId = cosmeticUserId
+    if (!supabase || !userId) return
     try {
-      const [l, e] = await Promise.all([loadLoadout(session.user.id), loadEntitlements(session.user.id)])
-      setLoadout(l.loadout || null)
-      setEntitlements(e.entitlements || [])
-    } catch { /* без косметики профиль всё равно работает */ }
+      const [l, e] = await Promise.all([loadLoadout(userId), loadEntitlements(userId)])
+      if (revision !== cosmeticRevision.current || cosmeticUserRef.current !== userId) return
+      // При ошибке чтения не заменяем последнее известное оформление пустым.
+      if (!l.error) setLoadout(l.loadout || null)
+      if (!e.error && e.entitlements) setEntitlements(e.entitlements)
+    } catch (error) {
+      console.warn('Не удалось обновить оформление профиля:', error)
+    }
   }
-  useEffect(() => { reloadCosmetics() }, [supabase, session?.user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setLoadout(null); setEntitlements([])
+    reloadCosmetics()
+    const stop = cosmeticUserId ? watchCosmeticChanges(supabase, cosmeticUserId, reloadCosmetics) : () => {}
+    return () => { cosmeticRevision.current++; stop() }
+  }, [supabase, cosmeticUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Применяем подтверждённый сервером выбор сразу, не дожидаясь повторного
+  // чтения. Затем сверяем всю запись и права с сервером в фоне.
+  const onCosmeticEquip = (change) => {
+    if (!change || change.userId !== cosmeticUserRef.current) return
+    cosmeticRevision.current++
+    const patch = confirmedLoadoutPatch(change)
+    if (Object.keys(patch).length) setLoadout((previous) => ({ ...(previous || {}), ...patch }))
+    if (Array.isArray(change.entitlements)) setEntitlements(change.entitlements)
+    reloadCosmetics()
+  }
 
   const playerCosmeticState = useMemo(() => playerState({
     verified: Boolean(gameVerified),
@@ -628,7 +656,7 @@ export default function App() {
           userId={session?.user?.id || null}
           playerState={playerCosmeticState}
           profile={profile}
-          onEquip={reloadCosmetics}
+          onEquip={onCosmeticEquip}
           onBack={() => go('profile')}
         />
       case 'support':
