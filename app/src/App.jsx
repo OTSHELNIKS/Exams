@@ -287,6 +287,11 @@ export default function App() {
     return () => window.removeEventListener('name:back', onBack)
   }, [screen])
 
+  // «Подтверждён» — только если отметка есть и она про текущий Game ID.
+  // Считаем до косметики: она опирается на этот флаг, а объявление ниже по
+  // коду давало ReferenceError (TDZ) и белый экран при первом же рендере.
+  const gameVerified = Boolean(gameVerifiedId) && String(gameVerifiedId) === String(gameId || '')
+
   // Косметика грузится один раз на сессию; после смены обновляем вручную.
   const reloadCosmetics = async () => {
     if (!supabase || !session?.user?.id) return
@@ -409,9 +414,6 @@ export default function App() {
     try { await deleteTelegramLink(session.user.id) } catch { /* noop */ }
     setTelegramLink(null)
   }
-
-  // «Подтверждён» — только если отметка есть и она про текущий Game ID.
-  const gameVerified = Boolean(gameVerifiedId) && String(gameVerifiedId) === String(gameId || '')
 
   const go = (id) => setScreen(id)
 
