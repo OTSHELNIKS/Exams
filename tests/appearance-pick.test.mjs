@@ -412,6 +412,33 @@ test('T-PICK-22 у коллекционных рамок аватара есть
   assert.equal(document.querySelector('.cosmetics__preview .pframe__shine'), null)
 })
 
+test('T-PICK-23 плашки реально получают стили (а не висят без оформления)', async () => {
+  await mount({ admin: true, player: ADMIN })
+  await clickChip('Рамка имени')
+  await clickCard('Золото')
+  const plate = dom.window.getComputedStyle(previewNick())
+  assert.match(plate.backgroundImage, /linear-gradient/, 'у плашки нет градиента — CSS не применился')
+  assert.equal(plate.borderRadius, '999px')
+  const gem = previewNick().querySelector('.nick__gem')
+  assert.ok(gem, 'нет камня')
+  assert.match(dom.window.getComputedStyle(gem).backgroundImage, /linear-gradient/)
+  // Бегущий блик действительно анимирован.
+  const gleam = previewNick().querySelector('.nick__gleam')
+  assert.ok(gleam, 'нет элемента блика')
+  // Псевдоэлементы jsdom не вычисляет — проверяем, что правило и кадры на месте.
+  const css = readFileSync(join(app, 'src/styles.css'), 'utf8')
+  assert.match(css, /\.nick__gleam::after\s*\{[\s\S]{0,400}animation: nickGleam/)
+  assert.match(css, /@keyframes nickGleam/)
+
+  await clickCard('Золотой ник')
+  const ink = dom.window.getComputedStyle(previewNick().querySelector('.nick__text'))
+  // Прозрачная заливка: цвет даёт gradient-фон, а не сплошная краска.
+  const fill = ink.webkitTextFillColor || ink.color || ''
+  assert.match(fill, /transparent|rgba\(0, 0, 0, 0\)/, 'у золотого ника текст не переливается')
+  assert.match(ink.backgroundImage, /linear-gradient/)
+  assert.doesNotMatch(previewNick().getAttribute('class'), /nick--plate/)
+})
+
 rmSync(bundle, { force: true })
 
 for (const { name, fn } of queue) {

@@ -1210,7 +1210,128 @@ export function SocialRow({
   )
 }
 
-export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onEdit, isAdmin, onAdmin, look = null, onCosmetics, supabase, userId }) {
+/* ========================================================= PLAYER CARD ==== */
+
+/**
+ * Карточка игрока — одна и та же на главной, в профиле и в чужой карточке.
+ *
+ * Раньше эти три места рисовали себя по отдельности, и главная оказалась
+ * беднее: не было шапки профиля, Game ID и сервера, КДА с винрейтом, серверов
+ * и любимых героев. Теперь разметка одна, а отличаются только данные и
+ * кнопки под карточкой — так они не разъедутся снова.
+ */
+export function PlayerCard({
+  look = null,
+  nick = '',
+  initials,
+  avatarUrl = '',
+  level = null,
+  bannerHeight = 128,
+  avatarSize = 104,
+  gameId = '',
+  gameServer = '',
+  gameVerified = false,
+  kda = null,
+  winrate = null,
+  matches = null,
+  statsAt = '',
+  elo = null,
+  roles = [],
+  rank = '',
+  bio = '',
+  showGameId = true,
+  showStats = true,
+  className = '',
+  children,
+}) {
+  const roleList = roles || []
+  const hasBadges = elo != null || roleList.length > 0 || Boolean(rank)
+  const hasGameStats = kda != null || winrate != null || matches != null
+  // Три честных состояния: цифры есть; аккаунт подтверждён, но шлюз молчит;
+  // подтверждения не было. Никаких нулей «для красоты».
+  const statNote = hasGameStats
+    ? `Данные игры${matches ? ` · ${matches} матчей` : ''}${statsAt ? ` · обновлено ${new Date(statsAt).toLocaleDateString('ru-RU')}` : ''}.`
+    : gameVerified
+      ? 'Аккаунт подтверждён. Игра сейчас не отдаёт статистику — цифры появятся, как только шлюз MLBB снова её откроет.'
+      : 'КДА и винрейт появятся после подтверждения аккаунта через внутриигровую почту MLBB.'
+
+  return (
+    <div className={`profile-card ${className}`.trim()}>
+      <ProfileBanner css={look ? look.bannerCss : 'pbanner-none'} url={look ? look.bannerUrl : ''} height={bannerHeight} />
+      <div className="profile-card__body">
+        <Avatar
+          src={avatarUrl || null}
+          initials={initials || (nick?.[0] || '?').toUpperCase()}
+          level={level}
+          size={avatarSize}
+          frame={look ? look.framePalette : null}
+          frameMotif={look ? look.frameMotif : 'classic'}
+          frameShine={Boolean(look && look.frameShine)}
+        />
+        <div className="profile-card__id">
+          <h1>
+            <NickPlate
+              css={look ? look.plateCss : ''}
+              shine={Boolean(look && look.plateShine)}
+              frame={Boolean(look && look.plateFrame)}
+              color={look ? look.colorValue : ''}
+            >
+              {nick || 'Новый игрок'}
+            </NickPlate>
+          </h1>
+          {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
+          {showGameId && (gameId || gameServer) ? (
+            <p className="profile__gameid">
+              Game ID • {gameId || '—'}
+              <span className="profile__server"> · сервер {gameServer || '—'}</span>
+            </p>
+          ) : null}
+          {hasBadges && (
+            <div className="home__badges">
+              {elo != null && <StatBadge tone="elo"><Zap size={14} /> {elo} ELO</StatBadge>}
+              {roleList.length > 0 && <StatBadge tone="dark"><UserRound size={14} /> {roleList[0]}</StatBadge>}
+              {rank ? <StatBadge tone="dark"><Trophy size={14} /> {rank}</StatBadge> : null}
+            </div>
+          )}
+          {showStats && hasGameStats && (
+            <div className="pcard__stats">
+              <span><b>{kda == null ? '—' : Number(kda).toFixed(2).replace(/\.00$/, '')}</b><small>КДА</small></span>
+              <span><b>{winrate == null ? '—' : `${winrate}%`}</b><small>ВИНРЕЙТ</small></span>
+              {matches != null && <span><b>{matches}</b><small>МАТЧЕЙ</small></span>}
+            </div>
+          )}
+          {showStats ? <p className="pcard__note">{statNote}</p> : null}
+          {bio ? <p className="home__bio">{bio}</p> : null}
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** КДА/винрейт/матчи из строки профиля: null, если игра ещё не отдавала цифры. */
+export function gameStatsOf(row) {
+  const src = row || {}
+  return {
+    kda: src.game_kda === null || src.game_kda === undefined ? null : Number(src.game_kda),
+    winrate: src.game_winrate === null || src.game_winrate === undefined ? null : Number(src.game_winrate),
+    matches: src.game_matches === null || src.game_matches === undefined ? null : Number(src.game_matches),
+    statsAt: src.game_stats_at || '',
+    verified: Boolean(src.game_verified),
+  }
+}
+
+/** Строка «серверы» — одинаковая на главной и в профиле. */
+export function RegionChips({ regions = [] }) {
+  if (!regions || !regions.length) return null
+  return (
+    <div className="pub__chips">
+      {regions.map((r) => <span key={r} className="pub__chip"><Server size={13} /> {r}</span>)}
+    </div>
+  )
+}
+
+export function HomeScreen({ profile, actions, gameId, gameServer, gameVerified = false, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onEdit, isAdmin, onAdmin, look = null, onCosmetics, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -1218,56 +1339,52 @@ export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount
     return () => clearTimeout(t)
   }, [toast])
 
-  const hasBadges = profile.elo != null || (profile.roles || []).length > 0
-
   return (
     <div className="screen home">
       <div className="home__col home__col--main">
-      {(gameId || isAdmin) ? (
+      {/* Game ID теперь в карточке игрока — не дублируем его второй раз. */}
+      {isAdmin ? (
         <div className="home__header">
-          {gameId ? (
-            <span className="home__id">
-              ID • {gameId}
-              {gameServer ? <em className="home__id-server">сервер {gameServer}</em> : null}
-            </span>
-          ) : null}
-          {isAdmin ? (
-            <button type="button" className="home__admin" onClick={onAdmin}>
-              <CrownIcon /> ADMIN
-            </button>
-          ) : null}
+          <button type="button" className="home__admin" onClick={onAdmin}>
+            <CrownIcon /> ADMIN
+          </button>
         </div>
       ) : null}
 
-      <div className="home__hero">
-        <Avatar
-          src={profile.avatarUrl || profile.avatar || null}
-          initials={(profile.nick?.[0] || '?').toUpperCase()}
-          level={profile.level}
-          size={104}
-          frame={look ? look.framePalette : null}
-          frameMotif={look ? look.frameMotif : 'classic'}
-          frameShine={Boolean(look && look.frameShine)}
-        />
-        <h1>
-          <NickPlate
-            css={look ? look.plateCss : ''}
-            shine={Boolean(look && look.plateShine)}
-            frame={Boolean(look && look.plateFrame)}
-            color={look ? look.colorValue : ''}
-          >
-            {profile.nick || 'Новый игрок'}
-          </NickPlate>
-        </h1>
-        {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
-        {hasBadges && (
-          <div className="home__badges">
-            {profile.elo != null && <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>}
-            {(profile.roles || []).length > 0 && <StatBadge tone="dark"><UserRound size={14} /> {profile.roles[0]}</StatBadge>}
-          </div>
-        )}
-        {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
-      </div>
+      {/* Та же карточка, что в профиле и в чужой карточке: шапка, рамка,
+          ник, титул, Game ID, сервер, КДА и винрейт. */}
+      <PlayerCard
+        look={look}
+        nick={profile.nick}
+        avatarUrl={profile.avatarUrl || profile.avatar || null}
+        level={profile.level}
+        bannerHeight={128}
+        gameId={gameId}
+        gameServer={gameServer}
+        gameVerified={gameVerified}
+        kda={profile.gameKda}
+        winrate={profile.gameWinrate}
+        matches={profile.gameMatches}
+        statsAt={profile.gameStatsAt}
+        elo={profile.elo}
+        roles={profile.roles}
+        rank={profile.rank}
+        bio={profile.bio}
+        className="profile-card--home"
+      />
+
+      <div className="section-head"><span>ЛЮБИМЫЕ ГЕРОИ</span><b>{(profile.heroes || []).length}/6</b></div>
+      <HeroStrip names={profile.heroes} empty="Героев пока нет — выбери их в анкете." />
+      <button type="button" className="slot-btn" onClick={onEdit}>
+        <Settings size={15} /> {(profile.heroes || []).length ? 'Изменить героев' : 'Выбрать героев'}
+      </button>
+
+      {(profile.regions || []).length > 0 && (
+        <>
+          <div className="section-head"><span>ИГРОВЫЕ СЕРВЕРЫ</span></div>
+          <RegionChips regions={profile.regions} />
+        </>
+      )}
 
       <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} onUnlinkTelegram={onUnlinkTelegram} onStartTelegram={onStartTelegram} onRefreshTelegram={onRefreshTelegram} onLinkVk={onLinkVk} onLinkTikTok={onLinkTikTok} notice={socialNotice} onNoticeShown={onSocialNoticeShown} />
 
@@ -1464,8 +1581,6 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
     if (!result.opened) setGameHelp(gameHelpText(detectPlatform()))
   }
 
-  const hasBadges = profile.elo != null || (profile.roles || []).length > 0
-
   return (
     <div className="screen profile">
       <div className="profile__head">
@@ -1474,49 +1589,36 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
       </div>
 
       <div className="home__col home__col--main">
-      <div className="profile-card">
-        <ProfileBanner css={look ? look.bannerCss : 'pbanner-none'} url={look ? look.bannerUrl : ''} height={128} />
-        <div className="profile-card__body">
-          <Avatar
-            src={profile.avatarUrl || profile.avatar || null}
-            initials={(profile.nick?.[0] || '?').toUpperCase()}
-            level={profile.level}
-            size={116}
-            frame={look ? look.framePalette : null}
-            frameMotif={look ? look.frameMotif : 'classic'}
-            frameShine={Boolean(look && look.frameShine)}
-          />
-          <div className="profile-card__id">
-            <h1>
-              <NickPlate
-                css={look ? look.plateCss : ''}
-                shine={Boolean(look && look.plateShine)}
-                frame={Boolean(look && look.plateFrame)}
-                color={look ? look.colorValue : ''}
-              >
-                {profile.nick || 'Новый игрок'}
-              </NickPlate>
-            </h1>
-            {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
-            {gameId || gameServer ? (
-              <p className="profile__gameid">
-                Game ID • {gameId || '—'}
-                <span className="profile__server"> · сервер {gameServer || '—'}</span>
-              </p>
-            ) : null}
-            {hasBadges && (
-              <div className="home__badges">
-                {profile.elo != null && <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>}
-                {(profile.roles || []).length > 0 && <StatBadge tone="dark"><UserRound size={14} /> {profile.roles[0]}</StatBadge>}
-              </div>
-            )}
-            {profile.bio ? <p className="home__bio">{profile.bio}</p> : null}
-            <button type="button" className="btn btn--small profile-card__style" onClick={onCosmetics}>
-              <Sparkles size={15} /> Оформление профиля
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Та же карточка, что на главной и в чужой карточке. */}
+      <PlayerCard
+        look={look}
+        nick={profile.nick}
+        avatarUrl={profile.avatarUrl || profile.avatar || null}
+        level={profile.level}
+        bannerHeight={128}
+        gameId={gameId}
+        gameServer={gameServer}
+        gameVerified={Boolean(gameVerified)}
+        kda={profile.gameKda}
+        winrate={profile.gameWinrate}
+        matches={profile.gameMatches}
+        statsAt={profile.gameStatsAt}
+        elo={profile.elo}
+        roles={profile.roles}
+        rank={profile.rank}
+        bio={profile.bio}
+      >
+        <button type="button" className="btn btn--small profile-card__style" onClick={onCosmetics}>
+          <Sparkles size={15} /> Оформление профиля
+        </button>
+      </PlayerCard>
+
+      {(profile.regions || []).length > 0 && (
+        <>
+          <div className="section-head"><span>ИГРОВЫЕ СЕРВЕРЫ</span></div>
+          <RegionChips regions={profile.regions} />
+        </>
+      )}
 
       <div className="section-head"><span>ЛЮБИМЫЕ ГЕРОИ</span><b>{(profile.heroes || []).length}/6</b></div>
       <HeroStrip names={profile.heroes} empty="Героев пока нет — выбери их в анкете." />
@@ -2223,16 +2325,6 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
   const socials = ((row && row.socials) || [])
     .map(parseSocial)
     .filter((x) => SOCIAL_IDS.includes(x.provider))
-  // КДА и винрейт приходят из игры — их пишет edge-функция game-login сразу
-  // после кода из внутриигровой почты. Если подтверждения не было, честно «—».
-  const kda = row && row.game_kda !== null && row.game_kda !== undefined
-    ? Number(row.game_kda).toFixed(2).replace(/\.00$/, '')
-    : null
-  const winrate = row && row.game_winrate !== null && row.game_winrate !== undefined
-    ? `${row.game_winrate}%`
-    : null
-  const matches = row && row.game_matches ? Number(row.game_matches) : null
-
   return (
     <Modal open={Boolean(userId)} onClose={onClose} className="modal--player" labelledBy="public-profile-title">
       {loading && <div className="empty">Загружаем профиль…</div>}
@@ -2244,48 +2336,29 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
       )}
       {!loading && !error && row && (
         <>
-          <ProfileBanner css={look ? look.bannerCss : 'pbanner-none'} url={look ? look.bannerUrl : ''} height={96} />
-          <div className="pub__head">
-            <Avatar
-              src={row.avatar_url || null}
-              initials={(row.nick?.[0] || '?').toUpperCase()}
-              size={84}
-              frame={look ? look.framePalette : null}
-              frameMotif={look ? look.frameMotif : 'classic'}
-              frameShine={Boolean(look && look.frameShine)}
-            />
-            <div>
-              <h3 id="public-profile-title">
-                <NickPlate
-                  css={look ? look.plateCss : ''}
-                  shine={Boolean(look && look.plateShine)}
-                  frame={Boolean(look && look.plateFrame)}
-                  color={look ? look.colorValue : ''}
-                >
-                  {row.nick}{isMe ? ' (вы)' : ''}
-                </NickPlate>
-              </h3>
-              {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
-            </div>
-          </div>
+          {/* Та же карточка, что на главной и в профиле. Game ID, скриншоты и
+              почта здесь не показываются — это видит только владелец. */}
+          <PlayerCard
+            look={look}
+            nick={`${row.nick || ''}${isMe ? ' (вы)' : ''}`}
+            avatarUrl={row.avatar_url || null}
+            bannerHeight={96}
+            avatarSize={84}
+            showGameId={false}
+            gameVerified={Boolean(row.game_verified)}
+            kda={row.game_kda}
+            winrate={row.game_winrate}
+            matches={row.game_matches}
+            statsAt={row.game_stats_at || ''}
+            elo={row.pts}
+            roles={roles}
+            rank={row.rank}
+            bio={row.bio}
+            className="profile-card--public"
+          />
           <p className="modal__role">
             {roles.length ? roles.join(' · ') : 'Роли не указаны'} · {row.rank || 'ранг не указан'}
           </p>
-
-          <div className="modal__stats">
-            <div><b>{row.pts ?? 0}</b><span>PTS</span></div>
-            <div><b>{kda ?? '—'}</b><span>КДА</span></div>
-            <div><b>{winrate ?? '—'}</b><span>ВИНРЕЙТ</span></div>
-          </div>
-          <p className="pub__note pub__note--stats">
-            {winrate || kda
-              ? `Данные игры${matches ? ` · ${matches} матчей` : ''}${row.game_stats_at ? ` · обновлено ${new Date(row.game_stats_at).toLocaleDateString('ru-RU')}` : ''}.`
-              : row.game_verified
-                ? 'Аккаунт подтверждён. Игра сейчас не отдаёт статистику — цифры появятся, как только шлюз MLBB снова её откроет.'
-                : 'КДА и винрейт появятся после подтверждения аккаунта через внутриигровую почту MLBB.'}
-          </p>
-
-          {row.bio ? <p className="pub__bio">{row.bio}</p> : null}
 
           {regions.length > 0 && (
             <>

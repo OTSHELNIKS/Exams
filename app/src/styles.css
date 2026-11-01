@@ -1509,6 +1509,11 @@ html.is-modal-open .rail { overflow: hidden !important; }
   box-shadow: inset 0 0 24px rgba(57,240,255,.45);
 }
 .pbanner-aurora {
+  background:
+    radial-gradient(120% 160% at 12% 10%, rgba(63,203,123,.85), transparent 55%),
+    radial-gradient(110% 150% at 78% 20%, rgba(168,119,240,.85), transparent 60%),
+    linear-gradient(120deg, #0a2b3a, #140b2e);
+}
 
 /* ------------------------------------------------------- рамка имени (ник) */
 
@@ -1700,11 +1705,6 @@ html.is-modal-open .rail { overflow: hidden !important; }
   .nick--shine .nick__text { animation: none; }
   .nick--shine .nick__text { background-position: 30% 50%; }
 }
-  background:
-    radial-gradient(120% 160% at 12% 10%, rgba(63,203,123,.85), transparent 55%),
-    radial-gradient(110% 150% at 78% 20%, rgba(168,119,240,.85), transparent 60%),
-    linear-gradient(120deg, #0a2b3a, #140b2e);
-}
 
 /* Карточка профиля: баннер сверху, аватар внахлёст, данные ниже. */
 .profile-card {
@@ -1724,6 +1724,34 @@ html.is-modal-open .rail { overflow: hidden !important; }
 .profile-card__id .home__bio { margin: 4px 0 0; }
 .profile-card__id .home__badges { margin-top: 2px; }
 .profile-card__style { margin-top: 8px; }
+
+/* ------------------------------------------------------------------------
+   Карточка игрока: одна и та же на главной, в профиле и в чужой карточке.
+   Отличаются только размер аватара и шапки, поэтому правки не разъезжаются.
+   ---------------------------------------------------------------------- */
+.pcard__stats {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+}
+.pcard__stats span {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 76px; padding: 7px 12px; border-radius: 12px;
+  background: var(--surface-2, rgba(255, 255, 255, .04));
+  border: 1px solid var(--line, rgba(255, 255, 255, .08));
+}
+.pcard__stats b { font-family: var(--display); font-weight: 900; font-size: 17px; line-height: 1.1; color: var(--text, #f4f1ea); }
+.pcard__stats small { font-size: 10px; letter-spacing: .8px; font-weight: 800; color: var(--dim, #8b93a4); margin-top: 2px; }
+.pcard__note { margin: 4px 0 0; font-size: 12px; line-height: 1.45; color: var(--dim, #8b93a4); }
+/* На главной карточка — первый блок после шапки: тот же вид, что в профиле. */
+.profile-card--home { margin-top: 4px; }
+/* В чужой карточке шапка внутри модалки — скругляем углы со всех сторон. */
+.profile-card--public { background: transparent; border: 0; }
+.profile-card--public .pbanner { border-radius: 16px; }
+.profile-card--public .profile-card__body { padding-left: 6px; padding-right: 6px; }
+
+@media (min-width: 1024px) {
+  .pcard__stats small { font-size: 11px; }
+  .pcard__note { font-size: 13px; }
+}
 
 /* Экран «Оформление профиля». */
 .cosmetics__preview {

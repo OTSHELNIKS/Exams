@@ -170,6 +170,74 @@ test('T-BOOT-07 каждый экран монтируется отдельно 
   rmSync(screensBundle, { force: true })
 })
 
+test('T-BOOT-09 главная показывает то же, что профиль и карточка игрока', async () => {
+  const screensBundle = join(app, '.app-boot-home.mjs')
+  await esbuild.build({
+    entryPoints: [join(app, 'src/screens.jsx')],
+    bundle: true,
+    format: 'esm',
+    outfile: screensBundle,
+    jsx: 'automatic',
+    external: ['react', 'react-dom', 'react/jsx-runtime', 'react-dom/client', 'lucide-react'],
+    define: { 'import.meta.env': '{}' },
+    logLevel: 'silent',
+  })
+  const S = await import(screensBundle)
+  const profile = {
+    nick: 'QA', level: 3, roles: ['Маг'], regions: ['СНГ', 'Европа'], heroes: ['Тигрил'],
+    socials: [], screenshots: [], elo: 1016, rank: 'Легенда',
+    matchesPlayed: 120, wins: 70,
+    gameKda: 2.45, gameWinrate: 58, gameMatches: 120, gameStatsAt: '2026-11-01T10:00:00Z',
+    bio: 'Играю мид',
+  }
+  const look = {
+    framePalette: 'gold', frameMotif: 'laurel', frameShine: false,
+    bannerCss: 'pbanner-ember', bannerUrl: '', titleText: 'ВЕТЕРАН',
+    colorValue: '#ffc83d', plateCss: 'plate-gold', plateShine: true, plateFrame: true,
+  }
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const r = createRoot(host)
+  r.render(React.createElement(S.HomeScreen, {
+    profile,
+    actions: { goLeaderboard() {}, goDraft() {}, addSlot() {} },
+    gameId: '123456789', gameServer: '1234', gameVerified: true,
+    look, onEdit() {}, supabase: null, userId: 'u1',
+  }))
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  const html = host.innerHTML
+  const text = host.textContent || ''
+
+  // Шапка профиля, рамка и плашка — на главной, а не только в профиле.
+  assert.ok(host.querySelector('.profile-card'), 'на главной нет карточки игрока')
+  assert.match(host.querySelector('.profile-card .pbanner').getAttribute('class'), /pbanner-ember/, 'нет шапки профиля')
+  assert.ok(host.querySelector('.pframe--laurel'), 'нет рамки аватара')
+  assert.ok(host.querySelector('.nick--plate.plate-gold'), 'нет рамки имени')
+  assert.match(text, /ВЕТЕРАН/, 'нет титула')
+
+  // Game ID и сервер (раньше были только в профиле).
+  assert.match(text, /Game ID • 123456789/)
+  assert.match(text, /сервер 1234/)
+
+  // КДА, винрейт и матчи из игры.
+  assert.ok(host.querySelector('.pcard__stats'), 'нет цифр игры')
+  assert.match(text, /2\.45/)
+  assert.match(text, /58%/)
+  assert.match(text, /120/, 'нет числа матчей')
+
+  // Любимые герои и серверы — как в профиле и в чужой карточке.
+  assert.ok(host.querySelector('.hero-strip'), 'нет любимых героев')
+  assert.match(text, /Тигрил/)
+  const chips = Array.from(host.querySelectorAll('.pub__chip')).map((n) => n.textContent.trim())
+  assert.ok(chips.some((c) => c.includes('СНГ')), 'нет серверов игры')
+
+  // Био и соцсети тоже на месте.
+  assert.match(text, /Играю мид/)
+  r.unmount()
+  host.remove()
+  rmSync(screensBundle, { force: true })
+})
+
 test('T-BOOT-08 все девять рамок рисуются и не ломают разметку', async () => {
   const framesBundle = join(app, '.app-boot-frames.mjs')
   await esbuild.build({

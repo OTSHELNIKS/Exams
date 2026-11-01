@@ -34,6 +34,11 @@ export function rowToProfile(row, defaults) {
     // Матчи и победы платформы: нужны для косметики и вех (100/500 матчей).
     matchesPlayed: row.matches_played || 0, wins: row.wins || 0,
     elo: row.pts === null || row.pts === undefined ? null : row.pts,
+    // КДА/винрейт игры: те же цифры, что видит чужой игрок в карточке.
+    gameKda: row.game_kda === null || row.game_kda === undefined ? null : Number(row.game_kda),
+    gameWinrate: row.game_winrate === null || row.game_winrate === undefined ? null : Number(row.game_winrate),
+    gameMatches: row.game_matches === null || row.game_matches === undefined ? null : Number(row.game_matches),
+    gameStatsAt: row.game_stats_at || '',
     isBanned: !!row.is_banned, banReason: row.ban_reason || '', avatar: null }
 }
 

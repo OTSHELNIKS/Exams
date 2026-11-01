@@ -141,23 +141,32 @@ test('T-PUB-16 статистика игры лежит в публичной в
   assert.ok(!/game_id\b/.test(view), 'во вьюху утёк Game ID')
 })
 
-test('T-PUB-17 в карточке КДА и винрейт вместо героев и соцсетей', () => {
-  const src = card()
-  assert.match(src, /<span>КДА<\/span>/, 'нет плитки КДА')
-  assert.match(src, /<span>ВИНРЕЙТ<\/span>/, 'нет плитки винрейта')
-  assert.match(src, /row\.game_kda/, 'КДА не берётся из данных игры')
-  assert.match(src, /row\.game_winrate/, 'винрейт не берётся из данных игры')
-  // Плитки статистики: ровно три — PTS, КДА, ВИНРЕЙТ (героев и соцсетей там нет).
-  const stats = src.slice(src.indexOf('modal__stats'), src.indexOf('</div>', src.indexOf('modal__stats')))
-  assert.doesNotMatch(src.slice(src.indexOf('modal__stats'), src.indexOf('modal__stats') + 700), /ГЕРОИ|СОЦСЕТИ/, 'в статистике остались старые плитки')
-  assert.match(src, /pub__socials/, 'список соцсетей ниже должен остаться')
+// Общая карточка: её рисуют главная, профиль и чужая карточка.
+const sharedCard = () => screens.slice(
+  screens.indexOf('export function PlayerCard'),
+  screens.indexOf('/** КДА/винрейт/матчи из строки профиля'),
+)
+
+test('T-PUB-17 в карточке есть КДА и винрейт из данных игры', () => {
+  const src = sharedCard()
+  assert.match(src, /<small>КДА<\/small>/, 'нет плитки КДА')
+  assert.match(src, /<small>ВИНРЕЙТ<\/small>/, 'нет плитки винрейта')
+  assert.match(src, /kda == null \? '—'/, 'КДА не берётся из данных игры')
+  assert.match(src, /winrate == null \? '—'/, 'винрейт не берётся из данных игры')
+  // Сами цифры приходят из строки профиля, а не выдумываются на клиенте.
+  assert.match(card(), /kda=\{row\.game_kda\}/)
+  assert.match(card(), /winrate=\{row\.game_winrate\}/)
+  // Соцсети в чужой карточке остаются отдельным списком.
+  assert.match(card(), /pub__socials/)
 })
 
 test('T-PUB-18 без подтверждения карточка честно показывает «—»', () => {
-  const src = card()
-  assert.match(src, /kda \?\? '—'/)
-  assert.match(src, /winrate \?\? '—'/)
+  const src = sharedCard()
+  assert.match(src, /kda == null \? '—'/)
+  assert.match(src, /winrate == null \? '—'/)
   assert.match(src, /появятся после подтверждения аккаунта через внутриигровую почту/)
+  // И честное «подтверждён, но шлюз молчит» — без выдуманных нулей.
+  assert.match(src, /Аккаунт подтверждён\. Игра сейчас не отдаёт статистику/)
 })
 
 test('T-PUB-19 винрейт и КДА считаются из данных игры', () => {
@@ -168,6 +177,24 @@ test('T-PUB-19 винрейт и КДА считаются из данных и�
   assert.match(fn, /game_winrate/)
   assert.match(fn, /\/user\/stats/)
   assert.match(fn, /\/user\/matches/)
+})
+
+test('T-PUB-20 главная, профиль и чужая карточка рисуют один и тот же PlayerCard', () => {
+  const screen = (name, next) => screens.slice(screens.indexOf(`export function ${name}`), screens.indexOf(`export function ${next}`))
+  const home = screen('HomeScreen', 'BannedScreen')
+  const profile = screen('ProfileScreen', 'DraftScreen')
+  for (const [name, src] of [['главная', home], ['профиль', profile], ['чужая карточка', card()]]) {
+    assert.match(src, /<PlayerCard\b/, `${name}: нет общей карточки`)
+  }
+  // И данные на главной те же, а не «сокращённый вариант».
+  assert.match(home, /gameId=\{gameId\}/)
+  assert.match(home, /kda=\{profile\.gameKda\}/)
+  assert.match(home, /winrate=\{profile\.gameWinrate\}/)
+  assert.match(home, /matches=\{profile\.gameMatches\}/)
+  assert.match(home, /<HeroStrip/)
+  assert.match(home, /<RegionChips/)
+  // Game ID в публичной карточке не показываем — это данные владельца.
+  assert.match(card(), /showGameId=\{false\}/)
 })
 
 console.log(`\npublic-profile: ${passed}/${passed + failed}`)

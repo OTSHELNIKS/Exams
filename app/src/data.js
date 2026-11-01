@@ -298,6 +298,12 @@ export const DEFAULT_PROFILE = {
   level: null,
   gameId: '',
   gameServer: '',
+  // КДА, винрейт и матчи пишет edge-функция game-login после кода из игры.
+  // null — значит «игра ещё не отдавала цифры»; рисовать на пустоте нельзя.
+  gameKda: null,
+  gameWinrate: null,
+  gameMatches: null,
+  gameStatsAt: '',
   extraSlots: 0,
   socials: [],
   avatar: null,

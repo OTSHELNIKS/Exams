@@ -416,8 +416,10 @@ test('T-COS-24 слово «косметика» из интерфейса уб�
   assert.doesNotMatch(screens, /title="Косметика"/)
   assert.doesNotMatch(screens, />\s*Косметика\s*</)
   assert.doesNotMatch(screens, /КОСМЕТИКА И ТИТУЛЫ/)
-  // Карточка профиля: баннер сверху и рамка на аватаре.
-  assert.match(screens, /className="profile-card"/)
+  // Карточка профиля — общий компонент PlayerCard: баннер сверху и рамка на
+  // аватаре. Он же рисует главную и чужую карточку, поэтому вид один.
+  assert.match(screens, /export function PlayerCard/)
+  assert.match(screens, /<PlayerCard\b/)
   assert.match(screens, /<ProfileBanner css=\{look \? look\.bannerCss : 'pbanner-none'\}/)
   assert.match(screens, /frame=\{look \? look\.framePalette : null\}/)
   assert.match(screens, /frameMotif=\{look \? look\.frameMotif : 'classic'\}/)
@@ -519,6 +521,32 @@ test('T-COS-41 рамка имени другого игрока приходи�
   const screens = read('app/src/screens.jsx')
   assert.match(screens, /<NickPlate/)
   assert.match(screens, /lookFromRow\(r\)\.plateCss/)
+})
+
+test('T-COS-42 стили ника и плашек объявлены на верхнем уровне', () => {
+  // Реальный баг: блок плашек вставился внутрь правила .pbanner-aurora, и все
+  // плашки разом потеряли оформление. Поэтому проверяем вложенность, а не
+  // только наличие селектора в файле.
+  const css = read('app/src/styles.css')
+  const lines = css.split('\n')
+  let depth = 0
+  const nested = []
+  for (const line of lines) {
+    const trimmed = line.trim()
+    const opensRule = trimmed.endsWith('{')
+    if (depth > 0 && opensRule && /^\.(nick|pcard|profile-card|pframe)/.test(trimmed)) {
+      nested.push(`${depth}: ${trimmed}`)
+    }
+    // @media тоже должен стоять снаружи: внутри правила он молча ломает стили.
+    if (depth > 0 && trimmed.startsWith('@media')) nested.push(`${depth}: ${trimmed}`)
+    depth += (line.match(/\{/g) || []).length
+    depth -= (line.match(/\}/g) || []).length
+  }
+  assert.deepEqual(nested, [], 'есть селекторы, вложенные в чужое правило')
+  assert.equal(depth, 0, 'скобки в styles.css не сбалансированы')
+  // И шапка «Аврора» содержит ровно свои градиенты.
+  const aurora = css.slice(css.indexOf('.pbanner-aurora {'), css.indexOf('.pbanner-aurora {') + 400)
+  assert.match(aurora, /background:[\s\S]{0,260}linear-gradient\(120deg, #0a2b3a, #140b2e\);/)
 })
 
 // -------------------------------------- своя шапка: картинка и анимация
@@ -661,6 +689,32 @@ test('T-COS-41 рамка имени другого игрока приходи�
   const screens = read('app/src/screens.jsx')
   assert.match(screens, /<NickPlate/)
   assert.match(screens, /lookFromRow\(r\)\.plateCss/)
+})
+
+test('T-COS-42 стили ника и плашек объявлены на верхнем уровне', () => {
+  // Реальный баг: блок плашек вставился внутрь правила .pbanner-aurora, и все
+  // плашки разом потеряли оформление. Поэтому проверяем вложенность, а не
+  // только наличие селектора в файле.
+  const css = read('app/src/styles.css')
+  const lines = css.split('\n')
+  let depth = 0
+  const nested = []
+  for (const line of lines) {
+    const trimmed = line.trim()
+    const opensRule = trimmed.endsWith('{')
+    if (depth > 0 && opensRule && /^\.(nick|pcard|profile-card|pframe)/.test(trimmed)) {
+      nested.push(`${depth}: ${trimmed}`)
+    }
+    // @media тоже должен стоять снаружи: внутри правила он молча ломает стили.
+    if (depth > 0 && trimmed.startsWith('@media')) nested.push(`${depth}: ${trimmed}`)
+    depth += (line.match(/\{/g) || []).length
+    depth -= (line.match(/\}/g) || []).length
+  }
+  assert.deepEqual(nested, [], 'есть селекторы, вложенные в чужое правило')
+  assert.equal(depth, 0, 'скобки в styles.css не сбалансированы')
+  // И шапка «Аврора» содержит ровно свои градиенты.
+  const aurora = css.slice(css.indexOf('.pbanner-aurora {'), css.indexOf('.pbanner-aurora {') + 400)
+  assert.match(aurora, /background:[\s\S]{0,260}linear-gradient\(120deg, #0a2b3a, #140b2e\);/)
 })
 
 // -------------------------------------- своя шапка: картинка и анимация
