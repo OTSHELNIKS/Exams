@@ -124,6 +124,70 @@ export async function deleteScreenshot(publicUrl, userId) {
   } catch { /* noop: URL row update is the source of truth */ }
 }
 
+// Шапка профиля: картинка или анимация. GIF не пережимаем — иначе умрёт
+// анимация; статичные картинки ужимаем, чтобы 4 МБ лимит bucket не мешал.
+const BANNER_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const BANNER_MAX_BYTES = 4 * 1024 * 1024
+const BANNER_MAX_SIDE = 1920
+
+export function validateBanner(file) {
+  if (!file) return 'Файл не выбран'
+  if (!BANNER_TYPES.includes(file.type)) return 'Только JPG, PNG, WebP или GIF'
+  if (file.size > BANNER_MAX_BYTES) return 'Файл больше 4 МБ'
+  return ''
+}
+
+/** Загрузить шапку в свой bucket и вернуть публичный адрес. */
+export async function uploadBanner(file, userId) {
+  const err = validateBanner(file)
+  if (err) throw new Error(err)
+  let prepared = file
+  if (file.type !== 'image/gif' && file.size > 200 * 1024
+      && typeof createImageBitmap === 'function' && typeof document !== 'undefined') {
+    try {
+      const bitmap = await createImageBitmap(file)
+      const scale = Math.min(1, BANNER_MAX_SIDE / Math.max(bitmap.width, bitmap.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+        if (typeof bitmap.close === 'function') bitmap.close()
+        const blob = await new Promise((resolve) => { canvas.toBlob(resolve, 'image/webp', 0.85) })
+        if (blob && blob.size < file.size) prepared = new File([blob], 'banner.webp', { type: 'image/webp' })
+      }
+    } catch { /* остаётся исходный файл */ }
+  }
+  const ext = extOf(prepared)
+  const stamp = Date.now().toString(36)
+  const rand = Math.random().toString(36).slice(2, 6)
+  const { error } = await supabase.storage.from('banners').upload(
+    `${userId}/banner-${stamp}-${rand}.${ext}`,
+    prepared,
+    { cacheControl: '3600', upsert: false, contentType: prepared.type },
+  )
+  if (error) throw error
+  const { data } = supabase.storage.from('banners').getPublicUrl(`${userId}/banner-${stamp}-${rand}.${ext}`)
+  return data.publicUrl
+}
+
+/** Надеть свою картинку/анимацию: сервер проверит право и формат. */
+export async function equipBannerMedia(itemId, url) {
+  const { data, error } = await supabase.rpc('equip_banner_media', { p_item_id: itemId, p_url: url })
+  if (error) return { error: 'server', detail: error.message }
+  if (data && data.error) return { error: data.error }
+  return { ok: true, kind: 'banner', itemId: data.item_id, url: data.url }
+}
+
+/** Убрать свою картинку — вернуться к градиенту. */
+export async function clearBannerMedia() {
+  const { data, error } = await supabase.rpc('clear_banner_media')
+  if (error) return { error: 'server', detail: error.message }
+  if (data && data.error) return { error: data.error }
+  return { ok: true }
+}
+
 export const TELEGRAM_BOT_USERNAME = 'name_mlbb_bot'
 const LINK_CODE_TTL_MS = 10 * 60 * 1000
 
@@ -401,7 +465,7 @@ export async function loadLeaderboardRanks(limit = 100) {
 export async function loadLoadout(userId) {
   const { data, error } = await supabase
     .from('cosmetic_loadout')
-    .select('frame_id, banner_id, title_id, color_id')
+    .select('frame_id, banner_id, banner_url, title_id, color_id')
     .eq('user_id', userId)
     .maybeSingle()
   if (error) return { error: 'server', detail: error.message }
@@ -461,7 +525,7 @@ export async function loadPublicLook(userId) {
   if (!supabase || !userId) return null
   const { data, error } = await supabase
     .from('cosmetic_loadouts_public')
-    .select('frame_id, banner_id, title_id, color_id')
+    .select('frame_id, banner_id, banner_url, title_id, color_id')
     .eq('user_id', userId)
     .maybeSingle()
   if (error) return null

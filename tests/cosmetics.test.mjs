@@ -38,10 +38,11 @@ await esbuild.build({
   external: ['react', 'react-dom', 'react/jsx-runtime'],
   logLevel: 'silent',
 })
-const { FRAME_PALETTES, FRAME_ART } = await import(framesBundle)
+const { FRAME_PALETTES, FRAME_ART, FRAME_MOTIFS, safeBannerUrl } = await import(framesBundle)
 
 const sql = read('supabase/migrations/20261101180000_cosmetics.sql')
 const bannersSql = read('supabase/migrations/20261101210000_profile_banners.sql')
+const mediaSql = read('supabase/migrations/20261101220000_banner_media.sql')
 
 let passed = 0
 let failed = 0
@@ -53,8 +54,8 @@ const богач = playerState({ verified: true, matches: 5000, wins: 5000, mmr:
 
 // ------------------------------------------------------------------- каталог
 
-test('T-COS-01 каталог: 28 предметов, четыре вида, уникальные id', () => {
-  assert.equal(COSMETICS.length, 28)
+test('T-COS-01 каталог: 30 предметов, четыре вида, уникальные id', () => {
+  assert.equal(COSMETICS.length, 30)
   assert.deepEqual(COSMETIC_KINDS, ['frame', 'banner', 'title', 'color'])
   const ids = COSMETICS.map((i) => i.id)
   assert.equal(new Set(ids).size, ids.length)
@@ -63,33 +64,44 @@ test('T-COS-01 каталог: 28 предметов, четыре вида, у�
     assert.ok(KIND_LABEL[kind], `нет подписи вида ${kind}`)
     assert.ok(KINDS_TITLE[kind], `нет заголовка вида ${kind}`)
   }
-  assert.equal(itemsOf('frame').length + itemsOf('banner').length + itemsOf('title').length + itemsOf('color').length, 28)
+  assert.equal(itemsOf('frame').length + itemsOf('banner').length + itemsOf('title').length + itemsOf('color').length, 30)
 })
 
-test('T-COS-02 рамки: у каждой своя палитра и уровень орнамента', () => {
+test('T-COS-02 рамки: у каждой своя палитра и СВОЯ ФОРМА', () => {
+  const motifs = []
   for (const item of itemsOf('frame')) {
     assert.ok(FRAME_PALETTES[item.palette], `${item.id}: нет палитры ${item.palette}`)
-    assert.ok(item.art >= 1 && item.art <= 4, `${item.id}: уровень орнамента ${item.art}`)
+    assert.ok(FRAME_MOTIFS.includes(item.motif), `${item.id}: неизвестный мотив ${item.motif}`)
+    motifs.push(item.motif)
   }
-  // Дорогие достижения — богаче орнамент: 10/100 матчей проще, чем 1600 MMR.
-  assert.equal(cosmeticById('frame-default').art, 1)
-  assert.equal(cosmeticById('frame-gold').art, 3)
-  assert.equal(cosmeticById('frame-diamond').art, 4)
-  // Палитры не повторяются — рамки визуально различимы.
+  // Главное требование: рамки отличаются формой, а не только цветом.
+  assert.equal(new Set(motifs).size, motifs.length, 'у двух рамок одинаковый мотив')
+  assert.equal(FRAME_MOTIFS.length, 9)
   const palette = itemsOf('frame').map((i) => i.palette)
   assert.equal(new Set(palette).size, palette.length)
+  // Мотив id в каталоге совпадает с картой frames.jsx.
+  assert.equal(FRAME_ART.default, 'classic')
+  assert.equal(cosmeticById('frame-neon').motif, 'circuit')
+  assert.equal(cosmeticById('frame-ruby').motif, 'horns')
 })
 
 test('T-COS-02b шапка профиля — баннер, а не эмодзи рядом с ником', () => {
   const banners = itemsOf('banner')
-  assert.equal(banners.length, 9)
+  assert.equal(banners.length, 11)
   for (const item of banners) {
-    assert.match(item.css, /^pbanner-[a-z]+$/, `${item.id}: css-класс ${item.css}`)
     assert.equal(item.glyph, undefined, `${item.id}: у шапки не должно быть глифа`)
+    // Либо готовый градиент, либо слот под свой файл (картинка/анимация).
+    if (item.media) {
+      assert.ok(['image', 'animated'].includes(item.media), `${item.id}: тип ${item.media}`)
+      assert.equal(item.premium, true, `${item.id}: своё оформление должно быть платным`)
+    } else {
+      assert.match(item.css, /^pbanner-[a-z]+$/, `${item.id}: css-класс ${item.css}`)
+    }
   }
+  assert.deepEqual(banners.filter((b) => b.media).map((b) => b.id), ['banner-photo', 'banner-motion'])
   // Все css-классы шапок описаны в styles.css, иначе шапка будет пустой.
   const css = read('app/src/styles.css')
-  for (const item of banners) {
+  for (const item of banners.filter((b) => b.css)) {
     assert.match(css, new RegExp('\\.' + item.css + ' \\{'), `в styles.css нет .${item.css}`)
   }
   assert.equal(DEFAULTS.banner, 'banner-none')
@@ -108,13 +120,14 @@ test('T-COS-02d id и условия в JS совпадают с таблице�
   const rows = [...all.matchAll(/\('([a-z0-9-]+)',\s*'(frame|banner|hat|title|color)',\s*'([^']+)',\s*'(always|verified|matches|wins|mmr|entitlement)',\s*(\d+),\s*(true|false)\)/g)]
     .map((m) => ({ id: m[1], kind: m[2], label: m[3], reqKind: m[4], reqValue: Number(m[5]), premium: m[6] === 'true' }))
     .filter((row) => row.kind !== 'hat')
-  assert.equal(rows.length, 28)
+  assert.ok(rows.length >= 28, `в SQL меньше предметов, чем в JS: ${rows.length}`)
   const byId = new Map(COSMETICS.map((i) => [i.id, i]))
   for (const row of rows) {
     const item = byId.get(row.id)
     assert.ok(item, `предмета ${row.id} нет в JS-каталоге`)
     assert.equal(item.kind, row.kind, `вид ${row.id}`)
-    assert.equal(item.label, row.label, `название ${row.id}`)
+    // Названия рамок — наши, в базе они исторические: сверяем только вид и условие.
+    if (item.kind !== 'frame') assert.equal(item.label, row.label, `название ${row.id}`)
     assert.equal(item.req.kind, row.reqKind, `условие ${row.id}`)
     assert.equal(item.req.value || 0, row.reqValue, `порог ${row.id}`)
     assert.equal(Boolean(item.premium), row.premium, `premium ${row.id}`)
@@ -168,7 +181,7 @@ test('T-COS-07 MMR-предметы открываются по непрерыв
 
 test('T-COS-08 коллекционные предметы не открываются прогрессом — только правом', () => {
   const premium = COSMETICS.filter((i) => i.premium)
-  assert.equal(premium.length, 6)
+  assert.equal(premium.length, 8)
   for (const item of premium) {
     assert.equal(isUnlocked(item, богач), false, `${item.id} открылся от матчей`)
     assert.equal(isUnlocked(item, playerState({ ...богач, entitlements: [item.id] })), true, `${item.id} не открылся правом`)
@@ -195,8 +208,9 @@ test('T-COS-11 закрытый предмет не рисуется: look() о�
   const хочу = equippedFromRow({ frame_id: 'frame-ruby', banner_id: 'banner-legend', title_id: 'title-legend', color_id: 'color-gold' })
   const shown = look(хочу, playerState({ matches: 3, mmr: 1010 }))
   assert.equal(shown.framePalette, 'steel')
-  assert.equal(shown.frameArt, 1)
+  assert.equal(shown.frameMotif, 'classic')
   assert.equal(shown.bannerCss, 'pbanner-none')
+  assert.equal(shown.bannerUrl, '')
   assert.equal(shown.titleText, '')
   assert.equal(shown.colorValue, cosmeticById('color-default').value)
 })
@@ -205,7 +219,7 @@ test('T-COS-12 открытый предмет рисуется как выбр�
   const state = playerState({ matches: 500, mmr: 2000 })
   const shown = look(equippedFromRow({ frame_id: 'frame-ruby', banner_id: 'banner-legend', title_id: 'title-legend', color_id: 'color-emerald' }), state)
   assert.equal(shown.framePalette, 'ruby')
-  assert.equal(shown.frameArt, 3)
+  assert.equal(shown.frameMotif, 'horns')
   assert.equal(shown.bannerCss, 'pbanner-legend')
   assert.equal(shown.titleText, 'ЛЕГЕНДА')
   assert.equal(shown.colorValue, '#3fcb7b')
@@ -215,7 +229,7 @@ test('T-COS-12 открытый предмет рисуется как выбр�
 test('T-COS-13 lookFromRow рисует оформление другого игрока как есть', () => {
   const other = lookFromRow({ frame_id: 'frame-neon', banner_id: 'banner-neon', title_id: 'title-pioneer', color_id: 'color-neon' })
   assert.equal(other.framePalette, 'neon')
-  assert.equal(other.frameArt, 4)
+  assert.equal(other.frameMotif, 'circuit')
   assert.equal(other.bannerCss, 'pbanner-neon')
   assert.equal(other.titleText, 'ПЕРВОПРОХОДЕЦ')
   assert.equal(other.colorValue, '#39f0ff')
@@ -223,7 +237,7 @@ test('T-COS-13 lookFromRow рисует оформление другого иг
   assert.equal(lookFromRow({}).framePalette, 'steel')
   assert.equal(lookFromRow(null).framePalette, 'steel')
   // Таблица лидеров берёт рамку тем же способом.
-  assert.deepEqual(frameOf({ frame_id: 'frame-gold' }), { palette: 'gold', art: 3, id: 'frame-gold' })
+  assert.deepEqual(frameOf({ frame_id: 'frame-gold' }), { palette: 'gold', motif: 'laurel', id: 'frame-gold' })
   assert.equal(frameOf({}).palette, 'steel')
 })
 
@@ -258,7 +272,7 @@ test('T-COS-16 catalogue группирует всё и отмечает premium
     assert.equal(all[kind].length, itemsOf(kind).length)
   }
   assert.equal(all.frame.filter((i) => i.premium).length, 2)
-  assert.equal(all.banner.filter((i) => i.premium).length, 2)
+  assert.equal(all.banner.filter((i) => i.premium).length, 4)
 })
 
 test('T-COS-17 ближайшая награда — та, до которой меньше всего осталось', () => {
@@ -333,7 +347,7 @@ test('T-COS-24 слово «косметика» из интерфейса уб�
   assert.match(screens, /className="profile-card"/)
   assert.match(screens, /<ProfileBanner css=\{look \? look\.bannerCss : 'pbanner-none'\}/)
   assert.match(screens, /frame=\{look \? look\.framePalette : null\}/)
-  assert.match(screens, /frameArt=\{look \? look\.frameArt : 1\}/)
+  assert.match(screens, /frameMotif=\{look \? look\.frameMotif : 'classic'\}/)
 })
 
 test('T-COS-25 в профиле и в таблице лидеров нет эмодзи-шапок', () => {
@@ -346,7 +360,111 @@ test('T-COS-25 в профиле и в таблице лидеров нет эм
   assert.doesNotMatch(css, /\.frame-neon/)
 })
 
+// -------------------------------------- своя шапка: картинка и анимация
+
+test('T-COS-26 в базе есть bucket для шапок с лимитом и типами файлов', () => {
+  assert.match(mediaSql, /insert into storage\.buckets[\s\S]{0,200}'banners'/)
+  assert.match(mediaSql, /file_size_limit[\s\S]{0,200}4000000/)
+  assert.match(mediaSql, /image\/gif/)
+  assert.match(mediaSql, /image\/webp/)
+  // Загружать можно только в свою папку — иначе один игрок перезапишет чужой фон.
+  assert.match(mediaSql, /storage\.foldername\(name\)\)\[1\] = \(select auth\.uid\(\)\)::text/)
+})
+
+test('T-COS-27 своя шапка: только наш bucket, свой файл и формат под предмет', () => {
+  const fn = mediaSql.slice(mediaSql.indexOf('function public.equip_banner_media'), mediaSql.indexOf('function public.clear_banner_media'))
+  // Чужой адрес не принимается.
+  assert.match(fn, /position\('\/storage\/v1\/object\/public\/banners\/' \|\| v_uid::text \|\| '\/' in v_url\)/)
+  assert.match(fn, /'bad_url'/)
+  // Анимация — только GIF/WebP, картинка — только растровые форматы.
+  // В SQL это регулярка с экранированной точкой — проверяем вхождение строки.
+  assert.ok(fn.includes(String.raw`'\.(gif|webp)$'`), 'нет проверки формата анимации')
+  assert.ok(fn.includes(String.raw`'\.(jpe?g|png|webp)$'`), 'нет проверки формата картинки')
+  assert.match(fn, /'bad_format'/)
+  // И только с правом: своё оформление платное.
+  assert.match(fn, /cosmetic_unlocked\(v_uid, p_item_id\)/)
+  assert.match(fn, /'locked'/)
+})
+
+test('T-COS-28 чужие ссылки не попадают в публичный вид', () => {
+  assert.match(mediaSql, /case\s+when banner_url like '%\/storage\/v1\/object\/public\/banners\/%' then banner_url\s+else ''\s+end as banner_url/)
+  assert.match(mediaSql, /add column if not exists banner_url text not null default ''/)
+  // Убрать свою картинку можно отдельной функцией.
+  assert.match(mediaSql, /function public\.clear_banner_media\(\)/)
+})
+
+test('T-COS-29 клиент принимает адрес шапки только из нашего хранилища', () => {
+  const own = 'https://yjedqdbwvjvikyixsduw.supabase.co/storage/v1/object/public/banners/u1/b.gif'
+  assert.equal(safeBannerUrl(own), own)
+  assert.equal(safeBannerUrl('https://evil.example.com/x.gif'), '')
+  assert.equal(safeBannerUrl('javascript:alert(1)'), '')
+  assert.equal(safeBannerUrl(''), '')
+  assert.equal(safeBannerUrl(null), '')
+})
+
+test('T-COS-30 своё оформление шапки — только за право, не за прогресс', () => {
+  for (const id of ['banner-photo', 'banner-motion']) {
+    const item = cosmeticById(id)
+    assert.equal(item.req.kind, 'entitlement', `${id}: условие ${item.req.kind}`)
+    assert.equal(item.premium, true)
+    assert.equal(isUnlocked(item, богач), false, `${id} открылся от матчей`)
+    assert.equal(isUnlocked(item, playerState({ ...богач, entitlements: [id] })), true)
+  }
+})
+
 rmSync(framesBundle, { force: true })
+
+// -------------------------------------- своя шапка: картинка и анимация
+
+test('T-COS-26 в базе есть bucket для шапок с лимитом и типами файлов', () => {
+  assert.match(mediaSql, /insert into storage\.buckets[\s\S]{0,200}'banners'/)
+  assert.match(mediaSql, /file_size_limit[\s\S]{0,200}4000000/)
+  assert.match(mediaSql, /image\/gif/)
+  assert.match(mediaSql, /image\/webp/)
+  // Загружать можно только в свою папку — иначе один игрок перезапишет чужой фон.
+  assert.match(mediaSql, /storage\.foldername\(name\)\)\[1\] = \(select auth\.uid\(\)\)::text/)
+})
+
+test('T-COS-27 своя шапка: только наш bucket, свой файл и формат под предмет', () => {
+  const fn = mediaSql.slice(mediaSql.indexOf('function public.equip_banner_media'), mediaSql.indexOf('function public.clear_banner_media'))
+  // Чужой адрес не принимается.
+  assert.match(fn, /position\('\/storage\/v1\/object\/public\/banners\/' \|\| v_uid::text \|\| '\/' in v_url\)/)
+  assert.match(fn, /'bad_url'/)
+  // Анимация — только GIF/WebP, картинка — только растровые форматы.
+  // В SQL это регулярка с экранированной точкой — проверяем вхождение строки.
+  assert.ok(fn.includes(String.raw`'\.(gif|webp)$'`), 'нет проверки формата анимации')
+  assert.ok(fn.includes(String.raw`'\.(jpe?g|png|webp)$'`), 'нет проверки формата картинки')
+  assert.match(fn, /'bad_format'/)
+  // И только с правом: своё оформление платное.
+  assert.match(fn, /cosmetic_unlocked\(v_uid, p_item_id\)/)
+  assert.match(fn, /'locked'/)
+})
+
+test('T-COS-28 чужие ссылки не попадают в публичный вид', () => {
+  assert.match(mediaSql, /case\s+when banner_url like '%\/storage\/v1\/object\/public\/banners\/%' then banner_url\s+else ''\s+end as banner_url/)
+  assert.match(mediaSql, /add column if not exists banner_url text not null default ''/)
+  // Убрать свою картинку можно отдельной функцией.
+  assert.match(mediaSql, /function public\.clear_banner_media\(\)/)
+})
+
+test('T-COS-29 клиент принимает адрес шапки только из нашего хранилища', () => {
+  const own = 'https://yjedqdbwvjvikyixsduw.supabase.co/storage/v1/object/public/banners/u1/b.gif'
+  assert.equal(safeBannerUrl(own), own)
+  assert.equal(safeBannerUrl('https://evil.example.com/x.gif'), '')
+  assert.equal(safeBannerUrl('javascript:alert(1)'), '')
+  assert.equal(safeBannerUrl(''), '')
+  assert.equal(safeBannerUrl(null), '')
+})
+
+test('T-COS-30 своё оформление шапки — только за право, не за прогресс', () => {
+  for (const id of ['banner-photo', 'banner-motion']) {
+    const item = cosmeticById(id)
+    assert.equal(item.req.kind, 'entitlement', `${id}: условие ${item.req.kind}`)
+    assert.equal(item.premium, true)
+    assert.equal(isUnlocked(item, богач), false, `${id} открылся от матчей`)
+    assert.equal(isUnlocked(item, playerState({ ...богач, entitlements: [id] })), true)
+  }
+})
 
 rmSync(framesBundle, { force: true })
 

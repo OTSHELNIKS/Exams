@@ -24,6 +24,7 @@ export function resetStub(overrides = {}) {
     loadLatency: 0,
     equipLatency: 0,
   }, overrides)
+  uploads.length = 0
 }
 
 export async function loadLoadout() {
@@ -56,6 +57,39 @@ export async function equipCosmetic(itemId) {
 }
 
 export async function redeemCosmeticCode() { return { ok: true, itemId: 'frame-neon' } }
+
+// --- своя шапка (картинка/анимация)
+export const uploads = (globalThis.__stubUploads = [])
+
+export function validateBanner(file) {
+  if (!file) return 'Файл не выбран'
+  if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) return 'Только JPG, PNG, WebP или GIF'
+  if (file.size > 4 * 1024 * 1024) return 'Файл больше 4 МБ'
+  return ''
+}
+
+export async function uploadBanner(file, userId) {
+  const bad = validateBanner(file)
+  if (bad) throw new Error(bad)
+  const ext = (file.type || '').includes('gif') ? 'gif' : 'jpg'
+  const url = `https://example.supabase.co/storage/v1/object/public/banners/${userId}/banner-${uploads.length}.${ext}`
+  uploads.push({ userId, type: file.type, url })
+  return url
+}
+
+export async function equipBannerMedia(itemId, url) {
+  state.calls.push(itemId)
+  await wait(state.equipLatency)
+  if (!state.entitlements.includes(itemId)) return { error: 'locked' }
+  if (itemId === 'banner-motion' && !/\.(gif|webp)$/i.test(url)) return { error: 'bad_format' }
+  state.loadout = { ...state.loadout, banner_id: itemId, banner_url: url }
+  return { ok: true, kind: 'banner', itemId, url }
+}
+
+export async function clearBannerMedia() {
+  state.loadout = { ...state.loadout, banner_url: '' }
+  return { ok: true }
+}
 
 // Всё остальное, что импортирует screens.jsx.
 export const uploadAvatar = async () => ({})

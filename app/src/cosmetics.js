@@ -57,7 +57,9 @@ export const REQ = {
     const list = Array.isArray(state.entitlements) ? state.entitlements : []
     return {
       ok: list.includes(item.id),
-      text: 'Коллекционное: покупается на сайте или активируется кодом',
+      text: item && item.media
+        ? 'Своё оформление: покупка на сайте или код активации'
+        : 'Коллекционное: покупается на сайте или активируется кодом',
       locked: true,
     }
   },
@@ -70,16 +72,16 @@ export const REQ = {
 // title: текст под ником. color: цвет ника. Платные помечаются premium: true —
 // интерфейс показывает их, но никогда не рисует кнопку «купить» в приложении.
 export const COSMETICS = [
-  // ----- рамки аватара: палитра + уровень орнамента (см. frames.jsx)
-  { id: 'frame-default', kind: 'frame', label: 'Классика', req: { kind: 'always' }, palette: 'steel', art: 1 },
-  { id: 'frame-verified', kind: 'frame', label: 'Проверенный', req: { kind: 'verified' }, palette: 'azure', art: 2 },
-  { id: 'frame-bronze', kind: 'frame', label: 'Бронза', req: { kind: 'matches', value: 10 }, palette: 'bronze', art: 2 },
-  { id: 'frame-silver', kind: 'frame', label: 'Серебро', req: { kind: 'matches', value: 100 }, palette: 'silver', art: 2 },
-  { id: 'frame-ruby', kind: 'frame', label: 'Рубин', req: { kind: 'matches', value: 500 }, palette: 'ruby', art: 3 },
-  { id: 'frame-gold', kind: 'frame', label: 'Золото', req: { kind: 'mmr', value: 1600 }, palette: 'gold', art: 3 },
-  { id: 'frame-emerald', kind: 'frame', label: 'Изумруд', req: { kind: 'mmr', value: 1800 }, palette: 'emerald', art: 3 },
-  { id: 'frame-neon', kind: 'frame', label: 'Неон', req: { kind: 'entitlement' }, palette: 'neon', art: 4, premium: true },
-  { id: 'frame-diamond', kind: 'frame', label: 'Алмаз', req: { kind: 'entitlement' }, palette: 'diamond', art: 4, premium: true },
+  // ----- рамки аватара: палитра + мотив (у каждой своя форма, см. frames.jsx)
+  { id: 'frame-default', kind: 'frame', label: 'Классика', req: { kind: 'always' }, palette: 'steel', motif: 'classic' },
+  { id: 'frame-verified', kind: 'frame', label: 'Крылья', req: { kind: 'verified' }, palette: 'azure', motif: 'wings' },
+  { id: 'frame-bronze', kind: 'frame', label: 'Корона', req: { kind: 'matches', value: 10 }, palette: 'bronze', motif: 'crest' },
+  { id: 'frame-silver', kind: 'frame', label: 'Щит', req: { kind: 'matches', value: 100 }, palette: 'silver', motif: 'shield' },
+  { id: 'frame-ruby', kind: 'frame', label: 'Рога', req: { kind: 'matches', value: 500 }, palette: 'ruby', motif: 'horns' },
+  { id: 'frame-gold', kind: 'frame', label: 'Лавр', req: { kind: 'mmr', value: 1600 }, palette: 'gold', motif: 'laurel' },
+  { id: 'frame-emerald', kind: 'frame', label: 'Пламя', req: { kind: 'mmr', value: 1800 }, palette: 'emerald', motif: 'flame' },
+  { id: 'frame-neon', kind: 'frame', label: 'Контур', req: { kind: 'entitlement' }, palette: 'neon', motif: 'circuit', premium: true },
+  { id: 'frame-diamond', kind: 'frame', label: 'Кристалл', req: { kind: 'entitlement' }, palette: 'diamond', motif: 'crystal', premium: true },
 
   // ----- шапки профиля: полоса-баннер над аватаром, как в Discord
   { id: 'banner-none', kind: 'banner', label: 'Без шапки', req: { kind: 'always' }, css: 'pbanner-none' },
@@ -91,6 +93,9 @@ export const COSMETICS = [
   { id: 'banner-emerald', kind: 'banner', label: 'Изумруд', req: { kind: 'mmr', value: 1800 }, css: 'pbanner-emerald' },
   { id: 'banner-neon', kind: 'banner', label: 'Неон', req: { kind: 'entitlement' }, css: 'pbanner-neon', premium: true },
   { id: 'banner-aurora', kind: 'banner', label: 'Аврора', req: { kind: 'entitlement' }, css: 'pbanner-aurora', premium: true },
+  // Своё оформление: картинка и анимация (GIF/WebP). Только за право — это платный контент.
+  { id: 'banner-photo', kind: 'banner', label: 'Своя картинка', req: { kind: 'entitlement' }, media: 'image', premium: true },
+  { id: 'banner-motion', kind: 'banner', label: 'Анимация', req: { kind: 'entitlement' }, media: 'animated', premium: true },
 
   // ----- титулы
   { id: 'title-none', kind: 'title', label: 'Без титула', req: { kind: 'always' }, value: '' },
@@ -126,6 +131,8 @@ export function equippedFromRow(row) {
   return {
     frame: (row && row.frame_id) || DEFAULTS.frame,
     banner: (row && row.banner_id) || DEFAULTS.banner,
+    // Своя картинка/анимация шапки: адрес в нашем хранилище, не чужая ссылка.
+    bannerUrl: (row && row.banner_url) || '',
     title: (row && row.title_id) || DEFAULTS.title,
     color: (row && row.color_id) || DEFAULTS.color,
   }
@@ -186,9 +193,12 @@ export function look(equipped, state = {}) {
   return {
     frameId: frame ? frame.id : DEFAULTS.frame,
     framePalette: frame && frame.palette ? frame.palette : 'steel',
-    frameArt: frame && frame.art ? frame.art : 1,
+    frameMotif: frame && frame.motif ? frame.motif : 'classic',
     bannerId: banner ? banner.id : DEFAULTS.banner,
     bannerCss: banner && banner.css ? banner.css : 'pbanner-none',
+    // Картинку показываем только если надет предмет, который её разрешает.
+    bannerUrl: banner && banner.media && eq.bannerUrl ? eq.bannerUrl : '',
+    bannerMedia: banner && banner.media ? banner.media : '',
     titleText: title && title.value ? title.value : '',
     colorValue: color && color.value ? color.value : '#f4f1ea',
     tierColor: mmrTier(st.mmr).color,
@@ -220,7 +230,7 @@ export function nextReward(state) {
 /** Рамка другого игрока: палитра и орнамент по id из вьюхи. */
 export function frameOf(row) {
   const item = cosmeticById(row && row.frame_id) || cosmeticById(DEFAULTS.frame)
-  return { palette: item.palette || 'steel', art: item.art || 1, id: item.id }
+  return { palette: item.palette || 'steel', motif: item.motif || 'classic', id: item.id }
 }
 
 // Оформление другого игрока: сервер уже проверил условие при надевании
@@ -234,9 +244,10 @@ export function lookFromRow(row) {
   return {
     frameId: frame.id,
     framePalette: frame.palette || 'steel',
-    frameArt: frame.art || 1,
+    frameMotif: frame.motif || 'classic',
     bannerId: banner.id,
     bannerCss: banner.css || 'pbanner-none',
+    bannerUrl: banner.media && src.banner_url ? src.banner_url : '',
     titleText: title.value || '',
     colorValue: color.value || '#f4f1ea',
     tierColor: '',

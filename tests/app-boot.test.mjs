@@ -182,15 +182,20 @@ test('T-BOOT-08 все девять рамок рисуются и не лома
     define: { 'import.meta.env': '{}' },
     logLevel: 'silent',
   })
-  const { ProfileFrame, FRAME_PALETTES } = await import(framesBundle)
+  const { ProfileFrame, FRAME_PALETTES, FRAME_MOTIFS } = await import(framesBundle)
   const palettes = Object.keys(FRAME_PALETTES)
   assert.equal(palettes.length, 9)
+  assert.equal(FRAME_MOTIFS.length, 9, 'мотивы рамок должны быть разными')
+  assert.equal(new Set(FRAME_MOTIFS).size, 9)
   const host = document.createElement('div')
   document.body.appendChild(host)
   const r = createRoot(host)
-  r.render(React.createElement('div', null, palettes.map((palette, i) => React.createElement(ProfileFrame, { key: palette, palette, art: (i % 4) + 1 }))))
+  r.render(React.createElement('div', null, palettes.map((palette, i) => React.createElement(ProfileFrame, { key: palette, palette, art: FRAME_MOTIFS[i] }))))
   await new Promise((resolve) => setTimeout(resolve, 90))
   assert.equal(host.querySelectorAll('svg.pframe').length, 9, 'часть рамок не отрисовалась')
+  // Каждая рамка — своя форма: класс мотива в svg разный.
+  const motifs = Array.from(host.querySelectorAll('svg.pframe')).map((svg) => (svg.getAttribute('class').match(/pframe--([a-z]+)/g) || []).join(','))
+  assert.equal(new Set(motifs).size, 9, 'две рамки нарисованы одинаково')
   // Градиенты у каждой рамки свои, иначе цвета «перетекают» между аватарами.
   const ids = Array.from(host.querySelectorAll('linearGradient')).map((n) => n.id)
   assert.equal(new Set(ids).size, ids.length, 'дубли id в SVG-градиентах')

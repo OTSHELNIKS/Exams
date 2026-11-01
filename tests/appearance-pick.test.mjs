@@ -88,11 +88,11 @@ const PLAYER = { verified: true, matches: 600, wins: 300, mmr: 2000, entitlement
 
 let reactRoot = null
 let host = null
-async function mount({ latency = 0, equipLatency = 0, failNext = null } = {}) {
+async function mount({ latency = 0, equipLatency = 0, failNext = null, entitlements = [] } = {}) {
   if (reactRoot) { reactRoot.unmount(); host.remove() }
   Object.assign(stub, {
     loadout: { user_id: 'u1', frame_id: 'frame-default', banner_id: 'banner-none', title_id: 'title-none', color_id: 'color-default' },
-    entitlements: [],
+    entitlements,
     calls: [],
     failNext,
     loadLatency: latency,
@@ -100,6 +100,8 @@ async function mount({ latency = 0, equipLatency = 0, failNext = null } = {}) {
   })
   host = document.createElement('div')
   document.body.appendChild(host)
+  // Загрузки шапок между тестами не должны протекать.
+  if (globalThis.__stubUploads) globalThis.__stubUploads.length = 0
   reactRoot = createRoot(host)
   reactRoot.render(React.createElement(S.AppearanceScreen, {
     supabase: {}, userId: 'u1', playerState: PLAYER, profile: { nick: 'QA' },
@@ -141,19 +143,19 @@ test('T-PICK-00 экран открывается на базовой рамке
 })
 
 test('T-PICK-01 рамка переключается с первого клика', async () => {
-  await clickCard('Золото')
+  await clickCard('Лавр')
   assert.equal(previewPalette(), 'gold', 'превью не сменилось на золото')
-  assert.deepEqual(equippedTitles(), ['Золото'], 'отметка «надето» осталась на старой рамке')
+  assert.deepEqual(equippedTitles(), ['Лавр'], 'отметка «надето» осталась на старой рамке')
   assert.deepEqual(stub.calls, ['frame-gold'], 'сервер не получил выбор')
 })
 
 test('T-PICK-02 вторая рамка тоже переключается (нет «залипания»)', async () => {
-  await clickCard('Изумруд')
+  await clickCard('Пламя')
   assert.equal(previewPalette(), 'emerald')
-  assert.deepEqual(equippedTitles(), ['Изумруд'])
-  await clickCard('Рубин')
+  assert.deepEqual(equippedTitles(), ['Пламя'])
+  await clickCard('Рога')
   assert.equal(previewPalette(), 'ruby')
-  assert.deepEqual(equippedTitles(), ['Рубин'])
+  assert.deepEqual(equippedTitles(), ['Рога'])
   assert.deepEqual(stub.calls, ['frame-gold', 'frame-emerald', 'frame-ruby'])
 })
 
@@ -178,7 +180,7 @@ test('T-PICK-05 закрытый предмет не отправляется н
   const before = stub.calls.length
   await clickChip('Рамка')
   // «Алмаз» — коллекционная рамка: без права она не открыта.
-  await clickCard('Алмаз')
+  await clickCard('Кристалл')
   assert.equal(stub.calls.length, before, 'закрытый предмет всё-таки ушёл на сервер')
   assert.match(errorText(), /коллекционное/i)
   assert.equal(previewPalette(), 'steel')
@@ -186,7 +188,7 @@ test('T-PICK-05 закрытый предмет не отправляется н
 
 test('T-PICK-06 отказ сервера откатывает выбор и говорит об ошибке', async () => {
   await mount({ failNext: 'locked' })
-  await clickCard('Золото')
+  await clickCard('Лавр')
   assert.equal(previewPalette(), 'steel', 'после отказа сервера превью осталось золотым')
   assert.deepEqual(equippedTitles(), ['Классика'])
   assert.match(errorText(), /не подтвердил условие/i)
@@ -195,7 +197,7 @@ test('T-PICK-06 отказ сервера откатывает выбор и г�
 test('T-PICK-07 медленная загрузка не сбрасывает только что сделанный выбор', async () => {
   // Сервер отвечает на загрузку через 300 мс, а игрок успевает кликнуть раньше.
   await mount({ latency: 300, equipLatency: 10 })
-  const card = cards().find((c) => titleOf(c) === 'Изумруд')
+  const card = cards().find((c) => titleOf(c) === 'Пламя')
   assert.ok(card)
   card.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
   await settle(20)
@@ -207,6 +209,84 @@ test('T-PICK-07 медленная загрузка не сбрасывает т
 
 test('T-PICK-08 выбор запомнен в базе тем же предметом', async () => {
   assert.equal(stub.loadout.frame_id, 'frame-emerald')
+})
+
+// -------------------------------------------- своя шапка: картинка и анимация
+
+const uploads = globalThis.__stubUploads
+
+// Файл в jsdom: настоящее поле файла только для чтения, поэтому подменяем
+// свойство у input и отправляем change — так React получает файл, как в браузере.
+async function pickFile(file) {
+  const input = document.querySelector('.cosmetics__code input[type="file"]')
+  assert.ok(input, 'нет поля выбора файла')
+  Object.defineProperty(input, 'files', { value: [file], configurable: true })
+  input.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+  await settle(150)
+}
+
+const makeFile = (name, type, bytes = 1024) => new dom.window.File([new Uint8Array(bytes)], name, { type })
+
+test('T-PICK-09 без права «Своя картинка» только объясняет, файл не грузится', async () => {
+  await mount()
+  await clickChip('Шапка профиля')
+  await clickCard('Своя картинка')
+  assert.match(errorText(), /покупа|платн|код активации/i)
+  assert.equal(uploads.length, 0, 'файл ушёл на сервер без права')
+})
+
+test('T-PICK-10 с правом: выбираем JPG — шапка появляется сразу', async () => {
+  await mount({ entitlements: ['banner-photo', 'banner-motion'] })
+  await clickChip('Шапка профиля')
+  await clickCard('Своя картинка')
+  await pickFile(makeFile('banner.jpg', 'image/jpeg'))
+  assert.equal(uploads.length, 1, 'файл не загрузился')
+  assert.equal(uploads[0].type, 'image/jpeg')
+  const img = document.querySelector('.cosmetics__preview .pbanner img')
+  assert.ok(img, 'в превью нет картинки шапки')
+  assert.match(img.getAttribute('src'), /storage\/v1\/object\/public\/banners\/u1\//)
+  assert.deepEqual(stub.calls, ['banner-photo'])
+})
+
+test('T-PICK-11 GIF для «Анимации» принимается, JPG — нет', async () => {
+  await mount({ entitlements: ['banner-photo', 'banner-motion'] })
+  await clickChip('Шапка профиля')
+  // Сначала пытаемся анимацию обычной картинкой — сервер откажет по формату.
+  await clickCard('Анимация')
+  await pickFile(makeFile('still.jpg', 'image/jpeg'))
+  assert.match(errorText(), /gif|webp/i)
+  // Потом настоящий GIF — принимается.
+  await clickCard('Анимация')
+  await pickFile(makeFile('loop.gif', 'image/gif'))
+  const img = document.querySelector('.cosmetics__preview .pbanner img')
+  assert.ok(img, 'анимация не попала в превью')
+  assert.match(img.getAttribute('src'), /\.gif$/)
+})
+
+test('T-PICK-12 файл больше 4 МБ и чужой формат не загружаются', async () => {
+  await mount({ entitlements: ['banner-photo'] })
+  await clickChip('Шапка профиля')
+  await clickCard('Своя картинка')
+  await pickFile(makeFile('huge.jpg', 'image/jpeg', 5 * 1024 * 1024))
+  assert.match(errorText(), /4 МБ/)
+  assert.equal(uploads.length, 0, 'слишком большой файл всё-таки загрузился')
+  await pickFile(makeFile('video.mp4', 'video/mp4'))
+  assert.match(errorText(), /JPG|PNG|WebP|GIF/i)
+  assert.equal(uploads.length, 0)
+})
+
+test('T-PICK-13 свою шапку можно убрать и вернуться к градиенту', async () => {
+  await mount({ entitlements: ['banner-photo'] })
+  await clickChip('Шапка профиля')
+  await clickCard('Своя картинка')
+  await pickFile(makeFile('banner.png', 'image/png'))
+  assert.ok(document.querySelector('.cosmetics__preview .pbanner img'))
+  const remove = Array.from(document.querySelectorAll('.cosmetics__uploads button'))
+    .find((b) => /Убрать свою шапку/.test(b.textContent || ''))
+  assert.ok(remove, 'нет кнопки «Убрать свою шапку»')
+  remove.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+  await settle(120)
+  assert.equal(document.querySelector('.cosmetics__preview .pbanner img'), null, 'картинка осталась')
 })
 
 rmSync(bundle, { force: true })

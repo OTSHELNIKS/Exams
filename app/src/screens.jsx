@@ -28,6 +28,7 @@ import {
   createLobby, joinLobby, leaveLobby, loadLobby, loadLobbyMembers, setLobbyRoom, setLobbyCheckedIn,
   loadLeaderboardRanks, reportMatch, confirmMatch, disputeMatch, loadMatchHistory,
   loadLoadout, loadEntitlements, loadPublicLook, equipCosmetic, redeemCosmeticCode, transferLobbyHost,
+  uploadBanner, equipBannerMedia, clearBannerMedia, validateBanner,
 } from './supabase.js'
 import {
   mmrTier, rankTitle, formatDelta, playerForm, draftCaptains,
@@ -35,7 +36,7 @@ import {
 } from './rating.js'
 import {
   COSMETIC_KINDS, KIND_LABEL, KINDS_TITLE, itemsOf, itemStatus, equippedFromRow, playerState,
-  nextReward, frameOf, look as cosmeticsLook, lookFromRow,
+  nextReward, frameOf, cosmeticById, look as cosmeticsLook, lookFromRow,
 } from './cosmetics.js'
 import { ProfileFrame, ProfileBanner } from './frames.jsx'
 import {
@@ -1245,7 +1246,7 @@ export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount
           level={profile.level}
           size={104}
           frame={look ? look.framePalette : null}
-          frameArt={look ? look.frameArt : 1}
+          frameMotif={look ? look.frameMotif : 'classic'}
         />
         <h1 style={look && look.colorValue ? { color: look.colorValue } : undefined}>
           {profile.nick || 'Новый игрок'}
@@ -1466,7 +1467,7 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
 
       <div className="home__col home__col--main">
       <div className="profile-card">
-        <ProfileBanner css={look ? look.bannerCss : 'pbanner-none'} height={128} />
+        <ProfileBanner css={look ? look.bannerCss : 'pbanner-none'} url={look ? look.bannerUrl : ''} height={128} />
         <div className="profile-card__body">
           <Avatar
             src={profile.avatarUrl || profile.avatar || null}
@@ -1474,7 +1475,7 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
             level={profile.level}
             size={116}
             frame={look ? look.framePalette : null}
-            frameArt={look ? look.frameArt : 1}
+            frameMotif={look ? look.frameMotif : 'classic'}
           />
           <div className="profile-card__id">
             <h1 style={look && look.colorValue ? { color: look.colorValue } : undefined}>
@@ -2227,14 +2228,14 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
       )}
       {!loading && !error && row && (
         <>
-          <ProfileBanner css={look ? look.bannerCss : 'pbanner-none'} height={96} />
+          <ProfileBanner css={look ? look.bannerCss : 'pbanner-none'} url={look ? look.bannerUrl : ''} height={96} />
           <div className="pub__head">
             <Avatar
               src={row.avatar_url || null}
               initials={(row.nick?.[0] || '?').toUpperCase()}
               size={84}
               frame={look ? look.framePalette : null}
-              frameArt={look ? look.frameArt : 1}
+              frameMotif={look ? look.frameMotif : 'classic'}
             />
             <div>
               <h3 id="public-profile-title" style={look && look.colorValue ? { color: look.colorValue } : undefined}>
@@ -2884,6 +2885,9 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
   const [error, setError] = useState('')
   const [code, setCode] = useState('')
   const [tab, setTab] = useState('frame')
+  // Своя картинка/анимация шапки: какой предмет ждёт файл и что уже загружено.
+  const fileRef = useRef(null)
+  const pendingItemRef = useRef('')
 
   useEffect(() => {
     if (!toast) return undefined
@@ -2918,6 +2922,13 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
         : `Ещё не открыто: ${status.requirement}${status.left ? ` (осталось ${status.left})` : ''}.`)
       return
     }
+    // «Своя картинка» и «Анимация» — это не готовый фон, а слот под файл.
+    if (item.media) {
+      pendingItemRef.current = item.id
+      setError('')
+      if (fileRef.current) fileRef.current.click()
+      return
+    }
     setBusy(item.id); setError('')
     // Сразу показываем выбор, а если сервер откажет — вернём как было.
     const before = equipped
@@ -2937,6 +2948,49 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
       setEquipped((prev) => ({ ...prev, [reply.kind]: reply.itemId }))
     }
     setToast('Готово')
+    if (onEquip) onEquip()
+  }
+
+  // Загрузка своей шапки: файл → наш bucket → RPC (он проверит право и формат).
+  const onBannerFile = async (event) => {
+    const file = event.target.files && event.target.files[0]
+    event.target.value = '' // чтобы можно было выбрать тот же файл снова
+    const itemId = pendingItemRef.current
+    if (!file || !itemId) return
+    const bad = validateBanner(file)
+    if (bad) { setError(bad); return }
+    if (!userId) { setError('Войди в аккаунт, чтобы загрузить шапку.'); return }
+    setBusy(itemId); setError('')
+    try {
+      const url = await uploadBanner(file, userId)
+      const reply = await equipBannerMedia(itemId, url)
+      if (reply.error) {
+        setError(reply.error === 'locked'
+          ? 'Своя шапка — платное оформление: нужна покупка на сайте или код активации.'
+          : reply.error === 'bad_format'
+            ? 'Для «Анимации» нужен GIF или анимированный WebP.'
+            : 'Не удалось поставить шапку. Попробуй ещё раз.')
+        return
+      }
+      pickedRef.current = true
+      setEquipped((prev) => ({ ...prev, banner: itemId, bannerUrl: reply.url || url }))
+      setToast('Шапка обновлена')
+      if (onEquip) onEquip()
+    } catch (e) {
+      setError(e && e.message ? e.message : 'Не удалось загрузить файл.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  // Убрать свою картинку — вернуться к градиентной шапке.
+  const removeBannerMedia = async () => {
+    setBusy('banner-none'); setError('')
+    const reply = await clearBannerMedia()
+    setBusy('')
+    if (reply.error) { setError('Не удалось убрать картинку. Попробуй ещё раз.'); return }
+    setEquipped((prev) => ({ ...prev, bannerUrl: '' }))
+    setToast('Своя шапка убрана')
     if (onEquip) onEquip()
   }
 
@@ -2963,14 +3017,14 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
       <BackHeader title="Оформление профиля" onBack={onBack} />
 
       <div className="cosmetics__preview">
-        <ProfileBanner css={look.bannerCss} height={92} />
+        <ProfileBanner css={look.bannerCss} url={look.bannerUrl} height={92} />
         <div className="cosmetics__preview-body">
           <Avatar
             src={profile.avatarUrl || null}
             initials={(profile.nick?.[0] || '?').toUpperCase()}
             size={82}
             frame={look.framePalette}
-            frameArt={look.frameArt}
+            frameMotif={look.frameMotif}
           />
           <div>
             <strong style={{ color: look.colorValue }}>{profile.nick || 'Твой ник'}</strong>
@@ -3003,10 +3057,16 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
               <span className="cosmetic-card__art">
                 {item.kind === 'frame' && (
                   <span className="cosmetic-card__frame">
-                    <ProfileFrame palette={item.palette} art={item.art} glow={false} />
+                    <ProfileFrame palette={item.palette} art={item.motif} glow={false} />
                   </span>
                 )}
-                {item.kind === 'banner' && <span className={`cosmetic-card__banner ${item.css}`} />}
+                {item.kind === 'banner' && (item.media
+                  ? <span className={`cosmetic-card__banner cosmetic-card__banner--media ${equipped.bannerUrl ? '' : 'is-empty'}`}>
+                      {equipped.bannerUrl
+                        ? <img src={equipped.bannerUrl} alt="" loading="lazy" />
+                        : <Upload size={16} />}
+                    </span>
+                  : <span className={`cosmetic-card__banner ${item.css}`} />)}
                 {item.kind === 'title' && <span className="cosmetic-card__title">{item.value || '—'}</span>}
                 {item.kind === 'color' && <span className="cosmetic-card__color" style={{ background: item.value }} />}
               </span>
@@ -3023,6 +3083,57 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
           )
         })}
       </div>
+
+      {tab === 'banner' && (
+        <div className="cosmetics__code">
+          <span className="lobby-card__label">СВОЯ ШАПКА</span>
+          <p className="field-hint">
+            Картинка (JPG, PNG, WebP) или анимация (GIF) — до 4 МБ. Это платное
+            оформление: поставить можно только с правом из покупки или кода.
+          </p>
+          <div className="cosmetics__uploads">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                const item = itemStatus(cosmeticById('banner-photo'), fullState, equipped)
+                if (!item.unlocked) { setError('Своя картинка — платное оформление: нужна покупка на сайте или код активации.'); return }
+                pendingItemRef.current = 'banner-photo'
+                if (fileRef.current) fileRef.current.click()
+              }}
+              disabled={busy === 'banner-photo'}
+            >
+              <Upload size={15} /> {busy === 'banner-photo' ? 'Загружаем…' : 'Загрузить картинку'}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                const item = itemStatus(cosmeticById('banner-motion'), fullState, equipped)
+                if (!item.unlocked) { setError('Анимированная шапка — платное оформление: нужна покупка на сайте или код активации.'); return }
+                pendingItemRef.current = 'banner-motion'
+                if (fileRef.current) fileRef.current.click()
+              }}
+              disabled={busy === 'banner-motion'}
+            >
+              <ImageIcon size={15} /> {busy === 'banner-motion' ? 'Загружаем…' : 'Загрузить GIF'}
+            </button>
+            {equipped.bannerUrl && (
+              <button type="button" className="btn btn--ghost" onClick={removeBannerMedia} disabled={busy === 'banner-none'}>
+                <X size={15} /> Убрать свою шапку
+              </button>
+            )}
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            onChange={onBannerFile}
+            className="visually-hidden"
+            aria-label="Файл шапки профиля"
+          />
+        </div>
+      )}
 
       {reward && (
         <p className="social-hint">Ближайшая награда: <b>{reward.label}</b> — {reward.text}, осталось {reward.left}.</p>
