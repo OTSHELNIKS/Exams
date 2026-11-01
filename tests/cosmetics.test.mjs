@@ -310,7 +310,9 @@ test('T-COS-13 lookFromRow рисует оформление другого иг
   assert.equal(lookFromRow({}).framePalette, 'steel')
   assert.equal(lookFromRow(null).framePalette, 'steel')
   // Таблица лидеров берёт рамку тем же способом.
-  assert.deepEqual(frameOf({ frame_id: 'frame-gold' }), { palette: 'gold', motif: 'laurel', id: 'frame-gold' })
+  assert.deepEqual(frameOf({ frame_id: 'frame-gold' }), { palette: 'gold', motif: 'laurel', id: 'frame-gold', shine: false })
+  // Коллекционные рамки переливаются и в списке рейтинга.
+  assert.equal(frameOf({ frame_id: 'frame-neon' }).shine, true)
   assert.equal(frameOf({}).palette, 'steel')
 })
 

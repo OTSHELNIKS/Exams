@@ -12,6 +12,9 @@ export const state = (globalThis.__stubState = {
   loadLatency: 0,
   equipLatency: 0,
   admin: false,
+  publicProfile: null,
+  publicLook: null,
+  leaderboardRows: [],
 })
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -25,6 +28,9 @@ export function resetStub(overrides = {}) {
     loadLatency: 0,
     equipLatency: 0,
     admin: false,
+    publicProfile: null,
+    publicLook: null,
+    leaderboardRows: [],
   }, overrides)
   uploads.length = 0
 }
@@ -41,7 +47,7 @@ export async function loadEntitlements() {
 
 export async function loadPublicLook() {
   await wait(state.loadLatency)
-  return { ...state.loadout }
+  return { ...(state.publicLook || state.loadout) }
 }
 
 export async function equipCosmetic(itemId) {
@@ -117,7 +123,7 @@ export const createTelegramLinkCode = async () => ({})
 export const getTelegramLink = async () => null
 export const deleteTelegramLink = async () => ({})
 export const notifyLobbyToTelegram = async () => ({})
-export const getPublicProfile = async () => null
+export const getPublicProfile = async () => state.publicProfile
 export const createSupportTicket = async () => ({})
 export const fetchSupportTickets = async () => []
 export const announceSupportTicket = async () => ({})
@@ -128,7 +134,7 @@ export const loadLobby = async () => ({})
 export const loadLobbyMembers = async () => []
 export const setLobbyRoom = async () => ({})
 export const setLobbyCheckedIn = async () => ({})
-export const loadLeaderboardRanks = async () => []
+export const loadLeaderboardRanks = async () => ({ rows: state.leaderboardRows })
 export const reportMatch = async () => ({})
 export const confirmMatch = async () => ({})
 export const disputeMatch = async () => ({})

@@ -36,7 +36,7 @@ import {
 } from './rating.js'
 import {
   COSMETIC_KINDS, KIND_LABEL, KINDS_TITLE, itemsOf, itemStatus, equippedFromRow, playerState,
-  nextReward, frameOf, cosmeticById, look as cosmeticsLook, lookFromRow,
+  nextReward, frameOf, titleOf, cosmeticById, look as cosmeticsLook, lookFromRow,
 } from './cosmetics.js'
 import { ProfileFrame, ProfileBanner, NickPlate } from './frames.jsx'
 import {
@@ -2471,7 +2471,17 @@ export function LeaderboardScreen({ supabase, userId }) {
             <span
               className={`rank-row__avatar rank-row__avatar--tier `}
               style={{ boxShadow: `0 0 0 2px ${mmrTier(r.pts).color}` }}
-            >{r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}</span>
+            >
+              {/* Рамка аватара и в строке рейтинга: вьюха отдаёт frame_id,
+                  поэтому оформление не теряется на пути к списку. */}
+              <ProfileFrame
+                palette={frameOf(r).palette}
+                art={frameOf(r).motif}
+                shine={frameOf(r).shine}
+                glow={false}
+              />
+              {r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}
+            </span>
             <span className="rank-row__info">
               <strong>
                 <NickPlate
@@ -2487,6 +2497,8 @@ export function LeaderboardScreen({ supabase, userId }) {
                     {r.title || rankTitle(r.position || i + 1)}
                   </em>
                 )}
+                {/* Надетый титул из оформления — виден и в списке, не только в карточке. */}
+                {titleOf(r) ? <em className="rank-title">{titleOf(r)}</em> : null}
               </strong>
               <small className="rank-row__tier" style={{ color: mmrTier(r.pts).color }}>
                 {mmrTier(r.pts).label}

@@ -270,6 +270,12 @@ export function nextReward(state) {
   return first ? { id: first.item.id, label: first.item.label, kind: first.item.kind, left: first.req.left, text: first.req.text } : null
 }
 
+/** Титул другого игрока (ВЕТЕРАН, ЛЕГЕНДА…) по id из вьюхи. */
+export function titleOf(row) {
+  const item = cosmeticById(row && row.title_id) || cosmeticById(DEFAULTS.title)
+  return item.value || ''
+}
+
 /** Рамка имени другого игрока: css-класс, блеск и есть ли подложка. */
 export function plateOf(row) {
   const item = cosmeticById(row && row.plate_id) || cosmeticById(DEFAULTS.nameplate)
@@ -279,7 +285,13 @@ export function plateOf(row) {
 /** Рамка другого игрока: палитра и орнамент по id из вьюхи. */
 export function frameOf(row) {
   const item = cosmeticById(row && row.frame_id) || cosmeticById(DEFAULTS.frame)
-  return { palette: item.palette || 'steel', motif: item.motif || 'classic', id: item.id }
+  return {
+    palette: item.palette || 'steel',
+    motif: item.motif || 'classic',
+    id: item.id,
+    // Коллекционные рамки переливаются и в таблице лидеров.
+    shine: Boolean(item.premium),
+  }
 }
 
 // Оформление другого игрока: сервер уже проверил условие при надевании
