@@ -191,7 +191,7 @@ test('T-BOOT-09 главная показывает то же, что профи
     bio: 'Играю мид',
   }
   const look = {
-    framePalette: 'gold', frameMotif: 'laurel', frameShine: false,
+    framePalette: 'gold', frameMotif: 'legend', frameShine: false,
     bannerCss: 'pbanner-ember', bannerUrl: '', titleText: 'ВЕТЕРАН',
     colorValue: '#ffc83d', plateCss: 'plate-gold', plateShine: true, plateFrame: true,
   }
@@ -211,7 +211,7 @@ test('T-BOOT-09 главная показывает то же, что профи
   // Шапка профиля, рамка и плашка — на главной, а не только в профиле.
   assert.ok(host.querySelector('.profile-card'), 'на главной нет карточки игрока')
   assert.match(host.querySelector('.profile-card .pbanner').getAttribute('class'), /pbanner-ember/, 'нет шапки профиля')
-  assert.ok(host.querySelector('.pframe--laurel'), 'нет рамки аватара')
+  assert.ok(host.querySelector('.pframe--legend'), 'нет рамки аватара')
   assert.ok(host.querySelector('.nick--plate.plate-gold'), 'нет рамки имени')
   assert.match(text, /ВЕТЕРАН/, 'нет титула')
 
@@ -252,18 +252,18 @@ test('T-BOOT-08 все девять рамок рисуются и не лома
   })
   const { ProfileFrame, FRAME_PALETTES, FRAME_MOTIFS } = await import(framesBundle)
   const palettes = Object.keys(FRAME_PALETTES)
-  assert.equal(palettes.length, 9)
-  assert.equal(FRAME_MOTIFS.length, 9, 'мотивы рамок должны быть разными')
-  assert.equal(new Set(FRAME_MOTIFS).size, 9)
+  assert.equal(palettes.length, 20)
+  assert.equal(FRAME_MOTIFS.length, 20, 'мотивы рамок должны быть разными')
+  assert.equal(new Set(FRAME_MOTIFS).size, 20)
   const host = document.createElement('div')
   document.body.appendChild(host)
   const r = createRoot(host)
   r.render(React.createElement('div', null, palettes.map((palette, i) => React.createElement(ProfileFrame, { key: palette, palette, art: FRAME_MOTIFS[i] }))))
   await new Promise((resolve) => setTimeout(resolve, 90))
-  assert.equal(host.querySelectorAll('svg.pframe').length, 9, 'часть рамок не отрисовалась')
+  assert.equal(host.querySelectorAll('svg.pframe').length, 20, 'часть рамок не отрисовалась')
   // Каждая рамка — своя форма: класс мотива в svg разный.
   const motifs = Array.from(host.querySelectorAll('svg.pframe')).map((svg) => (svg.getAttribute('class').match(/pframe--([a-z]+)/g) || []).join(','))
-  assert.equal(new Set(motifs).size, 9, 'две рамки нарисованы одинаково')
+  assert.equal(new Set(motifs).size, 20, 'две рамки нарисованы одинаково')
   // Градиенты у каждой рамки свои, иначе цвета «перетекают» между аватарами.
   const ids = Array.from(host.querySelectorAll('linearGradient')).map((n) => n.id)
   assert.equal(new Set(ids).size, ids.length, 'дубли id в SVG-градиентах')

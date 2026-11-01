@@ -86,7 +86,7 @@ console.error = () => {}
 const LOOK = {
   frameId: 'frame-gold',
   framePalette: 'gold',
-  frameMotif: 'laurel',
+  frameMotif: 'legend',
   frameShine: false,
   bannerId: 'banner-ember',
   bannerCss: 'pbanner-ember',
@@ -142,7 +142,7 @@ function assertOwnLook(where) {
   const frame = document.querySelector('.profile-card .pframe')
   assert.ok(frame, `${where}: нет рамки аватара`)
   assert.match(frame.getAttribute('class'), /pframe--gold/, `${where}: палитра рамки не та`)
-  assert.match(frame.getAttribute('class'), /pframe--laurel/, `${where}: форма рамки не та`)
+  assert.match(frame.getAttribute('class'), /pframe--legend/, `${where}: форма рамки не та`)
 
   const nick = document.querySelector('.profile-card .nick')
   assert.ok(nick, `${where}: нет плашки ника`)
@@ -188,7 +188,7 @@ test('T-APPLY-03 карточка игрока: оформление из пуб
   assert.match(banner.getAttribute('class'), /pbanner-ember/, 'шапка не применилась')
   const frame = document.querySelector('.pframe')
   assert.ok(frame, 'в карточке нет рамки аватара')
-  assert.match(frame.getAttribute('class'), /pframe--laurel/, 'форма рамки не та')
+  assert.match(frame.getAttribute('class'), /pframe--legend/, 'форма рамки не та')
   const nick = document.querySelector('.nick')
   assert.match(nick.getAttribute('class'), /plate-gold/, 'рамка имени не применилась')
   assert.match(text(), /ВЕТЕРАН/, 'нет титула')
@@ -208,7 +208,7 @@ test('T-APPLY-04 в строке рейтинга видно рамку, пла�
       },
       {
         user_id: 'u3', nick: 'NEON', pts: 1350, position: 2, title: '', avatar_url: '',
-        frame_id: 'frame-neon', banner_id: 'banner-neon', plate_id: 'plate-ice',
+        frame_id: 'frame-starlight', banner_id: 'banner-neon', plate_id: 'plate-ice',
         title_id: 'title-none', color_id: 'color-neon',
       },
       {
@@ -225,13 +225,13 @@ test('T-APPLY-04 в строке рейтинга видно рамку, пла�
   assert.equal(rows.length, 3, `строк в таблице: ${rows.length}`)
 
   const first = rows[0]
-  assert.ok(first.querySelector('.pframe--gold.pframe--laurel'), 'в строке нет рамки «Лавр»')
+  assert.ok(first.querySelector('.pframe--gold.pframe--legend'), 'в строке нет рамки «Лавр»')
   assert.ok(first.querySelector('.nick--plate.plate-gold'), 'в строке нет рамки имени')
   assert.ok(first.querySelector('.tier-title'), 'в строке нет отметки ТОП-1')
   assert.match(first.textContent, /ВЕТЕРАН/, 'в строке нет надетого титула')
 
   const second = rows[1]
-  assert.ok(second.querySelector('.pframe--neon'), 'во второй строке нет неоновой рамки')
+  assert.ok(second.querySelector('.pframe--azure'), 'во второй строке нет коллекционной рамки')
   assert.ok(second.querySelector('.pframe__shine'), 'у коллекционной рамки нет блеска в строке')
 
   // Без оформления — базовая рамка и обычный ник, никакой «примерки».
@@ -250,7 +250,7 @@ test('T-APPLY-05 без права показывается базовое оф�
     ...homeProps,
     look: {
       ...LOOK,
-      frameId: 'frame-default', framePalette: 'steel', frameMotif: 'classic', frameShine: false,
+      frameId: 'frame-default', framePalette: 'steel', frameMotif: 'default', frameShine: false,
       plateId: 'plate-none', plateCss: '', plateShine: false, plateFrame: false,
     },
   }))
@@ -280,7 +280,7 @@ test('T-APPLY-07 после смены оформления экран пока�
   // Меняем look так, как это делает App после reloadCosmetics: другой набор.
   const changed = {
     ...LOOK,
-    frameId: 'frame-neon', framePalette: 'neon', frameMotif: 'circuit', frameShine: true,
+    frameId: 'frame-neon', framePalette: 'neon', frameMotif: 'glory', frameShine: true,
     bannerId: 'banner-neon', bannerCss: 'pbanner-neon',
     plateId: 'plate-ice', plateCss: 'plate-ice', plateShine: true, plateFrame: true,
     titleText: 'ПЕРВОПРОХОДЕЦ', colorValue: '#39f0ff',
@@ -288,7 +288,7 @@ test('T-APPLY-07 после смены оформления экран пока�
   await mount(React.createElement(S.HomeScreen, { ...homeProps, look: changed }))
   const frame = document.querySelector('.profile-card .pframe')
   assert.match(frame.getAttribute('class'), /pframe--neon/, 'рамка не обновилась')
-  assert.match(frame.getAttribute('class'), /pframe--circuit/)
+  assert.match(frame.getAttribute('class'), /pframe--glory/)
   assert.ok(frame.querySelector('.pframe__shine'), 'у коллекционной рамки нет блеска')
   assert.match(document.querySelector('.profile-card .pbanner').getAttribute('class'), /pbanner-neon/)
   assert.match(document.querySelector('.profile-card .nick').getAttribute('class'), /plate-ice/)

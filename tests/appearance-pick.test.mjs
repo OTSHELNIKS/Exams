@@ -150,19 +150,19 @@ test('T-PICK-00 экран открывается на базовой рамке
 })
 
 test('T-PICK-01 рамка переключается с первого клика', async () => {
-  await clickCard('Лавр')
+  await clickCard('Легенда')
   assert.equal(previewPalette(), 'gold', 'превью не сменилось на золото')
-  assert.deepEqual(equippedTitles(), ['Лавр'], 'отметка «надето» осталась на старой рамке')
+  assert.deepEqual(equippedTitles(), ['Легенда'], 'отметка «надето» осталась на старой рамке')
   assert.deepEqual(stub.calls, ['frame-gold'], 'сервер не получил выбор')
 })
 
 test('T-PICK-02 вторая рамка тоже переключается (нет «залипания»)', async () => {
-  await clickCard('Пламя')
-  assert.equal(previewPalette(), 'emerald')
-  assert.deepEqual(equippedTitles(), ['Пламя'])
-  await clickCard('Рога')
+  await clickCard('Мифик')
+  assert.equal(previewPalette(), 'violet')
+  assert.deepEqual(equippedTitles(), ['Мифик'])
+  await clickCard('Мастер')
   assert.equal(previewPalette(), 'ruby')
-  assert.deepEqual(equippedTitles(), ['Рога'])
+  assert.deepEqual(equippedTitles(), ['Мастер'])
   assert.deepEqual(stub.calls, ['frame-gold', 'frame-emerald', 'frame-ruby'])
 })
 
@@ -170,6 +170,22 @@ test('T-PICK-03 возврат на базовую рамку тоже рабо�
   await clickCard('Классика')
   assert.equal(previewPalette(), 'steel')
   assert.deepEqual(equippedTitles(), ['Классика'])
+})
+
+test('T-PICK-03b нажатие на карточку показывает вспышку и гаснет само', async () => {
+  await mount()
+  const card = cards().find((c) => titleOf(c) === 'Легенда')
+  assert.ok(card, 'нет карточки «Легенда»')
+  card.dispatchEvent(new dom.window.Event('pointerdown', { bubbles: true }))
+  await settle(30)
+  assert.match(card.getAttribute('class'), /is-pop/, 'нажатие не дало вспышку')
+  await settle(900)
+  assert.doesNotMatch(card.getAttribute('class'), /is-pop/, 'вспышка осталась навсегда')
+  // Вспышка описана в стилях и выключается при «меньше движения».
+  const css = readFileSync(join(app, 'src/styles.css'), 'utf8')
+  assert.match(css, /\.cosmetic-card\.is-pop \.cosmetic-card__art \{[\s\S]{0,120}animation: cosmeticPop/)
+  assert.match(css, /@keyframes cosmeticPop/)
+  assert.match(css, /prefers-reduced-motion[\s\S]{0,400}is-pop \.cosmetic-card__art \{ animation: none/)
 })
 
 test('T-PICK-04 шапка профиля переключается тем же путём', async () => {
@@ -187,7 +203,7 @@ test('T-PICK-05 закрытый предмет не отправляется н
   const before = stub.calls.length
   await clickChip('Рамка')
   // «Алмаз» — коллекционная рамка: без права она не открыта.
-  await clickCard('Кристалл')
+  await clickCard('Королевская корона')
   assert.equal(stub.calls.length, before, 'закрытый предмет всё-таки ушёл на сервер')
   assert.match(errorText(), /коллекционное/i)
   assert.equal(previewPalette(), 'steel')
@@ -195,7 +211,7 @@ test('T-PICK-05 закрытый предмет не отправляется н
 
 test('T-PICK-06 отказ сервера откатывает выбор и говорит об ошибке', async () => {
   await mount({ failNext: 'locked' })
-  await clickCard('Лавр')
+  await clickCard('Легенда')
   assert.equal(previewPalette(), 'steel', 'после отказа сервера превью осталось золотым')
   assert.deepEqual(equippedTitles(), ['Классика'])
   assert.match(errorText(), /не подтвердил условие/i)
@@ -204,14 +220,14 @@ test('T-PICK-06 отказ сервера откатывает выбор и г�
 test('T-PICK-07 медленная загрузка не сбрасывает только что сделанный выбор', async () => {
   // Сервер отвечает на загрузку через 300 мс, а игрок успевает кликнуть раньше.
   await mount({ latency: 300, equipLatency: 10 })
-  const card = cards().find((c) => titleOf(c) === 'Пламя')
+  const card = cards().find((c) => titleOf(c) === 'Мифик')
   assert.ok(card)
   card.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
   await settle(20)
-  assert.equal(previewPalette(), 'emerald', 'выбор не применился сразу')
+  assert.equal(previewPalette(), 'violet', 'выбор не применился сразу')
   // Ждём, пока придёт «старый» ответ загрузки, — он не должен откатить выбор.
   await settle(400)
-  assert.equal(previewPalette(), 'emerald', 'поздний ответ сервера сбросил выбор')
+  assert.equal(previewPalette(), 'violet', 'поздний ответ сервера сбросил выбор')
 })
 
 test('T-PICK-08 выбор запомнен в базе тем же предметом', async () => {
@@ -301,15 +317,15 @@ test('T-PICK-13 свою шапку можно убрать и вернутьс�
 test('T-PICK-14 админ надевает коллекционную рамку без права', async () => {
   await mount({ admin: true, player: ADMIN })
   assert.match(document.body.textContent, /весь платный контент доступен/i, 'нет подсказки для админа')
-  await clickCard('Кристалл')
-  assert.equal(previewPalette(), 'diamond', 'коллекционная рамка не наделась')
-  assert.deepEqual(stub.calls, ['frame-diamond'])
+  await clickCard('Королевская корона')
+  assert.equal(previewPalette(), 'royal', 'коллекционная рамка не наделась')
+  assert.deepEqual(stub.calls, ['frame-crown'])
   assert.match(errorText(), /^$/, 'админу показали ошибку про покупку')
 })
 
 test('T-PICK-15 у платных предметов подпись «Доступно админу», а не «Коллекционное»', async () => {
   await mount({ admin: true, player: ADMIN })
-  const card = cards().find((c) => titleOf(c) === 'Контур')
+  const card = cards().find((c) => titleOf(c) === 'Змей')
   assert.ok(card)
   assert.match(card.textContent, /Доступно админу/)
   assert.doesNotMatch(card.textContent, /Коллекционное/)
@@ -401,12 +417,12 @@ test('T-PICK-22 у коллекционных рамок аватара есть
     const card = cards().find((c) => titleOf(c) === label)
     return Boolean(card?.querySelector('.pframe__shine'))
   }
-  assert.equal(shine('Контур'), true, 'у коллекционной «Контур» нет блеска')
-  assert.equal(shine('Кристалл'), true, 'у коллекционной «Кристалл» нет блеска')
+  assert.equal(shine('Змей'), true, 'у коллекционной «Змей» нет блеска')
+  assert.equal(shine('Королевская корона'), true, 'у коллекционной «Королевская корона» нет блеска')
   assert.equal(shine('Классика'), false, 'у бесплатной рамки появился блеск')
   assert.equal(shine('Лавр'), false, 'у бесплатной рамки появился блеск')
   // И в самом аватаре профиля блеск включается только для коллекционной.
-  await clickCard('Кристалл')
+  await clickCard('Королевская корона')
   assert.ok(document.querySelector('.cosmetics__preview .pframe__shine'), 'превью без блеска')
   await clickCard('Классика')
   assert.equal(document.querySelector('.cosmetics__preview .pframe__shine'), null)

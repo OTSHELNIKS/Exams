@@ -296,10 +296,10 @@ export function Steps({ current = 1, total = 3 }) {
 
 /**
  * Аватар. `frame` — палитра рамки ('gold', 'neon'…), `frameMotif` — форма
- * орнамента ('wings', 'horns'…); `frameShine` включает блеск коллекционной
+ * орнамента ('dragon', 'crown'…); `frameShine` включает блеск коллекционной
  * рамки; саму рамку рисует ProfileFrame (frames.jsx).
  */
-export function Avatar({ src, initials = '?', size = 96, ring = true, level = null, frame = null, frameMotif = 'classic', frameShine = false }) {
+export function Avatar({ src, initials = '?', size = 96, ring = true, level = null, frame = null, frameMotif = 'default', frameShine = false }) {
   return (
     <div
       className={`avatar ${ring && !frame ? 'avatar--ring' : ''} ${frame ? 'avatar--framed' : ''}`}

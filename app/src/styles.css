@@ -672,7 +672,7 @@ html.is-modal-open .rail { overflow: hidden !important; }
   display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 15px;
 }
 /* В строке лидеров рамка компактнее, чтобы не наезжать на соседние ячейки. */
-.rank-row__avatar .pframe { width: 150%; height: 150%; }
+.rank-row__avatar .pframe { width: 177%; height: 177%; }
 .rank-row__info { flex: 1; min-width: 0; }
 .rank-row__info strong { display: flex; align-items: center; gap: 6px; font-size: 14px; flex-wrap: wrap; }
 /* Надетый титул (ВЕТЕРАН, ЛЕГЕНДА) в строке рейтинга — рядом с ТОП-N. */
@@ -1474,17 +1474,17 @@ html.is-modal-open .rail { overflow: hidden !important; }
    аватара, поэтому в layout ничего не сдвигается. */
 .pframe {
   /* Холст рамки шире аватара: орнамент (рога, крылья, кристаллы) выходит за
-     край картинки. 178% — обод при этом ложится ровно по краю аватара. */
+     край картинки. 211% — обод при этом ложится ровно по краю аватара. */
   position: absolute; left: 50%; top: 50%;
-  width: 178%; height: 178%; transform: translate(-50%, -50%);
+  width: 211%; height: 211%; transform: translate(-50%, -50%);
   pointer-events: none; overflow: visible;
 }
-.pframe--neon { animation: framePulse 3.2s ease-in-out infinite; }
+.pframe--glow { animation: framePulse 3.2s ease-in-out infinite; }
 @keyframes framePulse {
   0%, 100% { filter: drop-shadow(0 0 3px rgba(57,240,255,.55)); }
   50% { filter: drop-shadow(0 0 9px rgba(57,240,255,.95)); }
 }
-@media (prefers-reduced-motion: reduce) { .pframe--neon { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .pframe--glow { animation: none; } }
 
 /* Коллекционные рамки переливаются: блик и искры живут внутри SVG. При
    включённом «меньше движения» оставляем саму рамку, но гасим блеск. */
@@ -1710,6 +1710,7 @@ html.is-modal-open .rail { overflow: hidden !important; }
   .nick__gleam::after,
   .nick--shine .nick__text { animation: none; }
   .nick--shine .nick__text { background-position: 30% 50%; }
+  .cosmetic-card.is-pop .cosmetic-card__art { animation: none; }
 }
 
 /* Карточка профиля: баннер сверху, аватар внахлёст, данные ниже. */
@@ -1786,6 +1787,17 @@ html.is-modal-open .rail { overflow: hidden !important; }
   transition: border-color .18s ease, transform .18s ease;
 }
 .cosmetic-card:hover { transform: translateY(-1px); }
+/* Нажатие: карточка проседает, рисунок внутри «вспыхивает» и чуть пружинит.
+   Так видно, что тап дошёл — на телефоне нет hover. */
+.cosmetic-card:active { transform: scale(.965); }
+.cosmetic-card.is-pop .cosmetic-card__art { animation: cosmeticPop .72s cubic-bezier(.2, .8, .3, 1); }
+.cosmetic-card.is-pop { box-shadow: 0 0 0 1px rgba(255,200,61,.4) inset, 0 0 22px rgba(255,170,60,.28); }
+@keyframes cosmeticPop {
+  0% { transform: scale(1); filter: brightness(1); }
+  26% { transform: scale(1.11); filter: brightness(1.45); }
+  58% { transform: scale(.985); filter: brightness(1.06); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
 .cosmetic-card.is-equipped { border-color: rgba(255,75,18,.8); box-shadow: 0 0 0 1px rgba(255,75,18,.35) inset; }
 .cosmetic-card.is-locked { opacity: .62; }
 .cosmetic-card strong { font-size: 12.5px; font-weight: 800; }
@@ -1795,7 +1807,7 @@ html.is-modal-open .rail { overflow: hidden !important; }
   width: 100%; height: 62px; margin-bottom: 4px;
 }
 .cosmetic-card__frame { position: relative; width: 44px; height: 44px; }
-.cosmetic-card__frame .pframe { width: 178%; height: 178%; }
+.cosmetic-card__frame .pframe { width: 211%; height: 211%; }
 .cosmetic-card__banner { width: 100%; height: 34px; border-radius: 8px; }
 .cosmetic-card__title { font-size: 9.5px; font-weight: 800; letter-spacing: 1.2px; color: #ffd9a1; text-align: center; }
 .cosmetic-card__color { width: 34px; height: 34px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255,255,255,.2); }

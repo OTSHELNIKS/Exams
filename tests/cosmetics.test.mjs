@@ -45,6 +45,8 @@ const bannersSql = read('supabase/migrations/20261101210000_profile_banners.sql'
 const mediaSql = read('supabase/migrations/20261101220000_banner_media.sql')
 const adminSql = read('supabase/migrations/20261101230000_admin_premium.sql')
 const plateSql = read('supabase/migrations/20261101240000_nameplates.sql')
+// Новый набор рамок: id те же, но условия и названия переписаны этим файлом.
+const framesSql = read('supabase/migrations/20261101250000_mlbb_frames.sql')
 
 let passed = 0
 let failed = 0
@@ -58,8 +60,8 @@ const богач = playerState({ verified: true, matches: 5000, wins: 5000, mmr:
 
 // ------------------------------------------------------------------- каталог
 
-test('T-COS-01 каталог: 38 предметов, пять видов, уникальные id', () => {
-  assert.equal(COSMETICS.length, 38)
+test('T-COS-01 каталог: 49 предметов, пять видов, уникальные id', () => {
+  assert.equal(COSMETICS.length, 49)
   assert.deepEqual(COSMETIC_KINDS, ['frame', 'banner', 'nameplate', 'title', 'color'])
   const ids = COSMETICS.map((i) => i.id)
   assert.equal(new Set(ids).size, ids.length)
@@ -71,7 +73,7 @@ test('T-COS-01 каталог: 38 предметов, пять видов, ун�
   assert.equal(
     itemsOf('frame').length + itemsOf('banner').length + itemsOf('nameplate').length
       + itemsOf('title').length + itemsOf('color').length,
-    38,
+    49,
   )
 })
 
@@ -84,13 +86,13 @@ test('T-COS-02 рамки: у каждой своя палитра и СВОЯ �
   }
   // Главное требование: рамки отличаются формой, а не только цветом.
   assert.equal(new Set(motifs).size, motifs.length, 'у двух рамок одинаковый мотив')
-  assert.equal(FRAME_MOTIFS.length, 9)
+  assert.equal(FRAME_MOTIFS.length, 20)
   const palette = itemsOf('frame').map((i) => i.palette)
   assert.equal(new Set(palette).size, palette.length)
   // Мотив id в каталоге совпадает с картой frames.jsx.
-  assert.equal(FRAME_ART.default, 'classic')
-  assert.equal(cosmeticById('frame-neon').motif, 'circuit')
-  assert.equal(cosmeticById('frame-ruby').motif, 'horns')
+  assert.equal(FRAME_ART.default, 'default')
+  assert.equal(cosmeticById('frame-neon').motif, 'glory')
+  assert.equal(cosmeticById('frame-ruby').motif, 'master')
 })
 
 test('T-COS-02b шапка профиля — баннер, а не эмодзи рядом с ником', () => {
@@ -124,10 +126,19 @@ test('T-COS-02c слот шапки в базе называется banner_id',
 
 // id и условия сверяем по обоим файлам: 27 из первого + 9 шапок из второго.
 test('T-COS-02d id и условия в JS совпадают с таблицей cosmetic_items', () => {
-  const all = sql + '\n' + bannersSql + '\n' + plateSql
+  const all = sql + '\n' + bannersSql + '\n' + plateSql + '\n' + framesSql
   const rows = [...all.matchAll(/\('([a-z0-9-]+)',\s*'(frame|banner|hat|title|color)',\s*'([^']+)',\s*'(always|verified|matches|wins|mmr|entitlement)',\s*(\d+),\s*(true|false)\)/g)]
     .map((m) => ({ id: m[1], kind: m[2], label: m[3], reqKind: m[4], reqValue: Number(m[5]), premium: m[6] === 'true' }))
     .filter((row) => row.kind !== 'hat')
+  // Рамки аватара переписаны отдельной миграцией: update'ы идут последними и
+  // перекрывают то, что было в исходной таблице.
+  const bySqlId = new Map(rows.map((row) => [row.id, row]))
+  for (const m of framesSql.matchAll(/update public\.cosmetic_items set label = '([^']+)',\s*req_kind = '([a-z]+)',\s*req_value = (\d+),\s*premium = (true|false) where id = '([a-z0-9-]+)'/g)) {
+    const prev = bySqlId.get(m[5]) || { id: m[5], kind: 'frame' }
+    bySqlId.set(m[5], { ...prev, label: m[1], reqKind: m[2], reqValue: Number(m[3]), premium: m[4] === 'true' })
+  }
+  rows.length = 0
+  rows.push(...bySqlId.values())
   assert.ok(rows.length >= 28, `в SQL меньше предметов, чем в JS: ${rows.length}`)
   const byId = new Map(COSMETICS.map((i) => [i.id, i]))
   for (const row of rows) {
@@ -190,7 +201,7 @@ test('T-COS-07 MMR-предметы открываются по непрерыв
 
 test('T-COS-08 коллекционные предметы не открываются прогрессом — только правом', () => {
   const premium = COSMETICS.filter((i) => i.premium)
-  assert.equal(premium.length, 14)
+  assert.equal(premium.length, 23)
   for (const item of premium) {
     assert.equal(isUnlocked(item, богач), false, `${item.id} открылся от матчей`)
     assert.equal(isUnlocked(item, playerState({ ...богач, entitlements: [item.id] })), true, `${item.id} не открылся правом`)
@@ -204,8 +215,8 @@ test('T-COS-31 админ видит весь платный контент от
     assert.equal(status.adminUnlocked, true, `${item.id}: нет отметки «доступно админу»`)
     assert.equal(status.requirement, 'Доступно админу')
   }
-  // Платных предметов четырнадцать — все они доступны без покупки.
-  assert.equal(COSMETICS.filter((i) => i.premium).length, 14)
+  // Платных предметов двадцать три — все они доступны без покупки.
+  assert.equal(COSMETICS.filter((i) => i.premium).length, 23)
 })
 
 test('T-COS-32 админский доступ не подменяет бесплатные условия', () => {
@@ -281,7 +292,7 @@ test('T-COS-11 закрытый предмет не рисуется: look() о�
   const хочу = equippedFromRow({ frame_id: 'frame-ruby', banner_id: 'banner-legend', title_id: 'title-legend', color_id: 'color-gold' })
   const shown = look(хочу, playerState({ matches: 3, mmr: 1010 }))
   assert.equal(shown.framePalette, 'steel')
-  assert.equal(shown.frameMotif, 'classic')
+  assert.equal(shown.frameMotif, 'default')
   assert.equal(shown.bannerCss, 'pbanner-none')
   assert.equal(shown.bannerUrl, '')
   assert.equal(shown.titleText, '')
@@ -292,7 +303,7 @@ test('T-COS-12 открытый предмет рисуется как выбр�
   const state = playerState({ matches: 500, mmr: 2000 })
   const shown = look(equippedFromRow({ frame_id: 'frame-ruby', banner_id: 'banner-legend', title_id: 'title-legend', color_id: 'color-emerald' }), state)
   assert.equal(shown.framePalette, 'ruby')
-  assert.equal(shown.frameMotif, 'horns')
+  assert.equal(shown.frameMotif, 'master')
   assert.equal(shown.bannerCss, 'pbanner-legend')
   assert.equal(shown.titleText, 'ЛЕГЕНДА')
   assert.equal(shown.colorValue, '#3fcb7b')
@@ -302,7 +313,7 @@ test('T-COS-12 открытый предмет рисуется как выбр�
 test('T-COS-13 lookFromRow рисует оформление другого игрока как есть', () => {
   const other = lookFromRow({ frame_id: 'frame-neon', banner_id: 'banner-neon', title_id: 'title-pioneer', color_id: 'color-neon' })
   assert.equal(other.framePalette, 'neon')
-  assert.equal(other.frameMotif, 'circuit')
+  assert.equal(other.frameMotif, 'glory')
   assert.equal(other.bannerCss, 'pbanner-neon')
   assert.equal(other.titleText, 'ПЕРВОПРОХОДЕЦ')
   assert.equal(other.colorValue, '#39f0ff')
@@ -310,9 +321,9 @@ test('T-COS-13 lookFromRow рисует оформление другого иг
   assert.equal(lookFromRow({}).framePalette, 'steel')
   assert.equal(lookFromRow(null).framePalette, 'steel')
   // Таблица лидеров берёт рамку тем же способом.
-  assert.deepEqual(frameOf({ frame_id: 'frame-gold' }), { palette: 'gold', motif: 'laurel', id: 'frame-gold', shine: false })
+  assert.deepEqual(frameOf({ frame_id: 'frame-gold' }), { palette: 'gold', motif: 'legend', id: 'frame-gold', shine: false })
   // Коллекционные рамки переливаются и в списке рейтинга.
-  assert.equal(frameOf({ frame_id: 'frame-neon' }).shine, true)
+  assert.equal(frameOf({ frame_id: 'frame-crown' }).shine, true)
   assert.equal(frameOf({}).palette, 'steel')
 })
 
@@ -346,7 +357,7 @@ test('T-COS-16 catalogue группирует всё и отмечает premium
   for (const kind of COSMETIC_KINDS) {
     assert.equal(all[kind].length, itemsOf(kind).length)
   }
-  assert.equal(all.frame.filter((i) => i.premium).length, 2)
+  assert.equal(all.frame.filter((i) => i.premium).length, 11)
   assert.equal(all.banner.filter((i) => i.premium).length, 4)
 })
 
@@ -424,7 +435,7 @@ test('T-COS-24 слово «косметика» из интерфейса уб�
   assert.match(screens, /<PlayerCard\b/)
   assert.match(screens, /<ProfileBanner css=\{look \? look\.bannerCss : 'pbanner-none'\}/)
   assert.match(screens, /frame=\{look \? look\.framePalette : null\}/)
-  assert.match(screens, /frameMotif=\{look \? look\.frameMotif : 'classic'\}/)
+  assert.match(screens, /frameMotif=\{look \? look\.frameMotif : 'default'\}/)
 })
 
 test('T-COS-25 в профиле и в таблице лидеров нет эмодзи-шапок', () => {
@@ -506,7 +517,7 @@ test('T-COS-40 закрытая рамка имени откатывается �
   const nick = look(equippedFromRow({ plate_id: 'plate-gold-nick' }), playerState({ entitlements: ['plate-gold-nick'] }))
   assert.equal(nick.plateFrame, false, 'у «Золотого ника» не должно быть подложки')
   // Коллекционные рамки аватара переливаются, бесплатные — нет.
-  const ne = look(equippedFromRow({ frame_id: 'frame-neon' }), playerState({ entitlements: ['frame-neon'] }))
+  const ne = look(equippedFromRow({ frame_id: 'frame-crown' }), playerState({ entitlements: ['frame-crown'] }))
   assert.equal(ne.frameShine, true)
   assert.equal(look(equippedFromRow({ frame_id: 'frame-gold' }), playerState({ mmr: 2000 })).frameShine, false)
 })
@@ -674,7 +685,7 @@ test('T-COS-40 закрытая рамка имени откатывается �
   const nick = look(equippedFromRow({ plate_id: 'plate-gold-nick' }), playerState({ entitlements: ['plate-gold-nick'] }))
   assert.equal(nick.plateFrame, false, 'у «Золотого ника» не должно быть подложки')
   // Коллекционные рамки аватара переливаются, бесплатные — нет.
-  const ne = look(equippedFromRow({ frame_id: 'frame-neon' }), playerState({ entitlements: ['frame-neon'] }))
+  const ne = look(equippedFromRow({ frame_id: 'frame-crown' }), playerState({ entitlements: ['frame-crown'] }))
   assert.equal(ne.frameShine, true)
   assert.equal(look(equippedFromRow({ frame_id: 'frame-gold' }), playerState({ mmr: 2000 })).frameShine, false)
 })

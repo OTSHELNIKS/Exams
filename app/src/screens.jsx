@@ -1265,7 +1265,7 @@ export function PlayerCard({
           level={level}
           size={avatarSize}
           frame={look ? look.framePalette : null}
-          frameMotif={look ? look.frameMotif : 'classic'}
+          frameMotif={look ? look.frameMotif : 'default'}
           frameShine={Boolean(look && look.frameShine)}
         />
         <div className="profile-card__id">
@@ -2997,6 +2997,16 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
   const pickedRef = useRef(false)
   const [entitlements, setEntitlements] = useState([])
   const [busy, setBusy] = useState('')
+  // Нажатие на карточку — маленький «всплеск»: рамка/плашка дёргается и
+  // подсвечивается, чтобы на телефоне было видно, что тап дошёл.
+  const [pop, setPop] = useState('')
+  const popTimer = useRef(0)
+  const markPop = (id) => {
+    setPop(id)
+    clearTimeout(popTimer.current)
+    popTimer.current = setTimeout(() => setPop(''), 760)
+  }
+  useEffect(() => () => clearTimeout(popTimer.current), [])
   const [toast, setToast] = useState('')
   const [error, setError] = useState('')
   const [code, setCode] = useState('')
@@ -3184,8 +3194,9 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
             <button
               key={item.id}
               type="button"
-              className={`cosmetic-card ${status.equipped ? 'is-equipped' : ''} ${status.unlocked ? '' : 'is-locked'}`}
+              className={`cosmetic-card ${status.equipped ? 'is-equipped' : ''} ${status.unlocked ? '' : 'is-locked'} ${pop === item.id ? 'is-pop' : ''}`}
               onClick={() => equip(item)}
+              onPointerDown={() => markPop(item.id)}
               disabled={busy === item.id}
               aria-label={`${KIND_LABEL[item.kind]} ${item.label}${status.unlocked ? '' : ' — закрыто'}`}
             >

@@ -82,16 +82,32 @@ export const REQ = {
 // title: текст под ником. color: цвет ника. Платные помечаются premium: true —
 // интерфейс показывает их, но никогда не рисует кнопку «купить» в приложении.
 export const COSMETICS = [
-  // ----- рамки аватара: палитра + мотив (у каждой своя форма, см. frames.jsx)
-  { id: 'frame-default', kind: 'frame', label: 'Классика', req: { kind: 'always' }, palette: 'steel', motif: 'classic' },
-  { id: 'frame-verified', kind: 'frame', label: 'Крылья', req: { kind: 'verified' }, palette: 'azure', motif: 'wings' },
-  { id: 'frame-bronze', kind: 'frame', label: 'Корона', req: { kind: 'matches', value: 10 }, palette: 'bronze', motif: 'crest' },
-  { id: 'frame-silver', kind: 'frame', label: 'Щит', req: { kind: 'matches', value: 100 }, palette: 'silver', motif: 'shield' },
-  { id: 'frame-ruby', kind: 'frame', label: 'Рога', req: { kind: 'matches', value: 500 }, palette: 'ruby', motif: 'horns' },
-  { id: 'frame-gold', kind: 'frame', label: 'Лавр', req: { kind: 'mmr', value: 1600 }, palette: 'gold', motif: 'laurel' },
-  { id: 'frame-emerald', kind: 'frame', label: 'Пламя', req: { kind: 'mmr', value: 1800 }, palette: 'emerald', motif: 'flame' },
-  { id: 'frame-neon', kind: 'frame', label: 'Контур', req: { kind: 'entitlement' }, palette: 'neon', motif: 'circuit', premium: true },
-  { id: 'frame-diamond', kind: 'frame', label: 'Кристалл', req: { kind: 'entitlement' }, palette: 'diamond', motif: 'crystal', premium: true },
+  // ----- рамки аватара: дивизионы и коллекционные из MLBB-набора
+  // По мотивам рамок MLBB: дивизионы (Воин → Бессмертный), коллекционные
+  // (корона, скипетр, крест рыцаря) и событийные (дракон, бездна, тыква…).
+  // Рисунок свой, векторный — чужие картинки не копируем.
+  { id: 'frame-default', kind: 'frame', label: 'Классика', req: { kind: 'always' }, palette: 'steel', motif: 'default' },
+  { id: 'frame-verified', kind: 'frame', label: 'Страж рассвета', req: { kind: 'verified' }, palette: 'flare', motif: 'dawn' },
+  { id: 'frame-bronze', kind: 'frame', label: 'Воин', req: { kind: 'matches', value: 10 }, palette: 'bronze', motif: 'warrior' },
+  { id: 'frame-silver', kind: 'frame', label: 'Элита', req: { kind: 'matches', value: 100 }, palette: 'silver', motif: 'elite' },
+  { id: 'frame-ruby', kind: 'frame', label: 'Мастер', req: { kind: 'matches', value: 500 }, palette: 'ruby', motif: 'master' },
+  { id: 'frame-gold', kind: 'frame', label: 'Легенда', req: { kind: 'mmr', value: 1600 }, palette: 'gold', motif: 'legend' },
+  { id: 'frame-emerald', kind: 'frame', label: 'Мифик', req: { kind: 'mmr', value: 1800 }, palette: 'violet', motif: 'mythic' },
+  { id: 'frame-neon', kind: 'frame', label: 'Мифическая слава', req: { kind: 'mmr', value: 2200 }, palette: 'neon', motif: 'glory' },
+  { id: 'frame-diamond', kind: 'frame', label: 'Бессмертный', req: { kind: 'mmr', value: 2600 }, palette: 'diamond', motif: 'immortal' },
+
+  // Коллекционные: только правом (покупка на сайте или код активации).
+  { id: 'frame-starlight', kind: 'frame', label: 'Звёздный свет', req: { kind: 'entitlement' }, palette: 'azure', motif: 'starlight', premium: true },
+  { id: 'frame-crown', kind: 'frame', label: 'Королевская корона', req: { kind: 'entitlement' }, palette: 'royal', motif: 'crown', premium: true },
+  { id: 'frame-scepter', kind: 'frame', label: 'Скипетр герцога', req: { kind: 'entitlement' }, palette: 'amethyst', motif: 'scepter', premium: true },
+  { id: 'frame-knight', kind: 'frame', label: 'Крест рыцаря', req: { kind: 'entitlement' }, palette: 'platinum', motif: 'knight', premium: true },
+  { id: 'frame-dragon', kind: 'frame', label: 'Дракон', req: { kind: 'entitlement' }, palette: 'emerald', motif: 'dragon', premium: true },
+  { id: 'frame-abyss', kind: 'frame', label: 'Бездна', req: { kind: 'entitlement' }, palette: 'abyss', motif: 'abyss', premium: true },
+  { id: 'frame-pumpkin', kind: 'frame', label: 'Тыква', req: { kind: 'entitlement' }, palette: 'pumpkin', motif: 'pumpkin', premium: true },
+  { id: 'frame-frost', kind: 'frame', label: 'Мороз', req: { kind: 'entitlement' }, palette: 'frost', motif: 'frost', premium: true },
+  { id: 'frame-lunar', kind: 'frame', label: 'Лунный фестиваль', req: { kind: 'entitlement' }, palette: 'moon', motif: 'lunar', premium: true },
+  { id: 'frame-bling', kind: 'frame', label: 'Неон', req: { kind: 'entitlement' }, palette: 'cyber', motif: 'bling', premium: true },
+  { id: 'frame-serpent', kind: 'frame', label: 'Змей', req: { kind: 'entitlement' }, palette: 'venom', motif: 'serpent', premium: true },
 
   // ----- шапки профиля: полоса-баннер над аватаром, как в Discord
   { id: 'banner-none', kind: 'banner', label: 'Без шапки', req: { kind: 'always' }, css: 'pbanner-none' },
@@ -230,7 +246,7 @@ export function look(equipped, state = {}) {
   return {
     frameId: frame ? frame.id : DEFAULTS.frame,
     framePalette: frame && frame.palette ? frame.palette : 'steel',
-    frameMotif: frame && frame.motif ? frame.motif : 'classic',
+    frameMotif: frame && frame.motif ? frame.motif : 'default',
     // Коллекционные рамки переливаются: бегущий блик по орнаменту.
     frameShine: Boolean(frame && frame.premium),
     bannerId: banner ? banner.id : DEFAULTS.banner,
@@ -287,7 +303,7 @@ export function frameOf(row) {
   const item = cosmeticById(row && row.frame_id) || cosmeticById(DEFAULTS.frame)
   return {
     palette: item.palette || 'steel',
-    motif: item.motif || 'classic',
+    motif: item.motif || 'default',
     id: item.id,
     // Коллекционные рамки переливаются и в таблице лидеров.
     shine: Boolean(item.premium),
@@ -306,7 +322,7 @@ export function lookFromRow(row) {
   return {
     frameId: frame.id,
     framePalette: frame.palette || 'steel',
-    frameMotif: frame.motif || 'classic',
+    frameMotif: frame.motif || 'default',
     frameShine: Boolean(frame.premium),
     bannerId: banner.id,
     bannerCss: banner.css || 'pbanner-none',
