@@ -2870,7 +2870,14 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
 // правом (покупка на сайте или код активации). Внутри приложения ничего не
 // продаётся — этого требуют правила App Store и Google Play.
 export function AppearanceScreen({ supabase, userId, playerState: state, profile = {}, onEquip, onBack }) {
-  const [loadout, setLoadout] = useState(null)
+  // Что надето — сразу в виде «вид → id». Раньше здесь лежала строка из базы,
+  // а после первого клика в неё же писались ключи вида frame/banner — следующий
+  // рендер читал frame_id, не находил и откатывался к базовой рамке. Отсюда и
+  // «рамка не переключается с первого раза и не переключается вовсе».
+  const [equipped, setEquipped] = useState(() => equippedFromRow(null))
+  // Пока игрок сам не выбрал предмет, поздний ответ сервера может перезаписать
+  // его выбор — поэтому помним, что выбор уже сделан.
+  const pickedRef = useRef(false)
   const [entitlements, setEntitlements] = useState([])
   const [busy, setBusy] = useState('')
   const [toast, setToast] = useState('')
@@ -2885,18 +2892,18 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
   }, [toast])
 
   useEffect(() => {
-    if (!supabase || !userId) return
+    if (!supabase || !userId) return undefined
     let alive = true
     ;(async () => {
       const [l, e] = await Promise.all([loadLoadout(userId), loadEntitlements(userId)])
       if (!alive) return
-      if (l.loadout) setLoadout(l.loadout)
+      // Если игрок уже успел что-то надеть, ответ сервера не должен откатывать выбор.
+      if (l.loadout && !pickedRef.current) setEquipped(equippedFromRow(l.loadout))
       if (e.entitlements) setEntitlements(e.entitlements)
     })()
     return () => { alive = false }
   }, [supabase, userId])
 
-  const equipped = equippedFromRow(loadout)
   const fullState = playerState({ ...state, entitlements })
   const look = cosmeticsLook(equipped, fullState)
   const list = itemsOf(tab)
@@ -2912,10 +2919,23 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
       return
     }
     setBusy(item.id); setError('')
+    // Сразу показываем выбор, а если сервер откажет — вернём как было.
+    const before = equipped
+    setEquipped((prev) => ({ ...prev, [item.kind]: item.id }))
+    pickedRef.current = true
     const reply = await equipCosmetic(item.id)
     setBusy('')
-    if (reply.error) { setError(reply.error === 'locked' ? 'Сервер не подтвердил условие — обнови профиль и попробуй снова.' : 'Не удалось надеть. Попробуй ещё раз.'); return }
-    setLoadout((prev) => ({ ...equippedFromRow(prev), [reply.kind]: item.id }))
+    if (reply.error) {
+      setEquipped(before)
+      setError(reply.error === 'locked'
+        ? 'Сервер не подтвердил условие — обнови профиль и попробуй снова.'
+        : 'Не удалось надеть. Попробуй ещё раз.')
+      return
+    }
+    // Тип берём из ответа сервера: он знает, в какой слот предмет лёг.
+    if (reply.kind && reply.itemId) {
+      setEquipped((prev) => ({ ...prev, [reply.kind]: reply.itemId }))
+    }
     setToast('Готово')
     if (onEquip) onEquip()
   }
