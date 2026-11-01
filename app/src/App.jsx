@@ -7,13 +7,16 @@ import { AppFrame, Logo } from './ui.jsx'
 import { Landing } from './landing.jsx'
 import {
   AuthScreen, WizardScreen, HomeScreen, ProfileScreen, DraftScreen,
-  MatchScreen, LeaderboardScreen, BannedScreen, SupportScreen, LobbyScreen,
+  MatchScreen, LeaderboardScreen, BannedScreen, SupportScreen, LobbyScreen, CosmeticsScreen,
 } from './screens.jsx'
+import { equippedFromRow, playerState, look as computeLook } from './cosmetics.js'
+import { transferCaptain } from './rating.js'
 import { AdminScreen } from './admin.jsx'
 import { DEFAULT_PROFILE, splitCombinedGameId, SOCIAL_IDS, parseSocial, formatSocial } from './data.js'
 import {
   supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews,
   getTelegramLink, deleteTelegramLink, createTelegramLinkCode,
+  transferLobbyHostByCode,
 } from './supabase.js'
 import { parseVkReturn, completeVkAuth, startVkAuth, describeVkError, vkConfigured } from './vk-auth.js'
 import { parseTikTokReturn, completeTikTokAuth, startTikTokAuth, describeTikTokError } from './tiktok-auth.js'
@@ -77,6 +80,7 @@ const SCREENS = [
   { id: 'lobby', label: 'Лобби по региону', short: 'Лобби', icon: Users },
   { id: 'match', label: 'Матч готов', short: 'Матч', icon: Gamepad2 },
   { id: 'leaderboard', label: 'Таблица лидеров', short: 'Рейтинг', icon: Trophy },
+  { id: 'cosmetics', label: 'Косметика и титулы', short: 'Стиль', icon: Sparkles },
   { id: 'support', label: 'Поддержка', short: 'Помощь', icon: LifeBuoy },
   { id: 'admin', label: 'Админка', short: 'Админ', icon: ShieldCheck, admin: true },
 ]
@@ -127,6 +131,9 @@ export default function App() {
     try { return localStorage.getItem(STORAGE_KEY + ':lobbyHost') || '' } catch { return '' }
   })
   const [isAdmin, setIsAdmin] = useState(false)
+  // Надетая косметика и права на коллекционные предметы.
+  const [loadout, setLoadout] = useState(null)
+  const [entitlements, setEntitlements] = useState([])
   // Реальная привязка Telegram (таблица telegram_links, её пишет бот).
   const [telegramLink, setTelegramLink] = useState(null)
   // Владение игровым аккаунтом: храним тот Game ID, который игрок подтвердил
@@ -279,6 +286,27 @@ export default function App() {
     window.addEventListener('name:back', onBack)
     return () => window.removeEventListener('name:back', onBack)
   }, [screen])
+
+  // Косметика грузится один раз на сессию; после смены обновляем вручную.
+  const reloadCosmetics = async () => {
+    if (!supabase || !session?.user?.id) return
+    try {
+      const [l, e] = await Promise.all([loadLoadout(session.user.id), loadEntitlements(session.user.id)])
+      setLoadout(l.loadout || null)
+      setEntitlements(e.entitlements || [])
+    } catch { /* без косметики профиль всё равно работает */ }
+  }
+  useEffect(() => { reloadCosmetics() }, [supabase, session?.user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const playerCosmeticState = useMemo(() => playerState({
+    verified: Boolean(gameVerified),
+    matches: profile.matchesPlayed || 0,
+    wins: profile.wins || 0,
+    mmr: profile.elo == null ? 1000 : profile.elo,
+    entitlements,
+  }), [gameVerified, profile.matchesPlayed, profile.wins, profile.elo, entitlements])
+
+  const look = useMemo(() => computeLook(equippedFromRow(loadout), playerCosmeticState), [loadout, playerCosmeticState])
 
   // Актуальный профиль для отложенных колбэков (возврат с VK).
   const profileRef = useRef(profile)
@@ -532,9 +560,9 @@ export default function App() {
       case 'wizard':
         return <WizardScreen profile={profile} setProfile={setProfile} gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
-        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} supabase={supabase} userId={session?.user?.id || null} />
+        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} look={look} onCosmetics={() => go('cosmetics')} supabase={supabase} userId={session?.user?.id || null} />
       case 'profile':
-        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} gameVerified={gameVerified} onGameVerified={handleGameVerified} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
+        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} gameVerified={gameVerified} onGameVerified={handleGameVerified} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onBack={() => go('home')} onEdit={() => go('wizard')} onCosmetics={() => go('cosmetics')} look={look} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
         return <DraftScreen supabase={supabase} userId={session?.user?.id || null} captainId={lobbyHostId || null} lobbyCode={lobbyCode} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
       case 'lobby':
@@ -561,9 +589,42 @@ export default function App() {
           />
         )
       case 'match':
-        return <MatchScreen onBack={() => go('draft')} onLeaderboard={() => go('leaderboard')} onProfile={() => go('profile')} onLobby={() => go('lobby')} supabase={supabase} teams={draftTeams} userId={session?.user?.id || null} lobbyCode={lobbyCode} />
+        return <MatchScreen
+          onBack={() => go('draft')}
+          onLeaderboard={() => go('leaderboard')}
+          onProfile={() => go('profile')}
+          onLobby={() => go('lobby')}
+          onTransferCaptain={async (side, newCaptainId) => {
+            // Чужие id отсекает функция: капитаном станет только участник этой команды.
+            const next = transferCaptain(draftTeams, side, newCaptainId)
+            if (next === draftTeams) return { error: 'not_member' }
+            setDraftTeams(next)
+            // Капитан = хост лобби, поэтому меняем и его: иначе следующий драфт
+            // вернёт старое капитанство.
+            const reply = lobbyCode
+              ? await transferLobbyHostByCode(lobbyCode, newCaptainId)
+              : { ok: false }
+            if (reply.ok) {
+              setLobbyHostId(newCaptainId)
+              try { localStorage.setItem(STORAGE_KEY + ':lobbyHost', newCaptainId) } catch { /* noop */ }
+            }
+            return { ok: true }
+          }}
+          supabase={supabase}
+          teams={draftTeams}
+          userId={session?.user?.id || null}
+          lobbyCode={lobbyCode}
+        />
       case 'leaderboard':
         return <LeaderboardScreen supabase={supabase} userId={session?.user?.id || null} />
+      case 'cosmetics':
+        return <CosmeticsScreen
+          supabase={supabase}
+          userId={session?.user?.id || null}
+          playerState={playerCosmeticState}
+          onEquip={reloadCosmetics}
+          onBack={() => go('home')}
+        />
       case 'support':
         return <SupportScreen supabase={supabase} userId={session?.user?.id || null} onBack={() => go('home')} onAuth={() => go('auth')} />
       case 'admin':

@@ -293,12 +293,17 @@ export function Steps({ current = 1, total = 3 }) {
   )
 }
 
-export function Avatar({ src, initials = '?', size = 96, ring = true, level = null }) {
+export function Avatar({ src, initials = '?', size = 96, ring = true, level = null, frame = null, hat = '' }) {
   return (
-    <div className={`avatar ${ring ? 'avatar--ring' : ''}`} style={{ width: size, height: size }}>
+    <div
+      className={`avatar ${ring && !frame ? 'avatar--ring' : ''} ${frame ? 'avatar--framed' : ''}`}
+      style={{ width: size, height: size }}
+    >
       {src
         ? <img src={src} alt="avatar" />
         : <span className="avatar__initials">{initials}</span>}
+      {frame && <span className={`avatar__frame ${frame}`} aria-hidden="true" />}
+      {hat ? <span className="avatar__hat" aria-hidden="true">{hat}</span> : null}
       {level != null && <span className="avatar__level">LVL<br /><b>{level}</b></span>}
     </div>
   )

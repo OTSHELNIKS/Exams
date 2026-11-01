@@ -27,10 +27,16 @@ import {
   createSupportTicket, fetchSupportTickets, announceSupportTicket,
   createLobby, joinLobby, leaveLobby, loadLobby, loadLobbyMembers, setLobbyRoom, setLobbyCheckedIn,
   loadLeaderboardRanks, reportMatch, confirmMatch, disputeMatch, loadMatchHistory,
+  loadLoadout, loadEntitlements, equipCosmetic, redeemCosmeticCode, transferLobbyHost,
 } from './supabase.js'
 import {
   mmrTier, rankTitle, formatDelta, playerForm, draftCaptains,
+  withCaptain, transferCaptain, captainOf,
 } from './rating.js'
+import {
+  COSMETIC_KINDS, KIND_LABEL, KINDS_TITLE, itemsOf, itemStatus, equippedFromRow, playerState,
+  nextReward, look as cosmeticsLook, lookFromRow,
+} from './cosmetics.js'
 import {
   REGIONS as LOBBY_REGIONS, LOBBY_CAPACITY, ROOM_HINT, normalizeLobbyCode, lobbyCodeValid,
   normalizeRoomId, normalizeRoomPassword, regionLabel, regionHint, describeLobbyError,
@@ -1202,7 +1208,7 @@ export function SocialRow({
   )
 }
 
-export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onEdit, isAdmin, onAdmin, supabase, userId }) {
+export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onEdit, isAdmin, onAdmin, look = null, onCosmetics, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -1232,8 +1238,18 @@ export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount
       ) : null}
 
       <div className="home__hero">
-        <Avatar src={profile.avatarUrl || profile.avatar || null} initials={(profile.nick?.[0] || '?').toUpperCase()} level={profile.level} size={104} />
-        <h1>{profile.nick || 'Новый игрок'}</h1>
+        <Avatar
+          src={profile.avatarUrl || profile.avatar || null}
+          initials={(profile.nick?.[0] || '?').toUpperCase()}
+          level={profile.level}
+          size={104}
+          frame={look ? look.frameClass : null}
+          hat={look ? look.hatGlyph : ''}
+        />
+        <h1 style={look && look.colorValue ? { color: look.colorValue } : undefined}>
+          {profile.nick || 'Новый игрок'}
+        </h1>
+        {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
         {hasBadges && (
           <div className="home__badges">
             {profile.elo != null && <StatBadge tone="elo"><Zap size={14} /> {profile.elo} ELO</StatBadge>}
@@ -1252,6 +1268,11 @@ export function HomeScreen({ profile, actions, gameId, gameServer, googleAccount
         <button type="button" className="btn btn--ghost" onClick={actions.goLeaderboard}>
           <Trophy size={17} /> ТАБЛИЦА ЛИДЕРОВ
         </button>
+        {onCosmetics && (
+          <button type="button" className="btn btn--ghost" onClick={onCosmetics}>
+            <Sparkles size={17} /> КОСМЕТИКА И ТИТУЛЫ
+          </button>
+        )}
       </div>
       </div>
 
@@ -1415,7 +1436,7 @@ function TelegramLinkCard({ supabase, userId }) {
 }
 
 /* ============================================================= PROFILE ==== */
-export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerified, onGameVerified, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onBack, onEdit, supabase, userId }) {
+export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerified, onGameVerified, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onBack, onEdit, onCosmetics, look = null, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -1449,8 +1470,21 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
 
       <div className="home__col home__col--main">
       <div className="profile__center">
-        <Avatar src={profile.avatarUrl || profile.avatar || null} initials={(profile.nick?.[0] || '?').toUpperCase()} level={profile.level} size={128} />
-        <h1>{profile.nick || 'Новый игрок'}</h1>
+        <Avatar
+          src={profile.avatarUrl || profile.avatar || null}
+          initials={(profile.nick?.[0] || '?').toUpperCase()}
+          level={profile.level}
+          size={128}
+          frame={look ? look.frameClass : null}
+          hat={look ? look.hatGlyph : ''}
+        />
+        <h1 style={look && look.colorValue ? { color: look.colorValue } : undefined}>
+          {profile.nick || 'Новый игрок'}
+        </h1>
+        {look && look.titleText ? <em className="cosmetics__title">{look.titleText}</em> : null}
+        <button type="button" className="btn btn--small" onClick={onCosmetics}>
+          <Sparkles size={15} /> Косметика
+        </button>
         {gameId || gameServer ? (
           <p className="profile__gameid">
             Game ID • {gameId || '—'}
@@ -1573,6 +1607,8 @@ export function DraftScreen({ supabase, userId, onReady, onBack, captainId = nul
   const [openProfile, setOpenProfile] = useState(null)
   const [coin, setCoin] = useState(null)
   const [toast, setToast] = useState('')
+  // Капитан может уступить место игроку своей команды — в пределах раунда.
+  const [capOverride, setCapOverride] = useState({ A: null, B: null })
   const [players, setPlayers] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -1650,9 +1686,35 @@ export function DraftScreen({ supabase, userId, onReady, onBack, captainId = nul
   }
 
   const visible = pool.filter((p) => matchDraftRole(p, filter))
+
+  // Состав стороны: капитан + выбранные им игроки.
+  const rosterOf = (side) => {
+    const base = side === 'A' ? captains[0] : captains[1]
+    const picked = side === 'A' ? teamA : teamB
+    return [base, ...picked].filter(Boolean)
+  }
+  const captainOfSide = (side) => {
+    const want = capOverride[side]
+    const roster = rosterOf(side)
+    if (want) {
+      const found = roster.find((m) => m.user_id === want)
+      if (found) return found
+    }
+    return roster[0] || null
+  }
+  // Передать капитанство можно только своему игроку: и вызывающий должен быть
+  // капитаном, и цель — из этой же команды.
+  const handOver = (side, player) => {
+    const cap = captainOfSide(side)
+    if (!cap || cap.user_id !== userId || !player) return
+    setCapOverride((prev) => ({ ...prev, [side]: player.user_id }))
+    setToast(`Капитан команды ${side}: ${player.nick}`)
+  }
+
   const TeamCard = ({ side, roster }) => {
-    const cap = side === 'A' ? captains[0] : captains[1]
+    const cap = captainOfSide(side)
     if (!cap) return null
+    const iAmCaptain = cap.user_id === userId
     return (
       <div className={`team-card team-card--${side.toLowerCase()} ${turn === side && !full ? 'is-active' : ''}`}>
         <div className="team-card__head"><span>TEAM {side}</span><b>{cap.pts ?? 0} PTS</b></div>
@@ -1670,6 +1732,22 @@ export function DraftScreen({ supabase, userId, onReady, onBack, captainId = nul
             </span>
           ))}
         </div>
+        {iAmCaptain && roster.filter((m) => m.user_id !== cap.user_id).length > 0 && (
+          <div className="team-card__handover">
+            <small>Передать капитанство внутри команды:</small>
+            {roster.filter((m) => m.user_id !== cap.user_id).map((m) => (
+              <button
+                key={m.user_id}
+                type="button"
+                className="btn btn--small"
+                onClick={() => handOver(side, m)}
+                title={`Сделать капитаном ${m.nick}`}
+              >
+                {m.nick}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     )
   }
@@ -1759,7 +1837,11 @@ export function DraftScreen({ supabase, userId, onReady, onBack, captainId = nul
 
       <div className="draft__bottom">
         {full
-          ? <PrimaryButton onClick={() => onReady({ teamA: [captains[0], ...teamA].filter(Boolean), teamB: [captains[1], ...teamB].filter(Boolean), lobbyCode })}>МАТЧ ГОТОВ — ОТКРЫТЬ ЛОББИ</PrimaryButton>
+          ? <PrimaryButton onClick={() => onReady(withCaptain({
+              teamA: rosterOf('A').map((m) => ({ ...m, isCaptain: m.user_id === captainOfSide('A').user_id })),
+              teamB: rosterOf('B').map((m) => ({ ...m, isCaptain: m.user_id === captainOfSide('B').user_id })),
+              lobbyCode,
+            }))}>МАТЧ ГОТОВ — ОТКРЫТЬ ЛОББИ</PrimaryButton>
           : <button type="button" className="btn btn--ghost" onClick={onBack}>Отменить поиск</button>}
       </div>
 
@@ -1787,7 +1869,7 @@ export function DraftScreen({ supabase, userId, onReady, onBack, captainId = nul
 }
 
 /* =============================================================== MATCH ==== */
-export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, supabase, teams, userId, lobbyCode }) {
+export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, onTransferCaptain, supabase, teams, userId, lobbyCode }) {
   const [copied, setCopied] = useState(false)
   const [micOn, setMicOn] = useState(true)
   const [muted, setMuted] = useState({})
@@ -1807,6 +1889,10 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, supabas
   const inMatch = userId ? (teamA.some((m) => m && m.user_id === userId) || inB) : false
   const myLabel = inB ? 'Team B' : 'Team A'
   const members = (inB ? teamB : teamA).filter((m) => m && m.nick)
+  // Капитан команды отвечает за результат и может уступить место teammate'у.
+  const myTeam = inB ? teamB : teamA
+  const myCaptain = captainOf(myTeam)
+  const iAmCaptain = Boolean(myCaptain && myCaptain.user_id === userId)
   // Код лобби — настоящий, из таблицы lobbies: раньше здесь было случайное
   // число и подпись «бот создал лобби», хотя никакого лобби не существовало.
   const lobbyId = lobbyCode || ''
@@ -2038,6 +2124,26 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, supabas
             </button>
           </div>
         ))}
+        {iAmCaptain && members.length > 1 && (
+          <div className="team-card__handover">
+            <small>Передать капитанство своей команде:</small>
+            {members.filter((m) => m.user_id !== userId).map((m) => (
+              <button
+                key={m.user_id}
+                type="button"
+                className="btn btn--small"
+                onClick={async () => {
+                  setResultNote('')
+                  if (onTransferCaptain) await onTransferCaptain(inB ? 'b' : 'a', m.user_id)
+                  setToast(`Капитан: ${m.nick}`)
+                }}
+                title={`Сделать капитаном ${m.nick}`}
+              >
+                {m.nick}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="voice-card__foot">
           <button type="button" className={`btn btn--small ${micOn ? '' : 'is-off'}`} onClick={() => setMicOn(!micOn)}>
             {micOn ? <Mic size={16} /> : <MicOff size={16} />} Микрофон
@@ -2240,11 +2346,12 @@ export function LeaderboardScreen({ supabase, userId }) {
           >
             <span className="rank-row__num">#{r.position || i + 1}</span>
             <span
-              className="rank-row__avatar rank-row__avatar--tier"
+              className={`rank-row__avatar rank-row__avatar--tier ${lookFromRow(r).frameClass}`}
               style={{ boxShadow: `0 0 0 2px ${mmrTier(r.pts).color}` }}
             >{r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}</span>
             <span className="rank-row__info">
-              <strong>
+              <strong style={{ color: lookFromRow(r).colorValue }}>
+                {lookFromRow(r).hatGlyph ? lookFromRow(r).hatGlyph + ' ' : ''}
                 {r.nick}{r.user_id === userId ? ' (вы)' : ''}
                 {(r.title || rankTitle(r.position || i + 1)) && (
                   <em className={`tier-title tier-title--${(r.title || rankTitle(r.position || i + 1)).replace('ТОП-', 'top')}`}>
@@ -2534,6 +2641,20 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
     await refresh(lobby.id)
   }
 
+  // Хост может уступить лобби участнику: он станет капитаном в драфте.
+  const handOverLobby = async (memberId) => {
+    if (!lobby || !memberId) return
+    setBusy('host'); setError('')
+    const reply = await transferLobbyHost(lobby.id, memberId)
+    setBusy('')
+    if (reply.error) {
+      setError(reply.error === 'not_member' ? 'Этот игрок уже не в лобби.' : 'Не удалось передать лобби. Обнови и попробуй снова.')
+      return
+    }
+    setToast('Лобби передано: новый хост станет капитаном драфта')
+    await refresh(lobby.id)
+  }
+
   const copyInvite = () => {
     const text = lobbyInvite({ code: lobby.code, region: lobby.region })
     navigator.clipboard?.writeText(text).catch(() => {})
@@ -2672,13 +2793,30 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
             <span className="voice-row__text">
               <strong>{m.nick || 'Игрок'}{m.user_id === userId ? ' (вы)' : ''}{m.is_host ? ' · хост' : ''}</strong>
               <small>
-                {m.checked_in ? 'в игре' : 'ещё не зашёл'}
+                {m.isCaptain ? 'капитан · ' : ''}{m.checked_in ? 'в игре' : 'ещё не зашёл'}
                 {m.same_server === false ? ' · другой сервер' : ''}
                 {m.same_server === null || m.same_server === undefined ? ' · сервер не указан' : ''}
               </small>
             </span>
           </div>
         ))}
+        {isHost && members.filter((m) => m.user_id !== userId).length > 0 && (
+          <div className="team-card__handover">
+            <small>Передать лобби (и капитанство):</small>
+            {members.filter((m) => m.user_id !== userId).map((m) => (
+              <button
+                key={m.user_id}
+                type="button"
+                className="btn btn--small"
+                onClick={() => handOverLobby(m.user_id)}
+                disabled={busy === 'host'}
+                title={`Передать лобби ${m.nick || 'игроку'}`}
+              >
+                {m.nick || 'Игрок'}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="voice-card__foot">
           <button type="button" className={`btn btn--small ${me && me.checked_in ? 'btn--ghost' : ''}`} onClick={toggleIn} disabled={busy === 'check'}>
             <Check size={16} /> {me && me.checked_in ? 'Я в игре' : 'Отметить «я в игре»'}
@@ -2695,6 +2833,163 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
           Смотреть карточку матча <ArrowRight size={15} />
         </button>
       )}
+      {error && <p className="lobby__error" role="alert">{error}</p>}
+      {toast && <div className="toast toast--fixed">{toast}</div>}
+    </div>
+  )
+}
+
+/* ============================================================ COSMETICS ==== */
+// Косметика: рамки, шапки, титулы и цвет ника. Всё, что даётся бесплатно, —
+// только за реальные достижения; коллекционное приходит правом (покупка на
+// сайте или код активации). Внутри приложения ничего не продаётся — этого
+// требуют правила App Store и Google Play.
+export function CosmeticsScreen({ supabase, userId, playerState: state, onEquip, onBack }) {
+  const [loadout, setLoadout] = useState(null)
+  const [entitlements, setEntitlements] = useState([])
+  const [busy, setBusy] = useState('')
+  const [toast, setToast] = useState('')
+  const [error, setError] = useState('')
+  const [code, setCode] = useState('')
+  const [tab, setTab] = useState('frame')
+
+  useEffect(() => {
+    if (!toast) return undefined
+    const t = setTimeout(() => setToast(''), 2400)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  useEffect(() => {
+    if (!supabase || !userId) return
+    let alive = true
+    ;(async () => {
+      const [l, e] = await Promise.all([loadLoadout(userId), loadEntitlements(userId)])
+      if (!alive) return
+      if (l.loadout) setLoadout(l.loadout)
+      if (e.entitlements) setEntitlements(e.entitlements)
+    })()
+    return () => { alive = false }
+  }, [supabase, userId])
+
+  const equipped = equippedFromRow(loadout)
+  const fullState = playerState({ ...state, entitlements })
+  const look = cosmeticsLook(equipped, fullState)
+  const list = itemsOf(tab)
+  const reward = nextReward(fullState)
+
+  const equip = async (item) => {
+    if (!userId) { setError('Войди в аккаунт, чтобы выбрать оформление.'); return }
+    const status = itemStatus(item, fullState, equipped)
+    if (!status.unlocked) {
+      setError(item.premium
+        ? 'Это коллекционное оформление: оно покупается на сайте или активируется кодом — внутри приложения покупок нет.'
+        : `Ещё не открыто: ${status.requirement}${status.left ? ` (осталось ${status.left})` : ''}.`)
+      return
+    }
+    setBusy(item.id); setError('')
+    const reply = await equipCosmetic(item.id)
+    setBusy('')
+    if (reply.error) { setError(reply.error === 'locked' ? 'Сервер не подтвердил условие — обнови профиль и попробуй снова.' : 'Не удалось надеть. Попробуй ещё раз.'); return }
+    setLoadout((prev) => ({ ...equippedFromRow(prev), [reply.kind]: item.id }))
+    setToast('Готово')
+    if (onEquip) onEquip()
+  }
+
+  const redeem = async () => {
+    const value = String(code || '').trim().toUpperCase()
+    if (value.length < 6) { setError('Код активации — от 6 символов.'); return }
+    setBusy('code'); setError('')
+    const reply = await redeemCosmeticCode(value)
+    setBusy('')
+    if (reply.error) {
+      setError(reply.error === 'used' ? 'Этот код уже активирован.' : reply.error === 'bad_code' ? 'Код не найден. Проверь буквы и цифры.' : 'Не удалось активировать. Попробуй ещё раз.')
+      return
+    }
+    setCode('')
+    setToast('Код принят — оформление открыто')
+    if (userId) {
+      const e = await loadEntitlements(userId)
+      if (e.entitlements) setEntitlements(e.entitlements)
+    }
+  }
+
+  return (
+    <div className="screen cosmetics">
+      <BackHeader title="Косметика" onBack={onBack} />
+
+      <div className="cosmetics__preview">
+        <Avatar src={null} initials="Я" size={84} frame={look.frameClass} hat={look.hatGlyph} />
+        <div>
+          <strong style={{ color: look.colorValue }}>
+            {look.hatGlyph ? look.hatGlyph + ' ' : ''}Твой ник
+          </strong>
+          {look.titleText && <em className="cosmetics__title">{look.titleText}</em>}
+          <small>{mmrTier(fullState.mmr).label} · {fullState.matches} матчей</small>
+        </div>
+      </div>
+
+      <div className="chips chips--scroll cosmetics__tabs">
+        {COSMETIC_KINDS.map((kind) => (
+          <Chip key={kind} active={tab === kind} onClick={() => setTab(kind)}>{KIND_LABEL[kind]}</Chip>
+        ))}
+      </div>
+
+      <div className="section-head"><span>{KINDS_TITLE[tab]}</span><b>{list.filter((i) => itemStatus(i, fullState, equipped).unlocked).length}/{list.length}</b></div>
+
+      <div className="cosmetics__grid">
+        {list.map((item) => {
+          const status = itemStatus(item, fullState, equipped)
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={`cosmetic-card ${status.equipped ? 'is-equipped' : ''} ${status.unlocked ? '' : 'is-locked'}`}
+              onClick={() => equip(item)}
+              disabled={busy === item.id}
+              aria-label={`${KIND_LABEL[item.kind]} ${item.label}${status.unlocked ? '' : ' — закрыто'}`}
+            >
+              <span className="cosmetic-card__art">
+                {item.kind === 'frame' && <span className={`cosmetic-card__frame ${item.css}`} />}
+                {item.kind === 'hat' && <span className="cosmetic-card__hat">{item.glyph || '—'}</span>}
+                {item.kind === 'title' && <span className="cosmetic-card__title">{item.value || '—'}</span>}
+                {item.kind === 'color' && <span className="cosmetic-card__color" style={{ background: item.value }} />}
+              </span>
+              <strong>{item.label}</strong>
+              <small>
+                {status.equipped ? 'Надето'
+                  : status.unlocked ? 'Открыто'
+                    : item.premium ? 'Коллекционное'
+                      : status.requirement}
+              </small>
+              {!status.unlocked && !item.premium && status.left > 0 && <em className="cosmetic-card__left">ещё {status.left}</em>}
+              {item.premium && <span className="cosmetic-card__badge">ПРЕМЬЕР</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {reward && (
+        <p className="social-hint">Ближайшая награда: <b>{reward.label}</b> — {reward.text}, осталось {reward.left}.</p>
+      )}
+
+      <div className="cosmetics__code">
+        <span className="lobby-card__label">КОД АКТИВАЦИИ</span>
+        <div className="input-wrap">
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 24))}
+            placeholder="NAME-GOLD-2026"
+            aria-label="Код активации"
+          />
+        </div>
+        <button type="button" className="btn btn--ghost" onClick={redeem} disabled={busy === 'code'}>
+          <Sparkles size={16} /> {busy === 'code' ? 'Проверяем…' : 'Активировать'}
+        </button>
+        <p className="field-hint">
+          Покупки оформляются на сайте и приходят кодом — в приложении платёжных кнопок нет по правилам магазинов.
+        </p>
+      </div>
+
       {error && <p className="lobby__error" role="alert">{error}</p>}
       {toast && <div className="toast toast--fixed">{toast}</div>}
     </div>

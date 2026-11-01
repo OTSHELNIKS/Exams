@@ -31,6 +31,8 @@ export function rowToProfile(row, defaults) {
     roles: row.roles, regions: row.regions, bio: row.bio, heroes: row.heroes,
     heroClasses: row.hero_classes, socials: row.socials || [], extraSlots: row.extra_slots || 0,
     avatarUrl: row.avatar_url || '', screenshots: row.screenshot_urls || [],
+    // Матчи и победы платформы: нужны для косметики и вех (100/500 матчей).
+    matchesPlayed: row.matches_played || 0, wins: row.wins || 0,
     elo: row.pts === null || row.pts === undefined ? null : row.pts,
     isBanned: !!row.is_banned, banReason: row.ban_reason || '', avatar: null }
 }
@@ -391,4 +393,65 @@ export async function loadLeaderboardRanks(limit = 100) {
     .limit(limit)
   if (error) return { error: 'server', detail: error.message }
   return { rows: data || [] }
+}
+
+/* --------------------------------------------------------------- косметика */
+
+/** Что надето у игрока (null, если ничего не выбирал). */
+export async function loadLoadout(userId) {
+  const { data, error } = await supabase
+    .from('cosmetic_loadout')
+    .select('frame_id, hat_id, title_id, color_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) return { error: 'server', detail: error.message }
+  return { loadout: data || null }
+}
+
+/** Открытые права: коллекционные предметы из покупок и кодов. */
+export async function loadEntitlements(userId) {
+  const { data, error } = await supabase
+    .from('entitlements')
+    .select('item_id')
+    .eq('user_id', userId)
+  if (error) return { error: 'server', detail: error.message }
+  return { entitlements: (data || []).map((row) => row.item_id) }
+}
+
+/** Надеть предмет. Сервер сам проверит условие — обойти нельзя. */
+export async function equipCosmetic(itemId) {
+  const { data, error } = await supabase.rpc('equip_cosmetic', { p_item_id: itemId })
+  if (error) return { error: 'server', detail: error.message }
+  if (data && data.error) return { error: data.error }
+  return { ok: true, kind: data.kind, itemId: data.item_id }
+}
+
+/** Активировать код покупки. Один код — одно право, повторно не сработает. */
+export async function redeemCosmeticCode(code) {
+  const { data, error } = await supabase.rpc('redeem_cosmetic_code', { p_code: String(code || '').trim().toUpperCase() })
+  if (error) return { error: 'server', detail: error.message }
+  if (data && data.error) return { error: data.error }
+  return { ok: true, itemId: data.item_id }
+}
+
+/** Передать лобби (и капитанство) участнику этой же комнаты. */
+export async function transferLobbyHost(lobbyId, userId) {
+  const { data, error } = await supabase.rpc('transfer_lobby_host', { p_lobby_id: lobbyId, p_user_id: userId })
+  if (error) return { error: 'server', detail: error.message }
+  if (data && data.error) return { error: data.error }
+  return { ok: true, hostId: data.host_id }
+}
+
+/** Передать лобби по коду: экран матча знает код, а RPC ждёт id. */
+export async function transferLobbyHostByCode(code, userId) {
+  const normalized = String(code || '').trim().toUpperCase()
+  if (!normalized) return { error: 'not_found' }
+  const { data, error } = await supabase
+    .from('lobbies')
+    .select('id')
+    .eq('code', normalized)
+    .maybeSingle()
+  if (error) return { error: 'server', detail: error.message }
+  if (!data) return { error: 'not_found' }
+  return transferLobbyHost(data.id, userId)
 }

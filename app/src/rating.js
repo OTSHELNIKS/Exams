@@ -142,3 +142,52 @@ export function nextMilestone(played) {
   const goal = goals.find((g) => n < g)
   return goal ? { goal, left: goal - n, done: false } : { goal: null, left: 0, done: true }
 }
+
+/* --------------------------------------------------- капитан и его передача */
+
+// Составы приходят из драфта как { teamA, teamB }. Капитан помечается флагом
+// isCaptain, чтобы его можно было передать и чтобы карточка матча знала, кто
+// отвечает за результат.
+function normTeam(team) {
+  return (Array.isArray(team) ? team : []).filter((m) => m && m.user_id)
+}
+
+export function withCaptain(teams) {
+  const fresh = (team) => {
+    const list = normTeam(team)
+    if (!list.length) return []
+    const has = list.some((m) => m.isCaptain)
+    return list.map((m, i) => ({ ...m, isCaptain: has ? Boolean(m.isCaptain) : i === 0 }))
+  }
+  return {
+    ...(teams || {}),
+    teamA: fresh(teams && teams.teamA),
+    teamB: fresh(teams && teams.teamB),
+  }
+}
+
+export function captainOf(team) {
+  const list = normTeam(team)
+  return list.find((m) => m.isCaptain) || list[0] || null
+}
+
+export function isCaptain(teams, side, userId) {
+  if (!userId) return false
+  const team = side === 'b' || side === 'B' ? teams && teams.teamB : teams && teams.teamA
+  const cap = captainOf(team)
+  return Boolean(cap && cap.user_id === userId)
+}
+
+// Передать капитанство можно только своему игроку из той же команды:
+// «чужой» id или игрок из другой команды просто игнорируются.
+export function transferCaptain(teams, side, newCaptainId) {
+  const key = String(side || 'a').toLowerCase() === 'b' ? 'teamB' : 'teamA'
+  const list = normTeam(teams && teams[key])
+  if (!newCaptainId || !list.some((m) => m.user_id === newCaptainId)) {
+    return teams
+  }
+  return {
+    ...(teams || {}),
+    [key]: list.map((m) => ({ ...m, isCaptain: m.user_id === newCaptainId })),
+  }
+}

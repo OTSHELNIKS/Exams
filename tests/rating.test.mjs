@@ -20,6 +20,7 @@ const read = (p) => readFileSync(join(root, p), 'utf8')
 const {
   MMR_START, MMR_FLOOR, MMR_TIERS, LEGEND_MIN, LEGEND_STEP,
   parseMmr, mmrTier, mmrColor, rankTitle, formatDelta, draftCaptains, playerForm, nextMilestone,
+  withCaptain, captainOf, isCaptain, transferCaptain,
 } = await import('../app/src/rating.js')
 
 let passed = 0
@@ -193,6 +194,45 @@ test('T-MMR-18 вехи 100/500 матчей считаются честно', (
   assert.deepEqual(nextMilestone(99), { goal: 100, left: 1, done: false })
   assert.deepEqual(nextMilestone(500), { goal: 1000, left: 500, done: false })
   assert.deepEqual(nextMilestone(1000), { goal: null, left: 0, done: true })
+})
+
+// ------------------------------------------------- передача капитанства
+
+const команда = (ids) => ids.map((id, i) => ({ user_id: id, nick: id, isCaptain: i === 0 }))
+const составы = () => ({ teamA: команда(['a1', 'a2', 'a3']), teamB: команда(['b1', 'b2']) })
+
+test('T-MMR-19 withCaptain гарантирует ровно одного капитана в команде', () => {
+  const teams = withCaptain({ teamA: [{ user_id: 'x' }, { user_id: 'y' }], teamB: [{ user_id: 'z' }] })
+  assert.deepEqual(teams.teamA.map((m) => m.isCaptain), [true, false])
+  assert.deepEqual(teams.teamB.map((m) => m.isCaptain), [true])
+  // Уже назначенного капитана не перебивает.
+  const kept = withCaptain({ teamA: [{ user_id: 'x' }, { user_id: 'y', isCaptain: true }] })
+  assert.equal(captainOf(kept.teamA).user_id, 'y')
+})
+
+test('T-MMR-20 капитан передаёт место своему игроку, флаг переезжает целиком', () => {
+  const next = transferCaptain(составы(), 'A', 'a3')
+  assert.equal(captainOf(next.teamA).user_id, 'a3')
+  assert.equal(next.teamA.filter((m) => m.isCaptain).length, 1)
+  assert.equal(isCaptain(next.teamA, 'a1'), false)
+  // Другая команда не тронута.
+  assert.equal(captainOf(next.teamB).user_id, 'b1')
+})
+
+test('T-MMR-21 чужой игрок и игрок из другой команды капитаном не становятся', () => {
+  const teams = составы()
+  assert.equal(transferCaptain(teams, 'A', 'b1'), teams)
+  assert.equal(transferCaptain(teams, 'A', 'незнакомец'), teams)
+  assert.equal(transferCaptain(teams, 'A', ''), teams)
+  assert.equal(transferCaptain(teams, 'A', null), teams)
+  assert.equal(captainOf(transferCaptain(teams, 'A', 'b2').teamA).user_id, 'a1')
+})
+
+test('T-MMR-22 передача капитана во второй команде не задевает первую', () => {
+  const next = transferCaptain(составы(), 'b', 'b2')
+  assert.equal(captainOf(next.teamB).user_id, 'b2')
+  assert.equal(captainOf(next.teamA).user_id, 'a1')
+  assert.equal(next.teamA.length, 3)
 })
 
 for (const { name, fn } of queue) {
