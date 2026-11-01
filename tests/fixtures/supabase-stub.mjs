@@ -11,6 +11,7 @@ export const state = (globalThis.__stubState = {
   failNext: null,
   loadLatency: 0,
   equipLatency: 0,
+  admin: false,
 })
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -23,6 +24,7 @@ export function resetStub(overrides = {}) {
     failNext: null,
     loadLatency: 0,
     equipLatency: 0,
+    admin: false,
   }, overrides)
   uploads.length = 0
 }
@@ -80,10 +82,18 @@ export async function uploadBanner(file, userId) {
 export async function equipBannerMedia(itemId, url) {
   state.calls.push(itemId)
   await wait(state.equipLatency)
-  if (!state.entitlements.includes(itemId)) return { error: 'locked' }
+  if (!state.admin && !state.entitlements.includes(itemId)) return { error: 'locked' }
   if (itemId === 'banner-motion' && !/\.(gif|webp)$/i.test(url)) return { error: 'bad_format' }
   state.loadout = { ...state.loadout, banner_id: itemId, banner_url: url }
   return { ok: true, kind: 'banner', itemId, url }
+}
+
+// Админ: одно нажатие — все права на платные предметы.
+export async function adminGrantAllPremium() {
+  if (!state.admin) return { error: 'forbidden' }
+  const ids = ['frame-neon', 'frame-diamond', 'banner-neon', 'banner-aurora', 'banner-photo', 'banner-motion', 'title-pioneer', 'color-neon']
+  for (const id of ids) if (!state.entitlements.includes(id)) state.entitlements.push(id)
+  return { ok: true, entitlements: state.entitlements.length }
 }
 
 export async function clearBannerMedia() {

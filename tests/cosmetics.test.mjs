@@ -43,6 +43,7 @@ const { FRAME_PALETTES, FRAME_ART, FRAME_MOTIFS, safeBannerUrl } = await import(
 const sql = read('supabase/migrations/20261101180000_cosmetics.sql')
 const bannersSql = read('supabase/migrations/20261101210000_profile_banners.sql')
 const mediaSql = read('supabase/migrations/20261101220000_banner_media.sql')
+const adminSql = read('supabase/migrations/20261101230000_admin_premium.sql')
 
 let passed = 0
 let failed = 0
@@ -50,6 +51,8 @@ const queue = []
 function test(name, fn) { queue.push({ name, fn }) }
 
 const никто = playerState({})
+const админ = playerState({ admin: true })
+const админБезПрогресса = playerState({ admin: true, matches: 0, wins: 0, mmr: 1000, verified: false })
 const богач = playerState({ verified: true, matches: 5000, wins: 5000, mmr: 9999 })
 
 // ------------------------------------------------------------------- каталог
@@ -186,6 +189,70 @@ test('T-COS-08 коллекционные предметы не открываю
     assert.equal(isUnlocked(item, богач), false, `${item.id} открылся от матчей`)
     assert.equal(isUnlocked(item, playerState({ ...богач, entitlements: [item.id] })), true, `${item.id} не открылся правом`)
   }
+})
+
+test('T-COS-31 админ видит весь платный контент открытым', () => {
+  for (const item of COSMETICS.filter((i) => i.premium)) {
+    assert.equal(isUnlocked(item, админ), true, `${item.id} закрыт для админа`)
+    const status = itemStatus(item, админ, equippedFromRow(null))
+    assert.equal(status.adminUnlocked, true, `${item.id}: нет отметки «доступно админу»`)
+    assert.equal(status.requirement, 'Доступно админу')
+  }
+  // Платных предметов восемь — все они доступны без покупки.
+  assert.equal(COSMETICS.filter((i) => i.premium).length, 8)
+})
+
+test('T-COS-32 админский доступ не подменяет бесплатные условия', () => {
+  // Иначе легко выпустить баг, которого у игроков не будет: админ «проходит»
+  // матчи, MMR и подтверждение аккаунта, и вёрстка выглядит здоровой.
+  for (const item of COSMETICS.filter((i) => !i.premium)) {
+    assert.equal(
+      isUnlocked(item, админБезПрогресса),
+      isUnlocked(item, playerState({})),
+      `${item.id}: админ получил бесплатный предмет без условия`,
+    )
+  }
+  assert.equal(isUnlocked(cosmeticById('frame-gold'), админБезПрогресса), false)
+  assert.equal(isUnlocked(cosmeticById('frame-verified'), админБезПрогресса), false)
+})
+
+test('T-COS-33 админский флаг есть только у админа, и он не про деньги', () => {
+  assert.equal(никто.admin, false)
+  assert.equal(админ.admin, true)
+  // Обычный игрок без прав по-прежнему видит платное закрытым.
+  for (const item of COSMETICS.filter((i) => i.premium)) {
+    assert.equal(isUnlocked(item, никто), false)
+  }
+})
+
+test('T-COS-34 админу не предлагают купить то, что и так доступно', () => {
+  // Ближайшая награда — только про прогресс, платное туда не подмешивается.
+  const reward = nextReward(админБезПрогресса)
+  assert.ok(reward)
+  assert.equal(COSMETICS.find((i) => i.id === reward.id).premium, undefined)
+  assert.equal(nextReward(playerState({ admin: true, matches: 5000, wins: 5000, mmr: 9999, verified: true })), null)
+})
+
+test('T-COS-35 сервер пускает админа к платному и закрепляет право', () => {
+  assert.match(adminSql, /create or replace function public\.is_admin_user\(p_user_id uuid\)/)
+  assert.match(adminSql, /from public\.admins a where a\.user_id = p_user_id/)
+  // В условии платного предмета админ идёт первым.
+  assert.match(adminSql, /when 'entitlement' then public\.is_admin_user\(p_user_id\) or exists/)
+  // При надевании право реально записывается — предмет остаётся у админа.
+  assert.match(adminSql, /insert into public\.entitlements \(user_id, item_id, source\)\s+values \(v_uid, p_item_id, 'admin'\)/)
+  // И своя шапка тоже.
+  assert.match(adminSql, /function public\.equip_banner_media/)
+  // Одно нажатие — все платные предметы.
+  assert.match(adminSql, /function public\.admin_grant_all_premium\(\)/)
+  assert.match(adminSql, /if not public\.is_admin_user\(v_uid\) then[\s\S]{0,80}'forbidden'/)
+  assert.match(adminSql, /where i\.premium/)
+})
+
+test('T-COS-36 выдать себе платное может только админ', () => {
+  const fn = adminSql.slice(adminSql.indexOf('function public.admin_grant_all_premium'))
+  assert.match(fn, /is_admin_user\(v_uid\)/)
+  assert.match(fn, /'forbidden'/)
+  assert.match(fn, /revoke all on function public\.admin_grant_all_premium\(\) from anon/)
 })
 
 test('T-COS-09 чужое право не открывает предмет', () => {

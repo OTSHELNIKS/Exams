@@ -531,3 +531,11 @@ export async function loadPublicLook(userId) {
   if (error) return null
   return data || null
 }
+
+/** Админу: выдать себе права на весь платный контент (одно нажатие). */
+export async function adminGrantAllPremium() {
+  const { data, error } = await supabase.rpc('admin_grant_all_premium')
+  if (error) return { error: 'server', detail: error.message }
+  if (data && data.error) return { error: data.error }
+  return { ok: true, entitlements: data.entitlements || 0 }
+}

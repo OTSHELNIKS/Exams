@@ -85,10 +85,11 @@ console.error = () => {}
 
 // Игрок с прогрессом: почти всё бесплатное открыто.
 const PLAYER = { verified: true, matches: 600, wins: 300, mmr: 2000, entitlements: [] }
+const ADMIN = { ...PLAYER, admin: true }
 
 let reactRoot = null
 let host = null
-async function mount({ latency = 0, equipLatency = 0, failNext = null, entitlements = [] } = {}) {
+async function mount({ latency = 0, equipLatency = 0, failNext = null, entitlements = [], admin = false, player = PLAYER } = {}) {
   if (reactRoot) { reactRoot.unmount(); host.remove() }
   Object.assign(stub, {
     loadout: { user_id: 'u1', frame_id: 'frame-default', banner_id: 'banner-none', title_id: 'title-none', color_id: 'color-default' },
@@ -97,6 +98,7 @@ async function mount({ latency = 0, equipLatency = 0, failNext = null, entitleme
     failNext,
     loadLatency: latency,
     equipLatency,
+    admin,
   })
   host = document.createElement('div')
   document.body.appendChild(host)
@@ -104,7 +106,7 @@ async function mount({ latency = 0, equipLatency = 0, failNext = null, entitleme
   if (globalThis.__stubUploads) globalThis.__stubUploads.length = 0
   reactRoot = createRoot(host)
   reactRoot.render(React.createElement(S.AppearanceScreen, {
-    supabase: {}, userId: 'u1', playerState: PLAYER, profile: { nick: 'QA' },
+    supabase: {}, userId: 'u1', playerState: player, profile: { nick: 'QA' },
     onEquip: () => {}, onBack: () => {},
   }))
   await settle(latency + 60)
@@ -287,6 +289,58 @@ test('T-PICK-13 свою шапку можно убрать и вернутьс�
   remove.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
   await settle(120)
   assert.equal(document.querySelector('.cosmetics__preview .pbanner img'), null, 'картинка осталась')
+})
+
+// ------------------------------------------------- админ: всё платное открыто
+
+test('T-PICK-14 админ надевает коллекционную рамку без права', async () => {
+  await mount({ admin: true, player: ADMIN })
+  assert.match(document.body.textContent, /весь платный контент доступен/i, 'нет подсказки для админа')
+  await clickCard('Кристалл')
+  assert.equal(previewPalette(), 'diamond', 'коллекционная рамка не наделась')
+  assert.deepEqual(stub.calls, ['frame-diamond'])
+  assert.match(errorText(), /^$/, 'админу показали ошибку про покупку')
+})
+
+test('T-PICK-15 у платных предметов подпись «Доступно админу», а не «Коллекционное»', async () => {
+  await mount({ admin: true, player: ADMIN })
+  const card = cards().find((c) => titleOf(c) === 'Контур')
+  assert.ok(card)
+  assert.match(card.textContent, /Доступно админу/)
+  assert.doesNotMatch(card.textContent, /Коллекционное/)
+})
+
+test('T-PICK-16 админ ставит свою картинку и GIF без покупки', async () => {
+  await mount({ admin: true, player: ADMIN })
+  await clickChip('Шапка профиля')
+  await clickCard('Своя картинка')
+  await pickFile(makeFile('banner.jpg', 'image/jpeg'))
+  assert.equal(uploads.length, 1, 'файл не загрузился')
+  assert.ok(document.querySelector('.cosmetics__preview .pbanner img'), 'шапка не появилась')
+  await clickCard('Анимация')
+  await pickFile(makeFile('loop.gif', 'image/gif'))
+  assert.match(document.querySelector('.cosmetics__preview .pbanner img').getAttribute('src'), /\.gif$/)
+  assert.match(errorText(), /^$/, 'админу отказали в платном')
+})
+
+test('T-PICK-17 «Забрать всю коллекцию» есть только у админа', async () => {
+  await mount()
+  await clickChip('Шапка профиля')
+  assert.equal(
+    Array.from(document.querySelectorAll('.cosmetics__uploads button')).some((b) => /Забрать всю коллекцию/.test(b.textContent || '')),
+    false,
+    'кнопка выдачи видна обычному игроку',
+  )
+
+  await mount({ admin: true, player: ADMIN })
+  await clickChip('Шапка профиля')
+  const grant = Array.from(document.querySelectorAll('.cosmetics__uploads button'))
+    .find((b) => /Забрать всю коллекцию/.test(b.textContent || ''))
+  assert.ok(grant, 'у админа нет кнопки выдачи')
+  grant.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+  await settle(200)
+  // Права реально записались — теперь платное открыто и без админского флага.
+  assert.equal(stub.entitlements.length, 8)
 })
 
 rmSync(bundle, { force: true })

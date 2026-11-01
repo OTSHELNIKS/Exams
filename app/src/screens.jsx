@@ -28,7 +28,7 @@ import {
   createLobby, joinLobby, leaveLobby, loadLobby, loadLobbyMembers, setLobbyRoom, setLobbyCheckedIn,
   loadLeaderboardRanks, reportMatch, confirmMatch, disputeMatch, loadMatchHistory,
   loadLoadout, loadEntitlements, loadPublicLook, equipCosmetic, redeemCosmeticCode, transferLobbyHost,
-  uploadBanner, equipBannerMedia, clearBannerMedia, validateBanner,
+  uploadBanner, equipBannerMedia, clearBannerMedia, validateBanner, adminGrantAllPremium,
 } from './supabase.js'
 import {
   mmrTier, rankTitle, formatDelta, playerForm, draftCaptains,
@@ -2910,6 +2910,8 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
 
   const fullState = playerState({ ...state, entitlements })
   const look = cosmeticsLook(equipped, fullState)
+  // Админ видит весь платный контент открытым (сервер считает так же).
+  const admin = Boolean(fullState.admin)
   const list = itemsOf(tab)
   const reward = nextReward(fullState)
 
@@ -3034,6 +3036,13 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
         </div>
       </div>
 
+      {admin && (
+        <p className="social-hint">
+          Ты админ: весь платный контент доступен целиком — рамки, шапки, своя картинка и GIF.
+          При надевании предмет закрепляется за тобой, покупать ничего не нужно.
+        </p>
+      )}
+
       <div className="chips chips--scroll cosmetics__tabs">
         {COSMETIC_KINDS.map((kind) => (
           <Chip key={kind} active={tab === kind} onClick={() => setTab(kind)}>{KIND_LABEL[kind]}</Chip>
@@ -3073,9 +3082,10 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
               <strong>{item.label}</strong>
               <small>
                 {status.equipped ? 'Надето'
-                  : status.unlocked ? 'Открыто'
-                    : item.premium ? 'Коллекционное'
-                      : status.requirement}
+                  : status.adminUnlocked ? 'Доступно админу'
+                    : status.unlocked ? 'Открыто'
+                      : item.premium ? 'Коллекционное'
+                        : status.requirement}
               </small>
               {!status.unlocked && !item.premium && status.left > 0 && <em className="cosmetic-card__left">ещё {status.left}</em>}
               {item.premium && <span className="cosmetic-card__badge">ПРЕМЬЕР</span>}
@@ -3121,6 +3131,26 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
             {equipped.bannerUrl && (
               <button type="button" className="btn btn--ghost" onClick={removeBannerMedia} disabled={busy === 'banner-none'}>
                 <X size={15} /> Убрать свою шапку
+              </button>
+            )}
+            {/* Админу платное доступно и так — кнопка лишь закрепляет права в базе. */}
+            {admin && (
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={async () => {
+                  setBusy('admin'); setError('')
+                  const reply = await adminGrantAllPremium()
+                  setBusy('')
+                  if (reply.error) { setError('Не удалось выдать: ' + reply.error); return }
+                  const e = await loadEntitlements(userId)
+                  if (e.entitlements) setEntitlements(e.entitlements)
+                  setToast(`Платный контент закреплён: ${reply.entitlements}`)
+                  if (onEquip) onEquip()
+                }}
+                disabled={busy === 'admin'}
+              >
+                <ShieldCheck size={15} /> {busy === 'admin' ? 'Выдаём…' : 'Забрать всю коллекцию'}
               </button>
             )}
           </div>

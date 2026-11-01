@@ -309,7 +309,9 @@ export default function App() {
     wins: profile.wins || 0,
     mmr: profile.elo == null ? 1000 : profile.elo,
     entitlements,
-  }), [gameVerified, profile.matchesPlayed, profile.wins, profile.elo, entitlements])
+    // Админу платный контент доступен целиком — и в интерфейсе, и на сервере.
+    admin: isAdmin,
+  }), [gameVerified, profile.matchesPlayed, profile.wins, profile.elo, entitlements, isAdmin])
 
   const look = useMemo(() => computeLook(equippedFromRow(loadout), playerCosmeticState), [loadout, playerCosmeticState])
 

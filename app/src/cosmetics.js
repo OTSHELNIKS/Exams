@@ -55,6 +55,10 @@ export const REQ = {
   },
   entitlement: (item, state) => {
     const list = Array.isArray(state.entitlements) ? state.entitlements : []
+    // Админу платное доступно без покупки — сервер считает так же.
+    if (state.admin) {
+      return { ok: true, text: 'Доступно админу', left: 0, admin: true }
+    }
     return {
       ok: list.includes(item.id),
       text: item && item.media
@@ -140,8 +144,18 @@ export function equippedFromRow(row) {
 
 // Состояние игрока для проверки условий. Всё, кроме entitlements, приходит из
 // базы: подделать в браузере нельзя, сервер всё равно перепроверит.
-export function playerState({ verified = false, matches = 0, wins = 0, mmr = 1000, entitlements = [] } = {}) {
-  return { verified: Boolean(verified), matches: Number(matches) || 0, wins: Number(wins) || 0, mmr: Number(mmr) || 1000, entitlements }
+export function playerState({ verified = false, matches = 0, wins = 0, mmr = 1000, entitlements = [], admin = false } = {}) {
+  return {
+    verified: Boolean(verified),
+    matches: Number(matches) || 0,
+    wins: Number(wins) || 0,
+    mmr: Number(mmr) || 1000,
+    entitlements: Array.isArray(entitlements) ? entitlements : [],
+    // Админ видит весь платный контент открытым — так же, как его видит сервер
+    // (cosmetic_unlocked). Это только интерфейс: надеть предмет всё равно
+    // можно лишь через RPC, где права проверяются заново.
+    admin: Boolean(admin),
+  }
 }
 
 export function requirement(item, state) {
@@ -166,6 +180,8 @@ export function itemStatus(item, state, equipped) {
     equipped: item.id === (equipped || {})[item.kind],
     requirement: req.text,
     left: req.left || 0,
+    // Платный предмет открыт потому, что игрок админ (в интерфейсе — отдельная подпись).
+    adminUnlocked: Boolean(req.admin),
   }
 }
 
@@ -221,7 +237,7 @@ export function nextReward(state) {
   const locked = COSMETICS
     .filter((item) => !item.premium && COUNTABLE.has(item.req.kind))
     .map((item) => ({ item, req: requirement(item, st) }))
-    .filter((x) => !x.req.ok && Number.isFinite(x.req.left))
+    .filter((x) => !x.req.ok && !x.req.admin && Number.isFinite(x.req.left))
     .sort((a, b) => a.req.left - b.req.left)
   const first = locked[0]
   return first ? { id: first.item.id, label: first.item.label, kind: first.item.kind, left: first.req.left, text: first.req.text } : null
