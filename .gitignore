@@ -42,3 +42,7 @@ app/ios/App/App.xcodeproj/xcuserdata/
 app/ios/App/App.xcworkspace/xcuserdata/
 app/*.keystore
 app/*.jks
+
+# временные бандлы тестов (esbuild)
+.*-under-test.mjs
+.probe-*.mjs
