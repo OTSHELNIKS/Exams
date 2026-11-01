@@ -294,11 +294,7 @@ export function Steps({ current = 1, total = 3 }) {
   )
 }
 
-/**
- * Аватар. `frame` — палитра рамки ('gold', 'neon'…), `frameMotif` — форма
- * орнамента ('dragon', 'crown'…); `frameShine` включает блеск коллекционной
- * рамки; саму рамку рисует ProfileFrame (frames.jsx).
- */
+/** Без рамки фото круглое; с рамкой квадратное фото находится по центру. */
 export function Avatar({ src, initials = '?', size = 96, ring = true, level = null, frame = null, frameMotif = 'default', frameShine = false }) {
   return (
     <div

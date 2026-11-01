@@ -49,6 +49,7 @@ const plateSql = read('supabase/migrations/20261101240000_nameplates.sql')
 // Новый набор рамок: id те же, но условия и названия переписаны этим файлом.
 const framesSql = read('supabase/migrations/20261101250000_mlbb_frames.sql')
 const suppliedSql = read('supabase/migrations/20261101260000_supplied_mlbb_frames.sql')
+const noFrameSql = read('supabase/migrations/20261101270000_no_avatar_frame.sql')
 
 let passed = 0
 let failed = 0
@@ -62,8 +63,8 @@ const богач = playerState({ verified: true, matches: 5000, wins: 5000, mmr:
 
 // ------------------------------------------------------------------- каталог
 
-test('T-COS-01 каталог: 188 предметов, пять видов, уникальные id', () => {
-  assert.equal(COSMETICS.length, 188)
+test('T-COS-01 каталог: 189 предметов, пять видов, уникальные id', () => {
+  assert.equal(COSMETICS.length, 189)
   assert.deepEqual(COSMETIC_KINDS, ['frame', 'banner', 'nameplate', 'title', 'color'])
   const ids = COSMETICS.map((i) => i.id)
   assert.equal(new Set(ids).size, ids.length)
@@ -75,13 +76,13 @@ test('T-COS-01 каталог: 188 предметов, пять видов, ун
   assert.equal(
     itemsOf('frame').length + itemsOf('banner').length + itemsOf('nameplate').length
       + itemsOf('title').length + itemsOf('color').length,
-    188,
+    189,
   )
 })
 
 test('T-COS-02 рамки: у каждой своя палитра и СВОЯ ФОРМА', () => {
   const motifs = []
-  for (const item of itemsOf('frame')) {
+  for (const item of itemsOf('frame').filter(item => !item.noFrame)) {
     assert.ok(FRAME_PALETTES[item.palette], `${item.id}: нет палитры ${item.palette}`)
     assert.ok(FRAME_MOTIFS.includes(item.motif), `${item.id}: неизвестный мотив ${item.motif}`)
     motifs.push(item.motif)
@@ -89,7 +90,7 @@ test('T-COS-02 рамки: у каждой своя палитра и СВОЯ �
   // Главное требование: рамки отличаются формой, а не только цветом.
   assert.equal(new Set(motifs).size, motifs.length, 'у двух рамок одинаковый мотив')
   assert.equal(FRAME_MOTIFS.length, 159)
-  const images = itemsOf('frame').map(item => FRAME_IMAGE_BY_MOTIF[item.motif])
+  const images = itemsOf('frame').filter(item => !item.noFrame).map(item => FRAME_IMAGE_BY_MOTIF[item.motif])
   assert.equal(new Set(images).size, 159)
   assert.deepEqual(images, FRAME_IMAGES)
   for (const image of images) assert.ok(existsSync(join(root, 'app/public/mlbb-frames', `${image}.png`)), `нет изображения ${image}`)
@@ -106,6 +107,15 @@ test('T-COS-02a рамка ограничена размерами аватар�
   assert.match(css, /\.cosmetic-card__frame \.pframe \{ width: 100%; height: 100%;/)
   assert.match(css, /\.profile-card__id \{[^}]*margin-top: 20px/)
   assert.match(css, /\.cosmetics__preview-body \{[^}]*gap: 14px/)
+})
+
+test('T-COS-02e без рамки доступно всем и сохраняется в своём и чужом профиле', () => {
+  const item = cosmeticById('frame-none')
+  assert.equal(isUnlocked(item, никто), true)
+  assert.equal(item.noFrame, true)
+  assert.equal(look(equippedFromRow({ frame_id: 'frame-none' }), никто).framePalette, null)
+  assert.equal(lookFromRow({ frame_id: 'frame-none' }).framePalette, null)
+  assert.equal(frameOf({ frame_id: 'frame-none' }).palette, null)
 })
 
 test('T-COS-02b шапка профиля — баннер, а не эмодзи рядом с ником', () => {
@@ -139,7 +149,7 @@ test('T-COS-02c слот шапки в базе называется banner_id',
 
 // id и условия сверяем по обоим файлам: 27 из первого + 9 шапок из второго.
 test('T-COS-02d id и условия в JS совпадают с таблицей cosmetic_items', () => {
-  const all = sql + '\n' + bannersSql + '\n' + mediaSql + '\n' + plateSql + '\n' + framesSql + '\n' + suppliedSql
+  const all = sql + '\n' + bannersSql + '\n' + mediaSql + '\n' + plateSql + '\n' + framesSql + '\n' + suppliedSql + '\n' + noFrameSql
   const rows = [...all.matchAll(/\('([a-z0-9-]+)',\s*'(frame|banner|hat|nameplate|title|color)',\s*'([^']+)',\s*'(always|verified|matches|wins|mmr|entitlement)',\s*(\d+),\s*(true|false)\)/g)]
     .map((m) => ({ id: m[1], kind: m[2], label: m[3], reqKind: m[4], reqValue: Number(m[5]), premium: m[6] === 'true' }))
     .filter((row) => row.kind !== 'hat')
@@ -173,9 +183,9 @@ test('T-COS-03 базовое оформление открыто всем и б
   for (const kind of COSMETIC_KINDS) {
     assert.ok(isUnlocked(cosmeticById(DEFAULTS[kind]), никто), `базовый ${kind} закрыт`)
   }
-  // Без достижений доступны: базовая рамка, две шапки, ник без рамки,
+  // Без достижений доступны: базовая рамка, вариант без рамки, две шапки, ник без рамки,
   // цвет белый/фирменный, без титула.
-  assert.equal(unlockedIds(никто).length, 7)
+  assert.equal(unlockedIds(никто).length, 8)
 })
 
 // ------------------------------------------------------------------ условия

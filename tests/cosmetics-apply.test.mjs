@@ -319,6 +319,40 @@ test('T-APPLY-08 своя картинка/GIF шапки видна и на г�
   assert.equal(other.querySelector('img').getAttribute('src'), url)
 })
 
+test('T-APPLY-09 фото круглое без рамки и квадратное поверх рамки', async () => {
+  const photoProps = { ...homeProps, profile: { ...PROFILE, avatarUrl: 'https://example.com/avatar.jpg' } }
+  await mount(React.createElement(S.HomeScreen, { ...photoProps, look: { ...LOOK, frameId: 'frame-none', framePalette: null } }))
+  let avatar = document.querySelector('.profile-card .avatar')
+  let photo = avatar.querySelector('img')
+  assert.equal(avatar.querySelector('.pframe'), null)
+  assert.equal(avatar.classList.contains('avatar--ring'), false)
+  assert.equal(dom.window.getComputedStyle(photo).borderRadius, '50%')
+  await mount(React.createElement(S.HomeScreen, { ...photoProps, look: LOOK }))
+  avatar = document.querySelector('.profile-card .avatar')
+  photo = avatar.querySelector('img')
+  const photoStyle = dom.window.getComputedStyle(photo)
+  assert.match(photoStyle.borderRadius, /^0(?:px)?$/)
+  assert.equal(photoStyle.width, '64%')
+  assert.equal(photoStyle.height, '64%')
+  assert.ok(Number(photoStyle.zIndex) > Number(dom.window.getComputedStyle(avatar.querySelector('.pframe')).zIndex))
+})
+
+test('T-APPLY-10 рейтинг уважает выбор без рамки и показывает квадрат с рамкой', async () => {
+  Object.assign(stub, { leaderboardRows: [
+    { user_id: 'u2', nick: 'CIRCLE', pts: 1420, position: 1, frame_id: 'frame-none', avatar_url: 'https://example.com/a.jpg' },
+    { user_id: 'u3', nick: 'SQUARE', pts: 1350, position: 2, frame_id: 'frame-starlight', avatar_url: 'https://example.com/b.jpg' },
+  ] })
+  await mount(React.createElement(S.LeaderboardScreen, { ...baseProps, supabase: {}, userId: 'u1' }))
+  const [plain, framed] = document.querySelectorAll('.rank-row')
+  assert.equal(plain.querySelector('.pframe'), null)
+  assert.equal(dom.window.getComputedStyle(plain.querySelector('.rank-row__picture')).borderRadius, '50%')
+  assert.ok(framed.querySelector('.pframe'))
+  const picture = dom.window.getComputedStyle(framed.querySelector('.rank-row__picture'))
+  assert.match(picture.borderRadius, /^0(?:px)?$/)
+  assert.equal(picture.width, '64%')
+  assert.ok(Number(picture.zIndex) > Number(dom.window.getComputedStyle(framed.querySelector('.pframe')).zIndex))
+})
+
 rmSync(bundle, { force: true })
 
 for (const { name, fn } of queue) {

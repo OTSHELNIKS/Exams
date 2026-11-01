@@ -172,6 +172,17 @@ test('T-PICK-03 возврат на базовую рамку тоже рабо�
   assert.deepEqual(equippedTitles(), ['MLBB 1-01'])
 })
 
+test('T-PICK-03c можно убрать рамку и вернуть её обратно', async () => {
+  await mount()
+  await clickCard('Без рамки')
+  assert.equal(previewPalette(), null)
+  assert.equal(document.querySelector('.cosmetics__preview .avatar').classList.contains('avatar--framed'), false)
+  assert.equal(stub.calls.at(-1), 'frame-none')
+  await clickCard('MLBB 1-01')
+  assert.equal(previewPalette(), 'steel')
+  assert.equal(document.querySelector('.cosmetics__preview .avatar').classList.contains('avatar--framed'), true)
+})
+
 test('T-PICK-03b нажатие на карточку показывает вспышку и гаснет само', async () => {
   await mount()
   const card = cards().find((c) => titleOf(c) === 'MLBB 1-06')

@@ -85,6 +85,7 @@ export const REQ = {
 export const COSMETICS = [
   // ----- рамки аватара: изображения из предоставленных листов.
   // ID и условия старых предметов сохранены для существующих игроков.
+  { id: 'frame-none', kind: 'frame', label: 'Без рамки', req: { kind: 'always' }, noFrame: true },
   { id: 'frame-default', kind: 'frame', label: 'MLBB 1-01', req: { kind: 'always' }, palette: 'steel', motif: 'default' },
   { id: 'frame-verified', kind: 'frame', label: 'MLBB 1-02', req: { kind: 'verified' }, palette: 'flare', motif: 'dawn' },
   { id: 'frame-bronze', kind: 'frame', label: 'MLBB 1-03', req: { kind: 'matches', value: 10 }, palette: 'bronze', motif: 'warrior' },
@@ -251,7 +252,7 @@ export function look(equipped, state = {}) {
   const color = pick('color')
   return {
     frameId: frame ? frame.id : DEFAULTS.frame,
-    framePalette: frame && frame.palette ? frame.palette : 'steel',
+    framePalette: frame && frame.noFrame ? null : (frame && frame.palette ? frame.palette : 'steel'),
     frameMotif: frame && frame.motif ? frame.motif : 'default',
     // Коллекционные рамки переливаются: бегущий блик по орнаменту.
     frameShine: Boolean(frame && frame.premium),
@@ -308,7 +309,7 @@ export function plateOf(row) {
 export function frameOf(row) {
   const item = cosmeticById(row && row.frame_id) || cosmeticById(DEFAULTS.frame)
   return {
-    palette: item.palette || 'steel',
+    palette: item.noFrame ? null : (item.palette || 'steel'),
     motif: item.motif || 'default',
     id: item.id,
     // Коллекционные рамки переливаются и в таблице лидеров.
@@ -327,7 +328,7 @@ export function lookFromRow(row) {
   const color = cosmeticById(src.color_id) || cosmeticById(DEFAULTS.color)
   return {
     frameId: frame.id,
-    framePalette: frame.palette || 'steel',
+    framePalette: frame.noFrame ? null : (frame.palette || 'steel'),
     frameMotif: frame.motif || 'default',
     frameShine: Boolean(frame.premium),
     bannerId: banner.id,

@@ -1264,6 +1264,7 @@ export function PlayerCard({
           initials={initials || (nick?.[0] || '?').toUpperCase()}
           level={level}
           size={avatarSize}
+          ring={false}
           frame={look ? look.framePalette : null}
           frameMotif={look ? look.frameMotif : 'default'}
           frameShine={Boolean(look && look.frameShine)}
@@ -2469,18 +2470,18 @@ export function LeaderboardScreen({ supabase, userId }) {
           >
             <span className="rank-row__num">#{r.position || i + 1}</span>
             <span
-              className={`rank-row__avatar rank-row__avatar--tier `}
-              style={{ boxShadow: `0 0 0 2px ${mmrTier(r.pts).color}` }}
+              className={`rank-row__avatar rank-row__avatar--tier ${frameOf(r).palette ? 'rank-row__avatar--framed' : ''}`}
+              style={frameOf(r).palette ? undefined : { boxShadow: `0 0 0 2px ${mmrTier(r.pts).color}` }}
             >
               {/* Рамка аватара и в строке рейтинга: вьюха отдаёт frame_id,
                   поэтому оформление не теряется на пути к списку. */}
-              <ProfileFrame
+              {frameOf(r).palette && <ProfileFrame
                 palette={frameOf(r).palette}
                 art={frameOf(r).motif}
                 shine={frameOf(r).shine}
                 glow={false}
-              />
-              {r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}
+              />}
+              <span className="rank-row__picture">{r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}</span>
             </span>
             <span className="rank-row__info">
               <strong>
@@ -3151,6 +3152,7 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
             src={profile.avatarUrl || null}
             initials={(profile.nick?.[0] || '?').toUpperCase()}
             size={82}
+            ring={false}
             frame={look.framePalette}
             frameMotif={look.frameMotif}
             frameShine={look.frameShine}
@@ -3203,12 +3205,12 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
               <span className="cosmetic-card__art">
                 {item.kind === 'frame' && (
                   <span className="cosmetic-card__frame">
-                    <ProfileFrame
+                    {item.noFrame ? <span className="cosmetic-card__no-frame" /> : <ProfileFrame
                       palette={item.palette}
                       art={item.motif}
                       glow={false}
                       shine={Boolean(item.premium)}
-                    />
+                    />}
                   </span>
                 )}
                 {item.kind === 'banner' && (item.media
