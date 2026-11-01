@@ -13,6 +13,7 @@
 // tests/cosmetics.test.mjs.
 
 import { mmrTier } from './rating.js'
+import { FRAME_IMAGES } from './frameAssets.js'
 
 export const COSMETIC_KINDS = ['frame', 'banner', 'nameplate', 'title', 'color']
 
@@ -74,7 +75,7 @@ export const REQ = {
 
 // ------------------------------------------------------------------- каталог
 
-// frame: палитра + уровень орнамента для рамки (рисует frames.jsx).
+// frame: идентификатор предоставленного изображения (отображает frames.jsx).
 // nameplate: css-класс рамки вокруг ника + shine (анимированный блеск).
 //   Рамка может отсутствовать (`noFrame`) — тогда переливается сам текст:
 //   так сделан «Золотой ник», как золотая плашка имени в MLBB без подложки.
@@ -82,32 +83,37 @@ export const REQ = {
 // title: текст под ником. color: цвет ника. Платные помечаются premium: true —
 // интерфейс показывает их, но никогда не рисует кнопку «купить» в приложении.
 export const COSMETICS = [
-  // ----- рамки аватара: дивизионы и коллекционные из MLBB-набора
-  // По мотивам рамок MLBB: дивизионы (Воин → Бессмертный), коллекционные
-  // (корона, скипетр, крест рыцаря) и событийные (дракон, бездна, тыква…).
-  // Рисунок свой, векторный — чужие картинки не копируем.
-  { id: 'frame-default', kind: 'frame', label: 'Классика', req: { kind: 'always' }, palette: 'steel', motif: 'default' },
-  { id: 'frame-verified', kind: 'frame', label: 'Страж рассвета', req: { kind: 'verified' }, palette: 'flare', motif: 'dawn' },
-  { id: 'frame-bronze', kind: 'frame', label: 'Воин', req: { kind: 'matches', value: 10 }, palette: 'bronze', motif: 'warrior' },
-  { id: 'frame-silver', kind: 'frame', label: 'Элита', req: { kind: 'matches', value: 100 }, palette: 'silver', motif: 'elite' },
-  { id: 'frame-ruby', kind: 'frame', label: 'Мастер', req: { kind: 'matches', value: 500 }, palette: 'ruby', motif: 'master' },
-  { id: 'frame-gold', kind: 'frame', label: 'Легенда', req: { kind: 'mmr', value: 1600 }, palette: 'gold', motif: 'legend' },
-  { id: 'frame-emerald', kind: 'frame', label: 'Мифик', req: { kind: 'mmr', value: 1800 }, palette: 'violet', motif: 'mythic' },
-  { id: 'frame-neon', kind: 'frame', label: 'Мифическая слава', req: { kind: 'mmr', value: 2200 }, palette: 'neon', motif: 'glory' },
-  { id: 'frame-diamond', kind: 'frame', label: 'Бессмертный', req: { kind: 'mmr', value: 2600 }, palette: 'diamond', motif: 'immortal' },
+  // ----- рамки аватара: изображения из предоставленных листов.
+  // ID и условия старых предметов сохранены для существующих игроков.
+  { id: 'frame-default', kind: 'frame', label: 'MLBB 1-01', req: { kind: 'always' }, palette: 'steel', motif: 'default' },
+  { id: 'frame-verified', kind: 'frame', label: 'MLBB 1-02', req: { kind: 'verified' }, palette: 'flare', motif: 'dawn' },
+  { id: 'frame-bronze', kind: 'frame', label: 'MLBB 1-03', req: { kind: 'matches', value: 10 }, palette: 'bronze', motif: 'warrior' },
+  { id: 'frame-silver', kind: 'frame', label: 'MLBB 1-04', req: { kind: 'matches', value: 100 }, palette: 'silver', motif: 'elite' },
+  { id: 'frame-ruby', kind: 'frame', label: 'MLBB 1-05', req: { kind: 'matches', value: 500 }, palette: 'ruby', motif: 'master' },
+  { id: 'frame-gold', kind: 'frame', label: 'MLBB 1-06', req: { kind: 'mmr', value: 1600 }, palette: 'gold', motif: 'legend' },
+  { id: 'frame-emerald', kind: 'frame', label: 'MLBB 1-07', req: { kind: 'mmr', value: 1800 }, palette: 'violet', motif: 'mythic' },
+  { id: 'frame-neon', kind: 'frame', label: 'MLBB 1-08', req: { kind: 'mmr', value: 2200 }, palette: 'neon', motif: 'glory' },
+  { id: 'frame-diamond', kind: 'frame', label: 'MLBB 1-09', req: { kind: 'mmr', value: 2600 }, palette: 'diamond', motif: 'immortal' },
 
   // Коллекционные: только правом (покупка на сайте или код активации).
-  { id: 'frame-starlight', kind: 'frame', label: 'Звёздный свет', req: { kind: 'entitlement' }, palette: 'azure', motif: 'starlight', premium: true },
-  { id: 'frame-crown', kind: 'frame', label: 'Королевская корона', req: { kind: 'entitlement' }, palette: 'royal', motif: 'crown', premium: true },
-  { id: 'frame-scepter', kind: 'frame', label: 'Скипетр герцога', req: { kind: 'entitlement' }, palette: 'amethyst', motif: 'scepter', premium: true },
-  { id: 'frame-knight', kind: 'frame', label: 'Крест рыцаря', req: { kind: 'entitlement' }, palette: 'platinum', motif: 'knight', premium: true },
-  { id: 'frame-dragon', kind: 'frame', label: 'Дракон', req: { kind: 'entitlement' }, palette: 'emerald', motif: 'dragon', premium: true },
-  { id: 'frame-abyss', kind: 'frame', label: 'Бездна', req: { kind: 'entitlement' }, palette: 'abyss', motif: 'abyss', premium: true },
-  { id: 'frame-pumpkin', kind: 'frame', label: 'Тыква', req: { kind: 'entitlement' }, palette: 'pumpkin', motif: 'pumpkin', premium: true },
-  { id: 'frame-frost', kind: 'frame', label: 'Мороз', req: { kind: 'entitlement' }, palette: 'frost', motif: 'frost', premium: true },
-  { id: 'frame-lunar', kind: 'frame', label: 'Лунный фестиваль', req: { kind: 'entitlement' }, palette: 'moon', motif: 'lunar', premium: true },
-  { id: 'frame-bling', kind: 'frame', label: 'Неон', req: { kind: 'entitlement' }, palette: 'cyber', motif: 'bling', premium: true },
-  { id: 'frame-serpent', kind: 'frame', label: 'Змей', req: { kind: 'entitlement' }, palette: 'venom', motif: 'serpent', premium: true },
+  { id: 'frame-starlight', kind: 'frame', label: 'MLBB 1-10', req: { kind: 'entitlement' }, palette: 'azure', motif: 'starlight', premium: true },
+  { id: 'frame-crown', kind: 'frame', label: 'MLBB 1-11', req: { kind: 'entitlement' }, palette: 'royal', motif: 'crown', premium: true },
+  { id: 'frame-scepter', kind: 'frame', label: 'MLBB 1-12', req: { kind: 'entitlement' }, palette: 'amethyst', motif: 'scepter', premium: true },
+  { id: 'frame-knight', kind: 'frame', label: 'MLBB 1-13', req: { kind: 'entitlement' }, palette: 'platinum', motif: 'knight', premium: true },
+  { id: 'frame-dragon', kind: 'frame', label: 'MLBB 1-14', req: { kind: 'entitlement' }, palette: 'emerald', motif: 'dragon', premium: true },
+  { id: 'frame-abyss', kind: 'frame', label: 'MLBB 1-15', req: { kind: 'entitlement' }, palette: 'abyss', motif: 'abyss', premium: true },
+  { id: 'frame-pumpkin', kind: 'frame', label: 'MLBB 1-16', req: { kind: 'entitlement' }, palette: 'pumpkin', motif: 'pumpkin', premium: true },
+  { id: 'frame-frost', kind: 'frame', label: 'MLBB 1-17', req: { kind: 'entitlement' }, palette: 'frost', motif: 'frost', premium: true },
+  { id: 'frame-lunar', kind: 'frame', label: 'MLBB 1-18', req: { kind: 'entitlement' }, palette: 'moon', motif: 'lunar', premium: true },
+  { id: 'frame-bling', kind: 'frame', label: 'MLBB 1-19', req: { kind: 'entitlement' }, palette: 'cyber', motif: 'bling', premium: true },
+  { id: 'frame-serpent', kind: 'frame', label: 'MLBB 1-20', req: { kind: 'entitlement' }, palette: 'venom', motif: 'serpent', premium: true },
+
+  // Остальные изображения из трёх листов. Старые 20 id остаются на месте,
+  // чтобы не потерялись экипировка и приобретённые права.
+  ...FRAME_IMAGES.slice(20).map(image => ({
+    id: `frame-mlbb-${image}`, kind: 'frame', label: `MLBB ${image}`,
+    req: { kind: 'entitlement' }, palette: 'steel', motif: `mlbb-${image}`, premium: true,
+  })),
 
   // ----- шапки профиля: полоса-баннер над аватаром, как в Discord
   { id: 'banner-none', kind: 'banner', label: 'Без шапки', req: { kind: 'always' }, css: 'pbanner-none' },

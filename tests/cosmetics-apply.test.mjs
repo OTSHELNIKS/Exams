@@ -232,7 +232,7 @@ test('T-APPLY-04 в строке рейтинга видно рамку, пла�
 
   const second = rows[1]
   assert.ok(second.querySelector('.pframe--azure'), 'во второй строке нет коллекционной рамки')
-  assert.ok(second.querySelector('.pframe__shine'), 'у коллекционной рамки нет блеска в строке')
+  assert.match(second.querySelector('.pframe').style.backgroundImage, /mlbb-frames\/1-10\.png/)
 
   // Без оформления — базовая рамка и обычный ник, никакой «примерки».
   const third = rows[2]
@@ -289,7 +289,7 @@ test('T-APPLY-07 после смены оформления экран пока�
   const frame = document.querySelector('.profile-card .pframe')
   assert.match(frame.getAttribute('class'), /pframe--neon/, 'рамка не обновилась')
   assert.match(frame.getAttribute('class'), /pframe--glory/)
-  assert.ok(frame.querySelector('.pframe__shine'), 'у коллекционной рамки нет блеска')
+  assert.match(frame.style.backgroundImage, /mlbb-frames\/1-08\.png/)
   assert.match(document.querySelector('.profile-card .pbanner').getAttribute('class'), /pbanner-neon/)
   assert.match(document.querySelector('.profile-card .nick').getAttribute('class'), /plate-ice/)
   assert.match(text(), /ПЕРВОПРОХОДЕЦ/)

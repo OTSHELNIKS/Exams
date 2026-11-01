@@ -146,35 +146,35 @@ await mount()
 
 test('T-PICK-00 экран открывается на базовой рамке', () => {
   assert.equal(previewPalette(), 'steel')
-  assert.deepEqual(equippedTitles(), ['Классика'])
+  assert.deepEqual(equippedTitles(), ['MLBB 1-01'])
 })
 
 test('T-PICK-01 рамка переключается с первого клика', async () => {
-  await clickCard('Легенда')
+  await clickCard('MLBB 1-06')
   assert.equal(previewPalette(), 'gold', 'превью не сменилось на золото')
-  assert.deepEqual(equippedTitles(), ['Легенда'], 'отметка «надето» осталась на старой рамке')
+  assert.deepEqual(equippedTitles(), ['MLBB 1-06'], 'отметка «надето» осталась на старой рамке')
   assert.deepEqual(stub.calls, ['frame-gold'], 'сервер не получил выбор')
 })
 
 test('T-PICK-02 вторая рамка тоже переключается (нет «залипания»)', async () => {
-  await clickCard('Мифик')
+  await clickCard('MLBB 1-07')
   assert.equal(previewPalette(), 'violet')
-  assert.deepEqual(equippedTitles(), ['Мифик'])
-  await clickCard('Мастер')
+  assert.deepEqual(equippedTitles(), ['MLBB 1-07'])
+  await clickCard('MLBB 1-05')
   assert.equal(previewPalette(), 'ruby')
-  assert.deepEqual(equippedTitles(), ['Мастер'])
+  assert.deepEqual(equippedTitles(), ['MLBB 1-05'])
   assert.deepEqual(stub.calls, ['frame-gold', 'frame-emerald', 'frame-ruby'])
 })
 
 test('T-PICK-03 возврат на базовую рамку тоже работает', async () => {
-  await clickCard('Классика')
+  await clickCard('MLBB 1-01')
   assert.equal(previewPalette(), 'steel')
-  assert.deepEqual(equippedTitles(), ['Классика'])
+  assert.deepEqual(equippedTitles(), ['MLBB 1-01'])
 })
 
 test('T-PICK-03b нажатие на карточку показывает вспышку и гаснет само', async () => {
   await mount()
-  const card = cards().find((c) => titleOf(c) === 'Легенда')
+  const card = cards().find((c) => titleOf(c) === 'MLBB 1-06')
   assert.ok(card, 'нет карточки «Легенда»')
   card.dispatchEvent(new dom.window.Event('pointerdown', { bubbles: true }))
   await settle(30)
@@ -203,7 +203,7 @@ test('T-PICK-05 закрытый предмет не отправляется н
   const before = stub.calls.length
   await clickChip('Рамка')
   // «Алмаз» — коллекционная рамка: без права она не открыта.
-  await clickCard('Королевская корона')
+  await clickCard('MLBB 1-11')
   assert.equal(stub.calls.length, before, 'закрытый предмет всё-таки ушёл на сервер')
   assert.match(errorText(), /коллекционное/i)
   assert.equal(previewPalette(), 'steel')
@@ -211,16 +211,16 @@ test('T-PICK-05 закрытый предмет не отправляется н
 
 test('T-PICK-06 отказ сервера откатывает выбор и говорит об ошибке', async () => {
   await mount({ failNext: 'locked' })
-  await clickCard('Легенда')
+  await clickCard('MLBB 1-06')
   assert.equal(previewPalette(), 'steel', 'после отказа сервера превью осталось золотым')
-  assert.deepEqual(equippedTitles(), ['Классика'])
+  assert.deepEqual(equippedTitles(), ['MLBB 1-01'])
   assert.match(errorText(), /не подтвердил условие/i)
 })
 
 test('T-PICK-07 медленная загрузка не сбрасывает только что сделанный выбор', async () => {
   // Сервер отвечает на загрузку через 300 мс, а игрок успевает кликнуть раньше.
   await mount({ latency: 300, equipLatency: 10 })
-  const card = cards().find((c) => titleOf(c) === 'Мифик')
+  const card = cards().find((c) => titleOf(c) === 'MLBB 1-07')
   assert.ok(card)
   card.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
   await settle(20)
@@ -317,7 +317,7 @@ test('T-PICK-13 свою шапку можно убрать и вернутьс�
 test('T-PICK-14 админ надевает коллекционную рамку без права', async () => {
   await mount({ admin: true, player: ADMIN })
   assert.match(document.body.textContent, /весь платный контент доступен/i, 'нет подсказки для админа')
-  await clickCard('Королевская корона')
+  await clickCard('MLBB 1-11')
   assert.equal(previewPalette(), 'royal', 'коллекционная рамка не наделась')
   assert.deepEqual(stub.calls, ['frame-crown'])
   assert.match(errorText(), /^$/, 'админу показали ошибку про покупку')
@@ -325,7 +325,7 @@ test('T-PICK-14 админ надевает коллекционную рамк�
 
 test('T-PICK-15 у платных предметов подпись «Доступно админу», а не «Коллекционное»', async () => {
   await mount({ admin: true, player: ADMIN })
-  const card = cards().find((c) => titleOf(c) === 'Змей')
+  const card = cards().find((c) => titleOf(c) === 'MLBB 1-20')
   assert.ok(card)
   assert.match(card.textContent, /Доступно админу/)
   assert.doesNotMatch(card.textContent, /Коллекционное/)
@@ -410,22 +410,22 @@ test('T-PICK-21 закрытую плашку имени обычный игро
   assert.doesNotMatch(previewNickClass(), /plate-emerald/)
 })
 
-test('T-PICK-22 у коллекционных рамок аватара есть блеск, у бесплатных нет', async () => {
+test('T-PICK-22 в каталоге и превью показаны предоставленные изображения рамок', async () => {
   await mount({ admin: true, player: ADMIN })
   await clickChip('Рамка')
-  const shine = (label) => {
-    const card = cards().find((c) => titleOf(c) === label)
-    return Boolean(card?.querySelector('.pframe__shine'))
-  }
-  assert.equal(shine('Змей'), true, 'у коллекционной «Змей» нет блеска')
-  assert.equal(shine('Королевская корона'), true, 'у коллекционной «Королевская корона» нет блеска')
-  assert.equal(shine('Классика'), false, 'у бесплатной рамки появился блеск')
-  assert.equal(shine('Лавр'), false, 'у бесплатной рамки появился блеск')
-  // И в самом аватаре профиля блеск включается только для коллекционной.
-  await clickCard('Королевская корона')
-  assert.ok(document.querySelector('.cosmetics__preview .pframe__shine'), 'превью без блеска')
-  await clickCard('Классика')
-  assert.equal(document.querySelector('.cosmetics__preview .pframe__shine'), null)
+  const card = cards().find(c => titleOf(c) === 'MLBB 1-11')
+  assert.match(card.querySelector('.pframe').style.backgroundImage, /mlbb-frames\/1-11\.png/)
+  await clickCard('MLBB 1-11')
+  assert.match(document.querySelector('.cosmetics__preview .pframe').style.backgroundImage, /mlbb-frames\/1-11\.png/)
+  await clickCard('MLBB 1-01')
+  assert.match(document.querySelector('.cosmetics__preview .pframe').style.backgroundImage, /mlbb-frames\/1-01\.png/)
+})
+
+test('T-PICK-22b новые рамки выбираются с сохранением id и своего изображения', async () => {
+  await mount({ admin: true, player: ADMIN })
+  await clickCard('MLBB 2-01')
+  assert.deepEqual(stub.calls, ['frame-mlbb-2-01'])
+  assert.match(document.querySelector('.cosmetics__preview .pframe').style.backgroundImage, /mlbb-frames\/2-01\.png/)
 })
 
 test('T-PICK-23 плашки реально получают стили (а не висят без оформления)', async () => {

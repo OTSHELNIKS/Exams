@@ -13,7 +13,8 @@
 //
 // Run: node tests/cosmetics.test.mjs
 import assert from 'node:assert/strict'
-import { readFileSync, rmSync } from 'node:fs'
+import { readFileSync, rmSync, existsSync } from 'node:fs'
+import { FRAME_IMAGES, FRAME_IMAGE_BY_MOTIF } from '../app/src/frameAssets.js'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -47,6 +48,7 @@ const adminSql = read('supabase/migrations/20261101230000_admin_premium.sql')
 const plateSql = read('supabase/migrations/20261101240000_nameplates.sql')
 // Новый набор рамок: id те же, но условия и названия переписаны этим файлом.
 const framesSql = read('supabase/migrations/20261101250000_mlbb_frames.sql')
+const suppliedSql = read('supabase/migrations/20261101260000_supplied_mlbb_frames.sql')
 
 let passed = 0
 let failed = 0
@@ -60,8 +62,8 @@ const богач = playerState({ verified: true, matches: 5000, wins: 5000, mmr:
 
 // ------------------------------------------------------------------- каталог
 
-test('T-COS-01 каталог: 49 предметов, пять видов, уникальные id', () => {
-  assert.equal(COSMETICS.length, 49)
+test('T-COS-01 каталог: 188 предметов, пять видов, уникальные id', () => {
+  assert.equal(COSMETICS.length, 188)
   assert.deepEqual(COSMETIC_KINDS, ['frame', 'banner', 'nameplate', 'title', 'color'])
   const ids = COSMETICS.map((i) => i.id)
   assert.equal(new Set(ids).size, ids.length)
@@ -73,7 +75,7 @@ test('T-COS-01 каталог: 49 предметов, пять видов, ун�
   assert.equal(
     itemsOf('frame').length + itemsOf('banner').length + itemsOf('nameplate').length
       + itemsOf('title').length + itemsOf('color').length,
-    49,
+    188,
   )
 })
 
@@ -86,13 +88,24 @@ test('T-COS-02 рамки: у каждой своя палитра и СВОЯ �
   }
   // Главное требование: рамки отличаются формой, а не только цветом.
   assert.equal(new Set(motifs).size, motifs.length, 'у двух рамок одинаковый мотив')
-  assert.equal(FRAME_MOTIFS.length, 20)
-  const palette = itemsOf('frame').map((i) => i.palette)
-  assert.equal(new Set(palette).size, palette.length)
+  assert.equal(FRAME_MOTIFS.length, 159)
+  const images = itemsOf('frame').map(item => FRAME_IMAGE_BY_MOTIF[item.motif])
+  assert.equal(new Set(images).size, 159)
+  assert.deepEqual(images, FRAME_IMAGES)
+  for (const image of images) assert.ok(existsSync(join(root, 'app/public/mlbb-frames', `${image}.png`)), `нет изображения ${image}`)
   // Мотив id в каталоге совпадает с картой frames.jsx.
   assert.equal(FRAME_ART.default, 'default')
   assert.equal(cosmeticById('frame-neon').motif, 'glory')
   assert.equal(cosmeticById('frame-ruby').motif, 'master')
+})
+
+test('T-COS-02a рамка ограничена размерами аватара в профиле, превью и рейтинге', () => {
+  const css = read('app/src/styles.css')
+  assert.match(css, /\.pframe \{[^}]*width: 100%; height: 100%/)
+  assert.match(css, /\.rank-row__avatar \.pframe \{ width: 100%; height: 100%;/)
+  assert.match(css, /\.cosmetic-card__frame \.pframe \{ width: 100%; height: 100%;/)
+  assert.match(css, /\.profile-card__id \{[^}]*margin-top: 20px/)
+  assert.match(css, /\.cosmetics__preview-body \{[^}]*gap: 14px/)
 })
 
 test('T-COS-02b шапка профиля — баннер, а не эмодзи рядом с ником', () => {
@@ -126,8 +139,8 @@ test('T-COS-02c слот шапки в базе называется banner_id',
 
 // id и условия сверяем по обоим файлам: 27 из первого + 9 шапок из второго.
 test('T-COS-02d id и условия в JS совпадают с таблицей cosmetic_items', () => {
-  const all = sql + '\n' + bannersSql + '\n' + plateSql + '\n' + framesSql
-  const rows = [...all.matchAll(/\('([a-z0-9-]+)',\s*'(frame|banner|hat|title|color)',\s*'([^']+)',\s*'(always|verified|matches|wins|mmr|entitlement)',\s*(\d+),\s*(true|false)\)/g)]
+  const all = sql + '\n' + bannersSql + '\n' + mediaSql + '\n' + plateSql + '\n' + framesSql + '\n' + suppliedSql
+  const rows = [...all.matchAll(/\('([a-z0-9-]+)',\s*'(frame|banner|hat|nameplate|title|color)',\s*'([^']+)',\s*'(always|verified|matches|wins|mmr|entitlement)',\s*(\d+),\s*(true|false)\)/g)]
     .map((m) => ({ id: m[1], kind: m[2], label: m[3], reqKind: m[4], reqValue: Number(m[5]), premium: m[6] === 'true' }))
     .filter((row) => row.kind !== 'hat')
   // Рамки аватара переписаны отдельной миграцией: update'ы идут последними и
@@ -137,16 +150,19 @@ test('T-COS-02d id и условия в JS совпадают с таблице�
     const prev = bySqlId.get(m[5]) || { id: m[5], kind: 'frame' }
     bySqlId.set(m[5], { ...prev, label: m[1], reqKind: m[2], reqValue: Number(m[3]), premium: m[4] === 'true' })
   }
+  for (const m of suppliedSql.matchAll(/update public\.cosmetic_items set label = '([^']+)' where id = '([a-z0-9-]+)'/g)) {
+    bySqlId.set(m[2], { ...bySqlId.get(m[2]), label: m[1] })
+  }
   rows.length = 0
   rows.push(...bySqlId.values())
+  assert.equal(rows.length, COSMETICS.length)
   assert.ok(rows.length >= 28, `в SQL меньше предметов, чем в JS: ${rows.length}`)
   const byId = new Map(COSMETICS.map((i) => [i.id, i]))
   for (const row of rows) {
     const item = byId.get(row.id)
     assert.ok(item, `предмета ${row.id} нет в JS-каталоге`)
     assert.equal(item.kind, row.kind, `вид ${row.id}`)
-    // Названия рамок — наши, в базе они исторические: сверяем только вид и условие.
-    if (item.kind !== 'frame') assert.equal(item.label, row.label, `название ${row.id}`)
+    assert.equal(item.label, row.label, `название ${row.id}`)
     assert.equal(item.req.kind, row.reqKind, `условие ${row.id}`)
     assert.equal(item.req.value || 0, row.reqValue, `порог ${row.id}`)
     assert.equal(Boolean(item.premium), row.premium, `premium ${row.id}`)
@@ -201,7 +217,7 @@ test('T-COS-07 MMR-предметы открываются по непрерыв
 
 test('T-COS-08 коллекционные предметы не открываются прогрессом — только правом', () => {
   const premium = COSMETICS.filter((i) => i.premium)
-  assert.equal(premium.length, 23)
+  assert.equal(premium.length, 162)
   for (const item of premium) {
     assert.equal(isUnlocked(item, богач), false, `${item.id} открылся от матчей`)
     assert.equal(isUnlocked(item, playerState({ ...богач, entitlements: [item.id] })), true, `${item.id} не открылся правом`)
@@ -215,8 +231,8 @@ test('T-COS-31 админ видит весь платный контент от
     assert.equal(status.adminUnlocked, true, `${item.id}: нет отметки «доступно админу»`)
     assert.equal(status.requirement, 'Доступно админу')
   }
-  // Платных предметов двадцать три — все они доступны без покупки.
-  assert.equal(COSMETICS.filter((i) => i.premium).length, 23)
+  // Платных предметов 162 — все они доступны без покупки.
+  assert.equal(COSMETICS.filter((i) => i.premium).length, 162)
 })
 
 test('T-COS-32 админский доступ не подменяет бесплатные условия', () => {
@@ -357,7 +373,7 @@ test('T-COS-16 catalogue группирует всё и отмечает premium
   for (const kind of COSMETIC_KINDS) {
     assert.equal(all[kind].length, itemsOf(kind).length)
   }
-  assert.equal(all.frame.filter((i) => i.premium).length, 11)
+  assert.equal(all.frame.filter((i) => i.premium).length, 150)
   assert.equal(all.banner.filter((i) => i.premium).length, 4)
 })
 
