@@ -26,7 +26,11 @@ import {
   deleteTelegramLink, notifyLobbyToTelegram, getPublicProfile,
   createSupportTicket, fetchSupportTickets, announceSupportTicket,
   createLobby, joinLobby, leaveLobby, loadLobby, loadLobbyMembers, setLobbyRoom, setLobbyCheckedIn,
+  loadLeaderboardRanks, reportMatch, confirmMatch, disputeMatch, loadMatchHistory,
 } from './supabase.js'
+import {
+  mmrTier, rankTitle, formatDelta, playerForm, draftCaptains,
+} from './rating.js'
 import {
   REGIONS as LOBBY_REGIONS, LOBBY_CAPACITY, ROOM_HINT, normalizeLobbyCode, lobbyCodeValid,
   normalizeRoomId, normalizeRoomPassword, regionLabel, regionHint, describeLobbyError,
@@ -1559,7 +1563,7 @@ function PlayerPeek({ player, onClose, onPick, onOpenProfile }) {
   )
 }
 
-export function DraftScreen({ supabase, userId, onReady, onBack }) {
+export function DraftScreen({ supabase, userId, onReady, onBack, captainId = null, lobbyCode = '' }) {
   const [teamA, setTeamA] = useState([])
   const [teamB, setTeamB] = useState([])
   const [turn, setTurn] = useState('A')
@@ -1590,17 +1594,21 @@ export function DraftScreen({ supabase, userId, onReady, onBack }) {
   useEffect(() => { loadPlayers() }, [])
 
   const ranked = useMemo(() => [...(players || [])].sort((a, b) => (b.pts || 0) - (a.pts || 0)), [players])
-  const captains = ranked.slice(0, 2)
+  // Капитан — тот, кто собрал лобби: так честно, и не зависит от того, у кого
+  // больше очков. Второй капитан — сильнейший из оставшихся.
+  const captains = useMemo(() => draftCaptains({ members: ranked, hostId: captainId }), [ranked, captainId])
+  const captainIds = captains.filter(Boolean).map((c) => c.user_id)
   const pickedIds = useMemo(() => [...teamA, ...teamB].map((p) => p.user_id), [teamA, teamB])
-  const pool = ranked.slice(2).filter((p) => !pickedIds.includes(p.user_id))
+  const pool = ranked.filter((p) => !captainIds.includes(p.user_id) && !pickedIds.includes(p.user_id))
   const total = ranked.length
   const short = total < 3
   const full = !short && pool.length === 0 && (teamA.length + teamB.length) > 0
 
+  // Хост собирал лобби — он и начинает драфт. Монетка больше не нужна:
+  // право первого выбора теперь понятное и одинаковое для всех.
   useEffect(() => {
-    const side = Math.random() > 0.5 ? 'A' : 'B'
-    setCoin(side)
-    setTurn(side)
+    setCoin('A')
+    setTurn('A')
   }, [])
 
   useEffect(() => {
@@ -1638,8 +1646,7 @@ export function DraftScreen({ supabase, userId, onReady, onBack }) {
 
   const reset = () => {
     setTeamA([]); setTeamB([]); setTimer(30); setFilter('ВСЕ')
-    const side = Math.random() > 0.5 ? 'A' : 'B'
-    setCoin(side); setTurn(side)
+    setCoin('A'); setTurn('A')
   }
 
   const visible = pool.filter((p) => matchDraftRole(p, filter))
@@ -1651,7 +1658,10 @@ export function DraftScreen({ supabase, userId, onReady, onBack }) {
         <div className="team-card__head"><span>TEAM {side}</span><b>{cap.pts ?? 0} PTS</b></div>
         <div className="team-card__captain">
           <span className="team-card__avatar" style={{ borderColor: side === 'A' ? '#ff6a1a' : '#f0334f' }}>{(cap.nick?.[0] || '?').toUpperCase()}</span>
-          <div><strong><CrownIcon /> {cap.nick}{cap.user_id === userId ? ' (вы)' : ''}</strong><small>Капитан</small></div>
+          <div>
+            <strong><CrownIcon /> {cap.nick}{cap.user_id === userId ? ' (вы)' : ''}</strong>
+            <small>{side === 'A' ? 'Капитан лобби' : 'Капитан'} · {cap.pts ?? 0} MMR</small>
+          </div>
         </div>
         <div className="team-card__slots">
           {Array.from({ length: 4 }, (_, i) => (
@@ -1712,7 +1722,7 @@ export function DraftScreen({ supabase, userId, onReady, onBack }) {
       <div className="draft__turn">
         <span>Очередь:</span>
         <b>{full ? 'РОСТЕРЫ УКОМПЛЕКТОВАНЫ' : `КОМАНДА ${turn}`}</b>
-        {coin && !full && <em>Монетка: первый ход — TEAM {coin}</em>}
+        {!full && <em>{captains[0] ? `Капитан лобби: ${captains[0].nick}` : 'Капитан не выбран'} · первый ход — TEAM A</em>}
       </div>
 
       <div className="draft__teams">
@@ -1749,7 +1759,7 @@ export function DraftScreen({ supabase, userId, onReady, onBack }) {
 
       <div className="draft__bottom">
         {full
-          ? <PrimaryButton onClick={() => onReady({ teamA: [captains[0], ...teamA].filter(Boolean), teamB: [captains[1], ...teamB].filter(Boolean) })}>МАТЧ ГОТОВ — ОТКРЫТЬ ЛОББИ</PrimaryButton>
+          ? <PrimaryButton onClick={() => onReady({ teamA: [captains[0], ...teamA].filter(Boolean), teamB: [captains[1], ...teamB].filter(Boolean), lobbyCode })}>МАТЧ ГОТОВ — ОТКРЫТЬ ЛОББИ</PrimaryButton>
           : <button type="button" className="btn btn--ghost" onClick={onBack}>Отменить поиск</button>}
       </div>
 
@@ -1786,9 +1796,15 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, supabas
   const [needLink, setNeedLink] = useState(false)
   const [toast, setToast] = useState('')
   const [openProfile, setOpenProfile] = useState(null)
+  // Результат матча: пока соперник не подтвердил, рейтинг не двигается.
+  const [pending, setPending] = useState(null)
+  const [resultBusy, setResultBusy] = useState('')
+  const [resultNote, setResultNote] = useState('')
+  const [changes, setChanges] = useState([])
   const teamA = (teams && teams.teamA) || []
   const teamB = (teams && teams.teamB) || []
   const inB = userId ? teamB.some((m) => m && m.user_id === userId) : false
+  const inMatch = userId ? (teamA.some((m) => m && m.user_id === userId) || inB) : false
   const myLabel = inB ? 'Team B' : 'Team A'
   const members = (inB ? teamB : teamA).filter((m) => m && m.nick)
   // Код лобби — настоящий, из таблицы lobbies: раньше здесь было случайное
@@ -1800,6 +1816,71 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, supabas
     const t = setTimeout(() => setToast(''), 2600)
     return () => clearTimeout(t)
   }, [toast])
+
+  const sideOf = (m) => (m && (m.team_a || []).includes(userId) ? 'a' : m && (m.team_b || []).includes(userId) ? 'b' : '')
+
+  const loadPending = async () => {
+    if (!supabase || !userId) return
+    const { data } = await supabase
+      .from('matches')
+      .select('id, team_a, team_b, winner, status, reported_by, created_at')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(10)
+    const mine = (data || []).find((m) => (m.team_a || []).includes(userId) || (m.team_b || []).includes(userId))
+    setPending(mine || null)
+  }
+
+  useEffect(() => { loadPending() }, [supabase, userId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const idsOf = (list) => (list || []).map((m) => m && m.user_id).filter(Boolean)
+
+  const submitResult = async (winner) => {
+    if (!supabase || !userId) { setResultNote('Войди в аккаунт, чтобы зафиксировать результат.'); return }
+    if (idsOf(teamA).length === 0 || idsOf(teamB).length === 0) { setResultNote('Сначала собери составы в драфте.'); return }
+    setResultBusy(winner); setResultNote('')
+    const reply = await reportMatch({
+      teamA: idsOf(teamA),
+      teamB: idsOf(teamB),
+      winner,
+      lobbyId: null,
+    })
+    setResultBusy('')
+    if (reply.error) {
+      setResultNote(reply.error === 'not_in_match' ? 'Ты не в составе этого матча.' : 'Не удалось отправить результат. Попробуй ещё раз.')
+      return
+    }
+    setResultNote('Результат отправлен. Рейтинг изменится, когда соперник подтвердит — так один человек не может нарисовать себе победу.')
+    await loadPending()
+  }
+
+  const confirmResult = async () => {
+    if (!pending) return
+    setResultBusy('confirm'); setResultNote('')
+    const reply = await confirmMatch(pending.id)
+    setResultBusy('')
+    if (reply.error) {
+      setResultNote(
+        reply.error === 'not_opponent' ? 'Подтвердить может только соперник — ты отправил этот результат.'
+          : reply.error === 'already_confirmed' ? 'Этот матч уже подтверждён.'
+            : 'Не удалось подтвердить. Попробуй ещё раз.',
+      )
+      await loadPending()
+      return
+    }
+    setChanges(reply.changes || [])
+    setPending(null)
+    setResultNote('Результат подтверждён — рейтинг обновлён.')
+  }
+
+  const disputeResult = async () => {
+    if (!pending) return
+    setResultBusy('dispute')
+    await disputeMatch(pending.id, '')
+    setResultBusy('')
+    setPending(null)
+    setResultNote('Спор отправлен администратору. Рейтинг не изменился.')
+  }
 
   const sendToTg = async () => {
     setSending(true); setNeedLink(false)
@@ -1874,6 +1955,61 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, supabas
         <button type="button" className="link-btn" onClick={onProfile}>Привязать Telegram в профиле <ArrowRight size={15} /></button>
       )}
       <button type="button" className="link-btn" onClick={onLobby}>Лобби: регион и Room ID <ArrowRight size={15} /></button>
+
+      {inMatch && (
+        <div className="result-card">
+          <span className="lobby-card__label">РЕЗУЛЬТАТ МАТЧА</span>
+          {pending ? (
+            pending.reported_by === userId ? (
+              <p className="field-hint">
+                Результат отправлен. Рейтинг изменится, когда соперник подтвердит — один человек не может сам себе начислить победу.
+              </p>
+            ) : (
+              <>
+                <p className="result-card__ask">
+                  Соперник сообщил: победила <b>TEAM {pending.winner === 'a' ? 'A' : 'B'}</b>. Подтверди или оспорь.
+                </p>
+                <div className="lobby__row">
+                  <button type="button" className="btn btn--primary" onClick={confirmResult} disabled={resultBusy === 'confirm'}>
+                    <Check size={16} /> {resultBusy === 'confirm' ? 'Подтверждаем…' : 'Подтвердить'}
+                  </button>
+                  <button type="button" className="btn btn--ghost" onClick={disputeResult} disabled={resultBusy === 'dispute'}>
+                    Оспорить
+                  </button>
+                </div>
+              </>
+            )
+          ) : (
+            <>
+              <p className="result-card__ask">Кто победил в этом матче?</p>
+              <div className="lobby__row">
+                <button type="button" className="btn btn--ghost" onClick={() => submitResult('a')} disabled={Boolean(resultBusy)}>
+                  Победила TEAM A
+                </button>
+                <button type="button" className="btn btn--ghost" onClick={() => submitResult('b')} disabled={Boolean(resultBusy)}>
+                  Победила TEAM B
+                </button>
+              </div>
+            </>
+          )}
+
+          {changes.length > 0 && (
+            <ul className="result-card__changes">
+              {changes.map((c) => {
+                const who = [...teamA, ...teamB].find((m) => m && m.user_id === c.user_id)
+                return (
+                  <li key={c.user_id}>
+                    <span>{who?.nick || 'Игрок'}</span>
+                    <b className={c.delta > 0 ? 'is-up' : 'is-down'}>{formatDelta(c.delta)}</b>
+                    <em>{c.after} MMR</em>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {resultNote && <p className="field-hint" role="status">{resultNote}</p>}
+        </div>
+      )}
 
       <div className="voice-card">
         <div className="voice-card__head">
@@ -2050,9 +2186,11 @@ export function LeaderboardScreen({ supabase, userId }) {
     if (!supabase) { setLoading(false); setError('Нет подключения к серверу.'); return }
     setLoading(true); setError('')
     try {
-      const { data, error } = await supabase.from('leaderboard').select('*').order('pts', { ascending: false }).limit(100)
-      if (error) throw error
-      setPlayers(data || [])
+      // leaderboard_ranks считает место и титул на сервере, чтобы «ТОП-3»
+      // нельзя было получить никаким другим путём.
+      const ranked = await loadLeaderboardRanks(100)
+      if (ranked.error) throw new Error('ranked')
+      setPlayers(ranked.rows)
     } catch (e) {
       setError('Не удалось загрузить рейтинг: ' + (e.message || e))
     } finally {
@@ -2100,13 +2238,26 @@ export function LeaderboardScreen({ supabase, userId }) {
             onClick={() => setOpenPlayer(r.user_id)}
             aria-label={`Открыть профиль ${r.nick}`}
           >
-            <span className="rank-row__num">#{i + 1}</span>
-            <span className="rank-row__avatar">{r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}</span>
+            <span className="rank-row__num">#{r.position || i + 1}</span>
+            <span
+              className="rank-row__avatar rank-row__avatar--tier"
+              style={{ boxShadow: `0 0 0 2px ${mmrTier(r.pts).color}` }}
+            >{r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}</span>
             <span className="rank-row__info">
-              <strong>{r.nick}{r.user_id === userId ? ' (вы)' : ''}</strong>
-              {i < 3 && <span className="prize">{LEAGUE_PRIZES[i]}</span>}
+              <strong>
+                {r.nick}{r.user_id === userId ? ' (вы)' : ''}
+                {(r.title || rankTitle(r.position || i + 1)) && (
+                  <em className={`tier-title tier-title--${(r.title || rankTitle(r.position || i + 1)).replace('ТОП-', 'top')}`}>
+                    {r.title || rankTitle(r.position || i + 1)}
+                  </em>
+                )}
+              </strong>
+              <small className="rank-row__tier" style={{ color: mmrTier(r.pts).color }}>
+                {mmrTier(r.pts).label}
+                {i < 3 && <span className="prize">{LEAGUE_PRIZES[i]}</span>}
+              </small>
             </span>
-            <span className="rank-row__elo"><b>{r.pts ?? 0}</b><span>PTS</span></span>
+            <span className="rank-row__elo"><b style={{ color: mmrTier(r.pts).color }}>{r.pts ?? 0}</b><span>MMR</span></span>
             <span className="rank-row__more"><ArrowRight size={15} /></span>
           </button>
         ))}
@@ -2292,9 +2443,11 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
       setLobby(l.lobby)
       setRoomId(l.lobby.room_id || '')
       setRoomPassword(l.lobby.room_password || '')
+      // Хост лобби = капитан в драфте, поэтому сообщаем его сразу.
+      onLobbyChange?.({ code: l.lobby.code, hostId: l.lobby.host_id })
     } else if (l.error === 'not_found') {
       setLobby(null)
-      onLobbyChange?.('')
+      onLobbyChange?.({ code: '', hostId: '' })
     }
     if (m.members) setMembers(m.members)
   }
@@ -2339,7 +2492,6 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
     if (reply.error) { setError(describeLobbyError(reply.error)); return }
     setLobby({ id: reply.lobbyId, code: reply.code, region: reply.region, host_id: userId, room_id: '', room_password: '', status: 'open' })
     setMembers([])
-    onLobbyChange?.(reply.code)
     await refresh(reply.lobbyId)
   }
 
@@ -2351,7 +2503,6 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
     setBusy('')
     if (reply.error) { setError(describeLobbyError(reply.error)); return }
     setJoinCode('')
-    onLobbyChange?.(reply.code)
     await refresh(reply.lobbyId)
     setToast('Ты в лобби')
   }
@@ -2362,7 +2513,7 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
     await leaveLobby(lobby.id)
     setBusy('')
     setLobby(null); setMembers([])
-    onLobbyChange?.('')
+    onLobbyChange?.({ code: '', hostId: '' })
   }
 
   const saveRoom = async () => {

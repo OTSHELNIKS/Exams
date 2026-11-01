@@ -122,6 +122,10 @@ export default function App() {
   const [lobbyCode, setLobbyCode] = useState(() => {
     try { return localStorage.getItem(STORAGE_KEY + ':lobby') || '' } catch { return '' }
   })
+  // Хост лобби: он же капитан в драфте («кто собрал лобби — тот и капитан»).
+  const [lobbyHostId, setLobbyHostId] = useState(() => {
+    try { return localStorage.getItem(STORAGE_KEY + ':lobbyHost') || '' } catch { return '' }
+  })
   const [isAdmin, setIsAdmin] = useState(false)
   // Реальная привязка Telegram (таблица telegram_links, её пишет бот).
   const [telegramLink, setTelegramLink] = useState(null)
@@ -532,7 +536,7 @@ export default function App() {
       case 'profile':
         return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} gameVerified={gameVerified} onGameVerified={handleGameVerified} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onBack={() => go('home')} onEdit={() => go('wizard')} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
-        return <DraftScreen supabase={supabase} userId={session?.user?.id || null} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
+        return <DraftScreen supabase={supabase} userId={session?.user?.id || null} captainId={lobbyHostId || null} lobbyCode={lobbyCode} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
       case 'lobby':
         return (
           <LobbyScreen
@@ -540,11 +544,16 @@ export default function App() {
             userId={session?.user?.id || null}
             gameServer={gameServer}
             lobbyCode={lobbyCode}
-            onLobbyChange={(code) => {
+            onLobbyChange={(next) => {
+              const code = typeof next === 'string' ? next : (next && next.code) || ''
+              const host = typeof next === 'string' ? '' : (next && next.hostId) || ''
               setLobbyCode(code || '')
+              if (host) setLobbyHostId(host)
               try {
                 if (code) localStorage.setItem(STORAGE_KEY + ':lobby', code)
                 else localStorage.removeItem(STORAGE_KEY + ':lobby')
+                if (host) localStorage.setItem(STORAGE_KEY + ':lobbyHost', host)
+                else if (!code) localStorage.removeItem(STORAGE_KEY + ':lobbyHost')
               } catch { /* приватный режим */ }
             }}
             onBack={() => go('home')}

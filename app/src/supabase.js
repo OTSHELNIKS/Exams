@@ -342,3 +342,53 @@ export async function setLobbyCheckedIn(lobbyId, userId, checkedIn) {
   if (error) return { error: 'server', detail: error.message }
   return { ok: true }
 }
+
+/* ------------------------------------------------------ матчи и рейтинг */
+
+/** Капитан отправляет результат. MMR не меняется до подтверждения соперником. */
+export async function reportMatch({ teamA, teamB, winner, lobbyId = null }) {
+  const { data, error } = await supabase.rpc('report_match', {
+    p_team_a: teamA,
+    p_team_b: teamB,
+    p_winner: winner,
+    p_lobby_id: lobbyId,
+  })
+  if (error) return { error: 'server', detail: error.message }
+  return data && data.error ? { error: data.error } : { matchId: data.match_id, mode: data.mode }
+}
+
+/** Подтверждение от соперника: здесь и только здесь начисляется MMR. */
+export async function confirmMatch(matchId) {
+  const { data, error } = await supabase.rpc('confirm_match', { p_match_id: matchId })
+  if (error) return { error: 'server', detail: error.message }
+  return data && data.error ? { error: data.error } : { ok: true, changes: data.changes || [] }
+}
+
+/** «Результат неверный» — рейтинг не двигается, разбирает админ. */
+export async function disputeMatch(matchId, reason = '') {
+  const { data, error } = await supabase.rpc('dispute_match', { p_match_id: matchId, p_reason: reason })
+  if (error) return { error: 'server', detail: error.message }
+  return data && data.error ? { error: data.error } : { ok: true }
+}
+
+/** История матчей платформы: ники, счёт и изменение рейтинга. */
+export async function loadMatchHistory(limit = 20) {
+  const { data, error } = await supabase
+    .from('match_history')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) return { error: 'server', detail: error.message }
+  return { matches: data || [] }
+}
+
+/** Рейтинг с местом и титулом ТОП-1 / ТОП-3 / ТОП-10. */
+export async function loadLeaderboardRanks(limit = 100) {
+  const { data, error } = await supabase
+    .from('leaderboard_ranks')
+    .select('*')
+    .order('position', { ascending: true })
+    .limit(limit)
+  if (error) return { error: 'server', detail: error.message }
+  return { rows: data || [] }
+}
