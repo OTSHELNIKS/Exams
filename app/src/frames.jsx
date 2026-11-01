@@ -54,13 +54,23 @@ export const FRAME_MOTIFS = [...LEGACY_MOTIFS, ...FRAME_IMAGES.slice(20).map(ima
 
 // The source sheets already have transparent backgrounds. Keep the entire
 // artwork inside the avatar's layout box, so it cannot cover adjacent text.
+function frameImage(art) {
+  return FRAME_IMAGE_BY_MOTIF[typeof art === 'string' ? art : ''] || FRAME_IMAGE_BY_MOTIF.default
+}
+
+// CSS alpha mask shares the 128×128 canvas of the artwork; both layers scale
+// together in profiles, previews and leaderboard rows (including native builds).
+export function frameMask(art) {
+  const base = import.meta.env?.BASE_URL || '/'
+  return `url("${base}mlbb-frame-masks/${frameImage(art)}.png")`
+}
+
 export function ProfileFrame({ palette = 'steel', art = 'default', shine = false }) {
   const motif = typeof art === 'string' && FRAME_IMAGE_BY_MOTIF[art] ? art : 'default'
-  const image = FRAME_IMAGE_BY_MOTIF[motif]
   const base = import.meta.env?.BASE_URL || '/'
   return <span
     className={`pframe pframe--${palette} pframe--${motif} ${shine ? 'pframe--shine' : ''}`}
-    style={{ backgroundImage: `url("${base}mlbb-frames/${image}.png")` }}
+    style={{ backgroundImage: `url("${base}mlbb-frames/${frameImage(motif)}.png")` }}
     aria-hidden="true"
   />
 }
@@ -101,7 +111,7 @@ export function NickPlate({
  * Своя картинка и анимация — платный контент: сервер выдаёт право, без него
  * `url` не примется и останется градиент.
  */
-export function ProfileBanner({ css = '', url = '', height = 120, alt = '' }) {
+export function ProfileBanner({ css = '', url = '', height = 150, alt = '' }) {
   const src = safeBannerUrl(url)
   return (
     <div className={`pbanner ${src ? 'pbanner--media' : css}`} style={{ height }}>

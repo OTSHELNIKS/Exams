@@ -38,7 +38,7 @@ import {
   COSMETIC_KINDS, KIND_LABEL, KINDS_TITLE, itemsOf, itemStatus, equippedFromRow, playerState,
   nextReward, frameOf, titleOf, cosmeticById, look as cosmeticsLook, lookFromRow,
 } from './cosmetics.js'
-import { ProfileFrame, ProfileBanner, NickPlate } from './frames.jsx'
+import { ProfileFrame, ProfileBanner, NickPlate, frameMask } from './frames.jsx'
 import {
   REGIONS as LOBBY_REGIONS, LOBBY_CAPACITY, ROOM_HINT, normalizeLobbyCode, lobbyCodeValid,
   normalizeRoomId, normalizeRoomPassword, regionLabel, regionHint, describeLobbyError,
@@ -1226,7 +1226,7 @@ export function PlayerCard({
   initials,
   avatarUrl = '',
   level = null,
-  bannerHeight = 128,
+  bannerHeight = 150,
   avatarSize = 104,
   gameId = '',
   gameServer = '',
@@ -1359,7 +1359,7 @@ export function HomeScreen({ profile, actions, gameId, gameServer, gameVerified 
         nick={profile.nick}
         avatarUrl={profile.avatarUrl || profile.avatar || null}
         level={profile.level}
-        bannerHeight={128}
+        bannerHeight={150}
         gameId={gameId}
         gameServer={gameServer}
         gameVerified={gameVerified}
@@ -1596,7 +1596,7 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
         nick={profile.nick}
         avatarUrl={profile.avatarUrl || profile.avatar || null}
         level={profile.level}
-        bannerHeight={128}
+        bannerHeight={150}
         gameId={gameId}
         gameServer={gameServer}
         gameVerified={Boolean(gameVerified)}
@@ -2343,7 +2343,7 @@ export function PublicProfileModal({ userId, isMe, supabase, onClose, onPick, pi
             look={look}
             nick={`${row.nick || ''}${isMe ? ' (вы)' : ''}`}
             avatarUrl={row.avatar_url || null}
-            bannerHeight={96}
+            bannerHeight={112}
             avatarSize={84}
             showGameId={false}
             gameVerified={Boolean(row.game_verified)}
@@ -2471,7 +2471,7 @@ export function LeaderboardScreen({ supabase, userId }) {
             <span className="rank-row__num">#{r.position || i + 1}</span>
             <span
               className={`rank-row__avatar rank-row__avatar--tier ${frameOf(r).palette ? 'rank-row__avatar--framed' : ''}`}
-              style={frameOf(r).palette ? undefined : { boxShadow: `0 0 0 2px ${mmrTier(r.pts).color}` }}
+              style={frameOf(r).palette ? { '--avatar-mask': frameMask(frameOf(r).motif) } : { boxShadow: `0 0 0 2px ${mmrTier(r.pts).color}` }}
             >
               {/* Рамка аватара и в строке рейтинга: вьюха отдаёт frame_id,
                   поэтому оформление не теряется на пути к списку. */}
@@ -3146,7 +3146,7 @@ export function AppearanceScreen({ supabase, userId, playerState: state, profile
       <BackHeader title="Оформление профиля" onBack={onBack} />
 
       <div className="cosmetics__preview">
-        <ProfileBanner css={look.bannerCss} url={look.bannerUrl} height={92} />
+        <ProfileBanner css={look.bannerCss} url={look.bannerUrl} height={108} />
         <div className="cosmetics__preview-body">
           <Avatar
             src={profile.avatarUrl || null}

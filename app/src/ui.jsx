@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { GoogleIcon, TelegramIcon, TikTokIcon, VkIcon, FacebookIcon, BRAND_TINT } from './brand-icons.jsx'
 import { HERO_BY_NAME } from './data.js'
-import { ProfileFrame } from './frames.jsx'
+import { ProfileFrame, frameMask } from './frames.jsx'
 
 /* ------------------------------------------------------------------ logo */
 export function Logo({ size = 'md', light = false }) {
@@ -294,12 +294,12 @@ export function Steps({ current = 1, total = 3 }) {
   )
 }
 
-/** Без рамки фото круглое; с рамкой квадратное фото находится по центру. */
+/** Без рамки фото круглое; с рамкой маска повторяет её просвет. */
 export function Avatar({ src, initials = '?', size = 96, ring = true, level = null, frame = null, frameMotif = 'default', frameShine = false }) {
   return (
     <div
       className={`avatar ${ring && !frame ? 'avatar--ring' : ''} ${frame ? 'avatar--framed' : ''}`}
-      style={{ width: size, height: size }}
+      style={{ width: size, height: size, ...(frame ? { '--avatar-mask': frameMask(frameMotif) } : {}) }}
     >
       {frame ? <ProfileFrame palette={frame} art={frameMotif} shine={frameShine} /> : null}
       {src

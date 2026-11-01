@@ -146,6 +146,7 @@ await mount()
 
 test('T-PICK-00 экран открывается на базовой рамке', () => {
   assert.equal(previewPalette(), 'steel')
+  assert.equal(document.querySelector('.cosmetics__preview .pbanner').style.height, '108px')
   assert.deepEqual(equippedTitles(), ['MLBB 1-01'])
 })
 
@@ -437,6 +438,7 @@ test('T-PICK-22b новые рамки выбираются с сохранен�
   await clickCard('MLBB 2-01')
   assert.deepEqual(stub.calls, ['frame-mlbb-2-01'])
   assert.match(document.querySelector('.cosmetics__preview .pframe').style.backgroundImage, /mlbb-frames\/2-01\.png/)
+  assert.match(document.querySelector('.cosmetics__preview .avatar').style.getPropertyValue('--avatar-mask'), /mlbb-frame-masks\/2-01\.png/)
 })
 
 test('T-PICK-23 плашки реально получают стили (а не висят без оформления)', async () => {

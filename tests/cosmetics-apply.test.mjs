@@ -79,6 +79,16 @@ const { createRoot } = await import(join(nm, 'react-dom/client.js'))
 const S = await import(bundle)
 const stub = globalThis.__stubState
 const settle = (ms = 120) => new Promise((resolve) => setTimeout(resolve, ms))
+// Public look is loaded asynchronously; wait for the actual state instead of
+// assuming a fixed timer is always enough on a busy CI runner.
+async function waitFor(predicate, timeout = 2000) {
+  const deadline = Date.now() + timeout
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await settle(25)
+  }
+  throw new Error('асинхронное оформление не загрузилось вовремя')
+}
 console.error = () => {}
 
 // Оформление, которое выбрал игрок: золотая рамка-лавр, шапка «Закат»,
@@ -138,6 +148,7 @@ function assertOwnLook(where) {
   const banner = document.querySelector('.profile-card .pbanner')
   assert.ok(banner, `${where}: нет шапки профиля`)
   assert.match(banner.getAttribute('class'), /pbanner-ember/, `${where}: шапка не применилась`)
+  assert.equal(banner.style.height, '150px')
 
   const frame = document.querySelector('.profile-card .pframe')
   assert.ok(frame, `${where}: нет рамки аватара`)
@@ -182,10 +193,12 @@ test('T-APPLY-03 карточка игрока: оформление из пуб
     },
   })
   await mount(React.createElement(S.PublicProfileModal, { ...baseProps, userId: 'u2', isMe: false }))
+  await waitFor(() => document.querySelector('.pbanner')?.classList.contains('pbanner-ember'))
 
   const banner = document.querySelector('.pbanner')
   assert.ok(banner, 'в карточке нет шапки')
   assert.match(banner.getAttribute('class'), /pbanner-ember/, 'шапка не применилась')
+  assert.equal(banner.style.height, '112px')
   const frame = document.querySelector('.pframe')
   assert.ok(frame, 'в карточке нет рамки аватара')
   assert.match(frame.getAttribute('class'), /pframe--legend/, 'форма рамки не та')
@@ -314,12 +327,13 @@ test('T-APPLY-08 своя картинка/GIF шапки видна и на г�
     },
   })
   await mount(React.createElement(S.PublicProfileModal, { ...baseProps, userId: 'u2', isMe: false }))
+  await waitFor(() => document.querySelector('.pbanner--media img')?.getAttribute('src') === url)
   const other = document.querySelector('.pbanner')
   assert.match(other.getAttribute('class'), /pbanner--media/, 'в карточке нет шапки другого игрока')
   assert.equal(other.querySelector('img').getAttribute('src'), url)
 })
 
-test('T-APPLY-09 фото круглое без рамки и квадратное поверх рамки', async () => {
+test('T-APPLY-09 фото круглое без рамки и в маске под рамкой', async () => {
   const photoProps = { ...homeProps, profile: { ...PROFILE, avatarUrl: 'https://example.com/avatar.jpg' } }
   await mount(React.createElement(S.HomeScreen, { ...photoProps, look: { ...LOOK, frameId: 'frame-none', framePalette: null } }))
   let avatar = document.querySelector('.profile-card .avatar')
@@ -332,12 +346,13 @@ test('T-APPLY-09 фото круглое без рамки и квадратно
   photo = avatar.querySelector('img')
   const photoStyle = dom.window.getComputedStyle(photo)
   assert.match(photoStyle.borderRadius, /^0(?:px)?$/)
-  assert.equal(photoStyle.width, '64%')
-  assert.equal(photoStyle.height, '64%')
-  assert.ok(Number(photoStyle.zIndex) > Number(dom.window.getComputedStyle(avatar.querySelector('.pframe')).zIndex))
+  assert.equal(photoStyle.width, '100%')
+  assert.equal(photoStyle.height, '100%')
+  assert.match(avatar.style.getPropertyValue('--avatar-mask'), /mlbb-frame-masks\/1-06\.png/ )
+  assert.ok(Number(photoStyle.zIndex) < Number(dom.window.getComputedStyle(avatar.querySelector('.pframe')).zIndex))
 })
 
-test('T-APPLY-10 рейтинг уважает выбор без рамки и показывает квадрат с рамкой', async () => {
+test('T-APPLY-10 рейтинг уважает выбор без рамки и маску каждой рамки', async () => {
   Object.assign(stub, { leaderboardRows: [
     { user_id: 'u2', nick: 'CIRCLE', pts: 1420, position: 1, frame_id: 'frame-none', avatar_url: 'https://example.com/a.jpg' },
     { user_id: 'u3', nick: 'SQUARE', pts: 1350, position: 2, frame_id: 'frame-starlight', avatar_url: 'https://example.com/b.jpg' },
@@ -349,8 +364,9 @@ test('T-APPLY-10 рейтинг уважает выбор без рамки и �
   assert.ok(framed.querySelector('.pframe'))
   const picture = dom.window.getComputedStyle(framed.querySelector('.rank-row__picture'))
   assert.match(picture.borderRadius, /^0(?:px)?$/)
-  assert.equal(picture.width, '64%')
-  assert.ok(Number(picture.zIndex) > Number(dom.window.getComputedStyle(framed.querySelector('.pframe')).zIndex))
+  assert.equal(picture.width, '100%')
+  assert.match(framed.querySelector('.rank-row__avatar').style.getPropertyValue('--avatar-mask'), /mlbb-frame-masks\/1-10\.png/ )
+  assert.ok(Number(picture.zIndex) < Number(dom.window.getComputedStyle(framed.querySelector('.pframe')).zIndex))
 })
 
 rmSync(bundle, { force: true })
