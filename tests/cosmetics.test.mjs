@@ -100,10 +100,9 @@ test('T-COS-02 рамки: у каждой своя палитра и СВОЯ �
   assert.equal(cosmeticById('frame-ruby').motif, 'master')
 })
 
-test('T-COS-02a рамка ограничена размерами аватара в профиле, превью и рейтинге', () => {
+test('T-COS-02a рамка ограничена размерами аватара в профиле и превью', () => {
   const css = read('app/src/styles.css')
   assert.match(css, /\.pframe \{[^}]*width: 100%; height: 100%/)
-  assert.match(css, /\.rank-row__avatar \.pframe \{ width: 100%; height: 100%;/)
   assert.match(css, /\.cosmetic-card__frame \.pframe \{ width: 100%; height: 100%;/)
   assert.match(css, /\.profile-card__id \{[^}]*margin-top: 20px/)
   assert.match(css, /\.cosmetics__preview-body \{[^}]*gap: 14px/)
@@ -556,10 +555,11 @@ test('T-COS-41 рамка имени другого игрока приходи�
   assert.equal(other.plateFrame, true)
   // Без записи в базе — обычный ник, без падений.
   assert.equal(lookFromRow(null).plateId, 'plate-none')
-  // Экраны рисуют ник через NickPlate, а не голым текстом.
+  // Карточка игрока рисует сохранённую рамку через NickPlate.
   const screens = read('app/src/screens.jsx')
   assert.match(screens, /<NickPlate/)
-  assert.match(screens, /lookFromRow\(r\)\.plateCss/)
+  assert.match(screens, /setLook\(data \? lookFromRow\(data\) : null\)/)
+  assert.match(screens, /css=\{look \? look\.plateCss :/)
 })
 
 test('T-COS-42 стили ника и плашек объявлены на верхнем уровне', () => {
@@ -724,10 +724,11 @@ test('T-COS-41 рамка имени другого игрока приходи�
   assert.equal(other.plateFrame, true)
   // Без записи в базе — обычный ник, без падений.
   assert.equal(lookFromRow(null).plateId, 'plate-none')
-  // Экраны рисуют ник через NickPlate, а не голым текстом.
+  // Карточка игрока рисует сохранённую рамку через NickPlate.
   const screens = read('app/src/screens.jsx')
   assert.match(screens, /<NickPlate/)
-  assert.match(screens, /lookFromRow\(r\)\.plateCss/)
+  assert.match(screens, /setLook\(data \? lookFromRow\(data\) : null\)/)
+  assert.match(screens, /css=\{look \? look\.plateCss :/)
 })
 
 test('T-COS-42 стили ника и плашек объявлены на верхнем уровне', () => {

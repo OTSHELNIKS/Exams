@@ -36,9 +36,9 @@ import {
 } from './rating.js'
 import {
   COSMETIC_KINDS, KIND_LABEL, KINDS_TITLE, itemsOf, itemStatus, equippedFromRow, playerState,
-  nextReward, frameOf, titleOf, cosmeticById, look as cosmeticsLook, lookFromRow,
+  nextReward, cosmeticById, look as cosmeticsLook, lookFromRow,
 } from './cosmetics.js'
-import { ProfileFrame, ProfileBanner, NickPlate, frameMask } from './frames.jsx'
+import { ProfileFrame, ProfileBanner, NickPlate } from './frames.jsx'
 import { watchCosmeticChanges } from './cosmetics-sync.js'
 import {
   REGIONS as LOBBY_REGIONS, LOBBY_CAPACITY, ROOM_HINT, normalizeLobbyCode, lobbyCodeValid,
@@ -2482,36 +2482,19 @@ export function LeaderboardScreen({ supabase, userId }) {
           >
             <span className="rank-row__num">#{r.position || i + 1}</span>
             <span
-              className={`rank-row__avatar rank-row__avatar--tier ${frameOf(r).palette ? 'rank-row__avatar--framed' : ''}`}
-              style={frameOf(r).palette ? { '--avatar-mask': frameMask(frameOf(r).motif) } : { boxShadow: `0 0 0 2px ${mmrTier(r.pts).color}` }}
+              className="rank-row__avatar rank-row__avatar--tier"
+              style={{ boxShadow: `0 0 0 2px ${mmrTier(r.pts).color}` }}
             >
-              {/* Рамка аватара и в строке рейтинга: вьюха отдаёт frame_id,
-                  поэтому оформление не теряется на пути к списку. */}
-              {frameOf(r).palette && <ProfileFrame
-                palette={frameOf(r).palette}
-                art={frameOf(r).motif}
-                shine={frameOf(r).shine}
-                glow={false}
-              />}
               <span className="rank-row__picture">{r.avatar_url ? <img src={r.avatar_url} alt="" /> : (r.nick?.[0] || '?').toUpperCase()}</span>
             </span>
             <span className="rank-row__info">
-              <strong>
-                <NickPlate
-                  css={lookFromRow(r).plateCss}
-                  shine={lookFromRow(r).plateShine}
-                  frame={lookFromRow(r).plateFrame}
-                  color={lookFromRow(r).colorValue}
-                >
-                  {r.nick}{r.user_id === userId ? ' (вы)' : ''}
-                </NickPlate>
+              <strong style={{ color: lookFromRow(r).colorValue }}>
+                {r.nick}{r.user_id === userId ? ' (вы)' : ''}
                 {(r.title || rankTitle(r.position || i + 1)) && (
                   <em className={`tier-title tier-title--${(r.title || rankTitle(r.position || i + 1)).replace('ТОП-', 'top')}`}>
                     {r.title || rankTitle(r.position || i + 1)}
                   </em>
                 )}
-                {/* Надетый титул из оформления — виден и в списке, не только в карточке. */}
-                {titleOf(r) ? <em className="rank-title">{titleOf(r)}</em> : null}
               </strong>
               <small className="rank-row__tier" style={{ color: mmrTier(r.pts).color }}>
                 {mmrTier(r.pts).label}

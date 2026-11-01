@@ -1,15 +1,6 @@
-// NAME MLBB — оформление профиля должно доезжать до всех экранов.
-//
-// Проверка не по исходникам, а по-настоящему: монтируем экраны в jsdom и
-// смотрим, что выбранные рамка, шапка, рамка имени, титул и цвет ника
-// действительно нарисованы — на главной, в профиле, в карточке игрока и в
-// строке таблицы лидеров.
-//
-// Почему это отдельный тест: данные для каждого экрана приходят своим путём
-// (свой loadout, публичная вьюха, вьюха рейтинга), и раньше рамка в строке
-// рейтинга просто не рисовалась, хотя CSS для неё уже был.
-//
-// Run: node tests/cosmetics-apply.test.mjs   (нужны app/node_modules)
+// Реальные компоненты с Supabase-стабом: оформление в карточках,
+// а в рейтинге — прежняя компактная строка и открытие карточки.
+// Run: node tests/cosmetics-apply.test.mjs
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -211,7 +202,7 @@ test('T-APPLY-03 карточка игрока: оформление из пуб
   assert.doesNotMatch(text(), /Game ID • /)
 })
 
-test('T-APPLY-04 в строке рейтинга видно рамку, плашку и цвет', async () => {
+test('T-APPLY-04 строка рейтинга сохраняет прежний вид', async () => {
   Object.assign(stub, {
     leaderboardRows: [
       {
@@ -237,23 +228,18 @@ test('T-APPLY-04 в строке рейтинга видно рамку, пла�
   const rows = Array.from(document.querySelectorAll('.rank-row'))
   assert.equal(rows.length, 3, `строк в таблице: ${rows.length}`)
 
-  const first = rows[0]
-  assert.ok(first.querySelector('.pframe--gold.pframe--legend'), 'в строке нет рамки «Лавр»')
-  assert.ok(first.querySelector('.nick--plate.plate-gold'), 'в строке нет рамки имени')
-  assert.ok(first.querySelector('.tier-title'), 'в строке нет отметки ТОП-1')
-  assert.match(first.textContent, /ВЕТЕРАН/, 'в строке нет надетого титула')
+  for (const row of rows) {
+    assert.equal(row.querySelector('.pframe'), null, 'декоративная рамка не должна менять строку')
+    assert.equal(row.querySelector('.nick--plate'), null, 'плашка имени должна быть только в карточке')
+    assert.equal(row.querySelector('.rank-title'), null, 'титул оформления не должен менять строку')
+    assert.equal(dom.window.getComputedStyle(row.querySelector('.rank-row__picture')).borderRadius, '50%')
+    assert.match(row.querySelector('.rank-row__avatar').style.boxShadow, /0 0 0 2px/, 'нет прежней обводки MMR')
+  }
+  assert.ok(rows[0].querySelector('.tier-title'), 'нет отметки ТОП-1')
+  assert.doesNotMatch(rows[0].textContent, /ВЕТЕРАН/)
+  assert.match(rows[0].textContent, /RIVAL/)
+  assert.ok(rows[0].getAttribute('aria-label').includes('RIVAL'), 'карточка игрока должна открываться')
 
-  const second = rows[1]
-  assert.ok(second.querySelector('.pframe--azure'), 'во второй строке нет коллекционной рамки')
-  assert.match(second.querySelector('.pframe').style.backgroundImage, /mlbb-frames\/1-10\.png/)
-
-  // Без оформления — базовая рамка и обычный ник, никакой «примерки».
-  const third = rows[2]
-  assert.ok(third.querySelector('.pframe--steel'), 'нет базовой рамки')
-  assert.equal(third.querySelector('.pframe__shine'), null, 'блеск появился у бесплатной рамки')
-  assert.doesNotMatch(third.querySelector('.nick').getAttribute('class'), /nick--plate/)
-  // Титула нет — значит и плашки титула нет, а не пустой значок.
-  assert.equal(third.querySelector('.rank-title'), null, 'пустой титул нарисован на пустоте')
 })
 
 test('T-APPLY-05 без права показывается базовое оформление', async () => {
@@ -352,21 +338,30 @@ test('T-APPLY-09 фото круглое без рамки и в маске по
   assert.ok(Number(photoStyle.zIndex) < Number(dom.window.getComputedStyle(avatar.querySelector('.pframe')).zIndex))
 })
 
-test('T-APPLY-10 рейтинг уважает выбор без рамки и маску каждой рамки', async () => {
+test('T-APPLY-10 фото в рейтинге остаётся круглым при любом оформлении', async () => {
   Object.assign(stub, { leaderboardRows: [
     { user_id: 'u2', nick: 'CIRCLE', pts: 1420, position: 1, frame_id: 'frame-none', avatar_url: 'https://example.com/a.jpg' },
-    { user_id: 'u3', nick: 'SQUARE', pts: 1350, position: 2, frame_id: 'frame-starlight', avatar_url: 'https://example.com/b.jpg' },
+    { user_id: 'u3', nick: 'FRAMED', pts: 1350, position: 2, frame_id: 'frame-starlight', avatar_url: 'https://example.com/b.jpg' },
   ] })
   await mount(React.createElement(S.LeaderboardScreen, { ...baseProps, supabase: {}, userId: 'u1' }))
-  const [plain, framed] = document.querySelectorAll('.rank-row')
-  assert.equal(plain.querySelector('.pframe'), null)
-  assert.equal(dom.window.getComputedStyle(plain.querySelector('.rank-row__picture')).borderRadius, '50%')
-  assert.ok(framed.querySelector('.pframe'))
-  const picture = dom.window.getComputedStyle(framed.querySelector('.rank-row__picture'))
-  assert.match(picture.borderRadius, /^0(?:px)?$/)
-  assert.equal(picture.width, '100%')
-  assert.match(framed.querySelector('.rank-row__avatar').style.getPropertyValue('--avatar-mask'), /mlbb-frame-masks\/1-10\.png/ )
-  assert.ok(Number(picture.zIndex) < Number(dom.window.getComputedStyle(framed.querySelector('.pframe')).zIndex))
+  for (const row of document.querySelectorAll('.rank-row')) {
+    assert.equal(row.querySelector('.pframe'), null)
+    assert.equal(dom.window.getComputedStyle(row.querySelector('.rank-row__picture')).borderRadius, '50%')
+    assert.equal(row.querySelector('.rank-row__picture img').getAttribute('src').startsWith('https://example.com/'), true)
+  }
+})
+
+test('T-APPLY-11 компактная рамка имени в карточке и длинный ник', async () => {
+  const nick = 'ОченьДлинноеИмяИгрокаБезПробелов1234567890'
+  await mount(React.createElement(S.PlayerCard, { nick, look: LOOK }))
+  const plate = document.querySelector('.profile-card__id h1 .nick--plate')
+  assert.ok(plate)
+  assert.equal(plate.textContent, nick)
+  assert.match(cssText, /\.profile-card__id h1 \.nick--plate \{[^}]*font-size:\s*\.78em/)
+  assert.match(cssText, /\.profile-card__id h1 \.nick--plate \.nick__gem \{[^}]*width:\s*\.48em/)
+  assert.match(cssText, /\.nick__text \{[^}]*overflow-wrap:\s*anywhere/)
+  assert.match(cssText, /\.profile-card__id h1 \{[^}]*max-width:\s*100%/)
+  assert.ok(plate.classList.contains('nick--shine'), 'анимация плашки сохранилась')
 })
 
 rmSync(bundle, { force: true })

@@ -81,7 +81,7 @@ await test('T-SYNC-03 отказ сервера не меняет общий в�
   await until(() => document.querySelector('.profile-card'), 'нет профиля')
   assert.equal(document.querySelector('.profile-card .pframe'), null, 'отказанный выбор попал в профиль')
 })
-await test('T-SYNC-04 коллекционная рамка сохраняется и видна в рейтинге', async () => {
+await test('T-SYNC-04 коллекционная рамка сохраняется, строка рейтинга остаётся прежней', async () => {
   click([...document.querySelectorAll('button')].find(b => /Оформление профиля/.test(b.textContent)))
   await until(() => card('MLBB 1-11')?.textContent.includes('Открыто'), 'права не загрузились')
   click(card('MLBB 1-11'))
@@ -90,10 +90,11 @@ await test('T-SYNC-04 коллекционная рамка сохраняетс
   click(nav('Профиль'))
   await until(() => document.querySelector('.profile-card .pframe--crown'), 'профиль не обновился')
   click(nav('Рейтинг'))
-  await until(() => document.querySelector('.rank-row .pframe--crown'), 'рейтинг не обновился')
+  await until(() => document.querySelector('.rank-row'), 'рейтинг не загрузился')
+  assert.equal(document.querySelector('.rank-row .pframe'), null)
 })
 
-await test('T-SYNC-05 баннер, плашка, титул и цвет видны в профиле, рейтинге и карточке', async () => {
+await test('T-SYNC-05 оформление видно в профиле и карточке, в рейтинге сохранён прежний вид', async () => {
   click(nav('Профиль'))
   await until(() => [...document.querySelectorAll('button')].some(b => /Оформление профиля/.test(b.textContent)), 'нет профиля')
   click([...document.querySelectorAll('button')].find(b => /Оформление профиля/.test(b.textContent)))
@@ -115,9 +116,11 @@ await test('T-SYNC-05 баннер, плашка, титул и цвет вид�
   assert.ok(document.querySelector('.profile-card .nick--plate.plate-gold'))
   assert.match(document.querySelector('.profile-card').textContent, /ВЕТЕРАН/)
   assert.equal(document.querySelector('.profile-card .nick').style.getPropertyValue('--nick-color'), '#ff6a1b')
-  click(nav('Рейтинг')); await until(() => document.querySelector('.rank-row .nick--plate.plate-gold'), 'рейтинг: плашка')
-  assert.ok(document.querySelector('.rank-row .pframe--crown'))
-  assert.match(document.querySelector('.rank-row').textContent, /ВЕТЕРАН/)
+  click(nav('Рейтинг')); await until(() => document.querySelector('.rank-row'), 'рейтинг не загрузился')
+  assert.equal(document.querySelector('.rank-row .nick--plate'), null)
+  assert.equal(document.querySelector('.rank-row .pframe'), null)
+  assert.doesNotMatch(document.querySelector('.rank-row').textContent, /ВЕТЕРАН/)
+  assert.equal(document.querySelector('.rank-row__info strong').style.color, 'rgb(255, 106, 27)')
   state.publicProfile = { user_id: 'u1', nick: 'QA', roles: [], regions: [], heroes: [], socials: [], pts: 2000 }
   click(document.querySelector('.rank-row'))
   await until(() => document.querySelector('.modal--player .pbanner-ember'), 'публичная карточка: шапка')
@@ -132,11 +135,12 @@ await test('T-SYNC-06 открытая карточка, рейтинг и св�
   await sleep(40)
   state.appLoadDelay = 0
   state.loadout.frame_id = 'frame-emerald'
+  state.loadout.color_id = 'color-gold'
   globalThis.__emitCosmetic('u1')
-  await until(() => document.querySelector('.rank-row .pframe--mythic'), 'рейтинг не обновился')
+  await until(() => document.querySelector('.rank-row__info strong')?.style.color === 'rgb(255, 200, 61)', 'цвет в рейтинге не обновился')
   await until(() => document.querySelector('.modal--player .pframe--mythic'), 'карточка не обновилась')
   await sleep(650)
-  assert.ok(document.querySelector('.rank-row .pframe--mythic'), 'поздний ответ откатил рейтинг')
+  assert.equal(document.querySelector('.rank-row__info strong').style.color, 'rgb(255, 200, 61)', 'поздний ответ откатил рейтинг')
   assert.ok(document.querySelector('.modal--player .pframe--mythic'), 'поздний ответ откатил карточку')
   click([...document.querySelectorAll('.modal--player button')].find(b => b.textContent.trim() === 'Закрыть'))
   click(nav('Профиль'))
