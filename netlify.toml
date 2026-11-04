@@ -1,7 +1,7 @@
 # NAME MLBB — деплой на Netlify напрямую из GitHub (автообновление при пуше).
 # Подключение: Netlify -> Add new site -> Import an existing project -> GitHub ->
 # выбрать репозиторий (настройки подхватятся из этого файла автоматически).
-# Ветка для деплоя: arena/cc650609-exams.
+# Выбрать ветку для деплоя в настройках сайта.
 # Затем Site settings -> Environment variables добавить:
 #   VITE_SUPABASE_URL
 #   VITE_SUPABASE_PUBLISHABLE_KEY   (только publishable ключ, НЕ service_role!)

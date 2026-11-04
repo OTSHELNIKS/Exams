@@ -3,7 +3,7 @@
 **Сайт (рабочий, с бэкендом Supabase):**
 https://otshelniks.github.io/Exams/ — GitHub Pages, публикуется workflow
 [`.github/workflows/pages.yml`](./.github/workflows/pages.yml) на каждый пуш
-в ветку `arena/cc650609-exams` (включён один раз: Settings → Pages →
+в настроенную ветку (включён один раз: Settings → Pages →
 Source: GitHub Actions).
 Зеркало на Netlify: https://name-mlbb.netlify.app (деплой из GitHub,
 настройки в [`netlify.toml`](./netlify.toml); на free-плане Netlify
@@ -331,7 +331,7 @@ npm install
 npm run dev
 ```
 
-Откройте `http://localhost:5173/` (в Arena — live preview на порту 5173).
+Откройте `http://localhost:5173/`.
 Сборка: `npm run build`, предпросмотр сборки: `npm run preview`.
 
 Стек: React 18 + Vite 6, CSS без фреймворков, иконки `lucide-react`,
@@ -340,10 +340,10 @@ npm run dev
 ## Деплой
 
 Сайт собирается из GitHub на Netlify автоматически при пуше в
-`arena/cc650609-exams` (конфиг — [`netlify.toml`](./netlify.toml)).
+настроенную ветку (конфиг — [`netlify.toml`](./netlify.toml)).
 Обязательные условия: в Site settings → Environment variables заданы
-`VITE_SUPABASE_URL` и `VITE_SUPABASE_PUBLISHABLE_KEY`, ветка деплоя —
-`arena/cc650609-exams`. Значения `VITE_*` специально вшиваются в клиентский
+`VITE_SUPABASE_URL` и `VITE_SUPABASE_PUBLISHABLE_KEY`, ветка деплоя
+должна совпадать с веткой, выбранной в настройках сайта. Значения `VITE_*` специально вшиваются в клиентский
 JS (publishable-ключ публичен по дизайну), поэтому они исключены из
 Netlify secrets scanning через `SECRETS_SCAN_OMIT_KEYS`.
 

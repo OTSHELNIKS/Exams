@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract supplied transparent reference sheets. Requires Pillow.
 
-Usage: python scripts/extract_mlbb_frames.py /path/to/arena-coding-uploads
+Usage: python scripts/extract_mlbb_frames.py /path/to/reference-sheets
 The supplied sheets are previews (1192x670), not original 8K files. Crop bounds
 are intentional: every frame occupies one cell, including the small frames.
 """
