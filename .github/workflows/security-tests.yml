@@ -1,0 +1,27 @@
+name: Database security tests
+
+on:
+  push:
+    branches:
+      - arena/cc650609-exams
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install dependencies
+        run: npm --prefix app ci
+      - name: Test database permissions and policies
+        run: npm --prefix app run test:security

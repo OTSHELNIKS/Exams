@@ -363,7 +363,8 @@ export async function joinLobby(code) {
 export async function leaveLobby(lobbyId) {
   const { data, error } = await supabase.rpc('leave_lobby', { p_lobby_id: lobbyId })
   if (error) return { error: 'server', detail: error.message }
-  return { ok: true, ...(data || {}) }
+  if (data?.error) return { error: String(data.error) }
+  return { ok: true }
 }
 
 /** Само лобби: регион, Room ID и пароль из игры. */
@@ -391,7 +392,7 @@ export async function loadLobbyMembers(lobbyId) {
 
 /** Хост записывает Room ID и пароль, которые создал в игре. */
 export async function setLobbyRoom(lobbyId, roomId, roomPassword) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('lobbies')
     .update({
       room_id: normalizeRoomId(roomId),
@@ -399,18 +400,24 @@ export async function setLobbyRoom(lobbyId, roomId, roomPassword) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', lobbyId)
+    .select('id')
+    .maybeSingle()
   if (error) return { error: 'server', detail: error.message }
+  if (!data) return { error: 'not_found' }
   return { ok: true }
 }
 
 /** «Я в игре»: игрок сам отмечается, что уже внутри комнаты MLBB. */
 export async function setLobbyCheckedIn(lobbyId, userId, checkedIn) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('lobby_members')
     .update({ checked_in: Boolean(checkedIn) })
     .eq('lobby_id', lobbyId)
     .eq('user_id', userId)
+    .select('user_id')
+    .maybeSingle()
   if (error) return { error: 'server', detail: error.message }
+  if (!data) return { error: 'not_found' }
   return { ok: true }
 }
 

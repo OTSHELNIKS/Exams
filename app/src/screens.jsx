@@ -40,6 +40,7 @@ import {
 } from './cosmetics.js'
 import { ProfileFrame, ProfileBanner, NickPlate } from './frames.jsx'
 import { watchCosmeticChanges } from './cosmetics-sync.js'
+import { watchLobbyRefresh } from './lobby-refresh.js'
 import {
   REGIONS as LOBBY_REGIONS, LOBBY_CAPACITY, ROOM_HINT, normalizeLobbyCode, lobbyCodeValid,
   normalizeRoomId, normalizeRoomPassword, regionLabel, regionHint, describeLobbyError,
@@ -2670,6 +2671,13 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
   const [roomPassword, setRoomPassword] = useState('')
   const [copied, setCopied] = useState(false)
   const [openingGame, setOpeningGame] = useState(false)
+  const roomDraftDirty = useRef(false)
+  const roomDraftRevision = useRef(0)
+  const currentLobbyId = useRef(null)
+  const refreshGeneration = useRef(0)
+  const refreshSequence = useRef(0)
+
+  useEffect(() => () => { refreshGeneration.current += 1 }, [])
 
   const isHost = Boolean(lobby && userId && lobby.host_id === userId)
   const room = lobbyRoomState(lobby)
@@ -2684,18 +2692,36 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
   }, [toast])
 
   const refresh = async (id) => {
+    const generation = refreshGeneration.current
+    const sequence = ++refreshSequence.current
     const [l, m] = await Promise.all([loadLobby(id), loadLobbyMembers(id)])
-    if (l.lobby) {
+    // Поздний ответ не должен вернуть лобби после выхода или перезаписать новые данные.
+    if (generation !== refreshGeneration.current || sequence !== refreshSequence.current) return
+    if (l.lobby?.status === 'closed') {
+      currentLobbyId.current = null
+      roomDraftDirty.current = false
+      setLobby(null); setMembers([]); setRoomId(''); setRoomPassword('')
+      setError(describeLobbyError('closed'))
+      onLobbyChange?.({ code: '', hostId: '' })
+    } else if (l.lobby) {
+      if (currentLobbyId.current !== id) {
+        currentLobbyId.current = id
+        roomDraftDirty.current = false
+      }
       setLobby(l.lobby)
-      setRoomId(l.lobby.room_id || '')
-      setRoomPassword(l.lobby.room_password || '')
-      // Хост лобби = капитан в драфте, поэтому сообщаем его сразу.
+      // Фоновое обновление не стирает Room ID и пароль, которые хост набирает.
+      if (!roomDraftDirty.current) {
+        setRoomId(l.lobby.room_id || '')
+        setRoomPassword(l.lobby.room_password || '')
+      }
       onLobbyChange?.({ code: l.lobby.code, hostId: l.lobby.host_id })
+      if (m.members) setMembers(m.members)
     } else if (l.error === 'not_found') {
-      setLobby(null)
+      currentLobbyId.current = null
+      roomDraftDirty.current = false
+      setLobby(null); setMembers([]); setRoomId(''); setRoomPassword('')
       onLobbyChange?.({ code: '', hostId: '' })
     }
-    if (m.members) setMembers(m.members)
   }
 
   // Вернулись в приложение — показываем сохранённое лобби, иначе вводим код.
@@ -2717,16 +2743,18 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, userId])
 
-  // Живые обновления: новый игрок вошёл, отметился, хост вписал Room ID.
+  // Пока публикация таблиц в Realtime не настроена, обновляем открытый экран
+  // раз в 15 секунд и при возврате в приложение. Подписка остаётся резервной.
   useEffect(() => {
     if (!supabase || !lobby || !lobby.id) return undefined
     const onChange = () => refresh(lobby.id)
+    const stopPolling = watchLobbyRefresh({ refresh: onChange })
     const channel = supabase
       .channel('lobby:' + lobby.id)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lobby_members', filter: 'lobby_id=eq.' + lobby.id }, onChange)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'lobbies', filter: 'id=eq.' + lobby.id }, onChange)
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => { stopPolling(); supabase.removeChannel(channel) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, lobby && lobby.id])
 
@@ -2736,6 +2764,10 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
     const reply = await createLobby(region)
     setBusy('')
     if (reply.error) { setError(describeLobbyError(reply.error)); return }
+    refreshGeneration.current += 1
+    currentLobbyId.current = reply.lobbyId
+    roomDraftDirty.current = false
+    setRoomId(''); setRoomPassword('')
     setLobby({ id: reply.lobbyId, code: reply.code, region: reply.region, host_id: userId, room_id: '', room_password: '', status: 'open' })
     setMembers([])
     await refresh(reply.lobbyId)
@@ -2748,6 +2780,9 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
     const reply = await joinLobby(code)
     setBusy('')
     if (reply.error) { setError(describeLobbyError(reply.error)); return }
+    refreshGeneration.current += 1
+    currentLobbyId.current = null
+    roomDraftDirty.current = false
     setJoinCode('')
     await refresh(reply.lobbyId)
     setToast('Ты в лобби')
@@ -2755,28 +2790,35 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
 
   const leave = async () => {
     if (!lobby) return
-    setBusy('leave')
-    await leaveLobby(lobby.id)
+    setBusy('leave'); setError('')
+    const reply = await leaveLobby(lobby.id)
     setBusy('')
-    setLobby(null); setMembers([])
+    if (reply.error) { setError(describeLobbyError(reply.error)); return }
+    refreshGeneration.current += 1
+    currentLobbyId.current = null
+    roomDraftDirty.current = false
+    setLobby(null); setMembers([]); setRoomId(''); setRoomPassword('')
     onLobbyChange?.({ code: '', hostId: '' })
   }
 
   const saveRoom = async () => {
     if (!lobby) return
     setBusy('room'); setError('')
+    const savedRevision = roomDraftRevision.current
     const reply = await setLobbyRoom(lobby.id, roomId, roomPassword)
     setBusy('')
     if (reply.error) { setError(describeLobbyError(reply.error)); return }
+    if (roomDraftRevision.current === savedRevision) roomDraftDirty.current = false
     setToast('Room ID увидит весь состав')
     await refresh(lobby.id)
   }
 
   const toggleIn = async () => {
     if (!lobby || !userId) return
-    setBusy('check')
-    await setLobbyCheckedIn(lobby.id, userId, !(me && me.checked_in))
+    setBusy('check'); setError('')
+    const reply = await setLobbyCheckedIn(lobby.id, userId, !(me && me.checked_in))
     setBusy('')
+    if (reply.error) setError(describeLobbyError(reply.error))
     await refresh(lobby.id)
   }
 
@@ -2886,7 +2928,7 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
             <div className="input-wrap">
               <input
                 value={roomId}
-                onChange={(e) => setRoomId(normalizeRoomId(e.target.value))}
+                onChange={(e) => { roomDraftDirty.current = true; roomDraftRevision.current += 1; setRoomId(normalizeRoomId(e.target.value)) }}
                 placeholder="Room ID"
                 inputMode="numeric"
                 aria-label="Room ID"
@@ -2895,7 +2937,7 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
             <div className="input-wrap">
               <input
                 value={roomPassword}
-                onChange={(e) => setRoomPassword(normalizeRoomPassword(e.target.value))}
+                onChange={(e) => { roomDraftDirty.current = true; roomDraftRevision.current += 1; setRoomPassword(normalizeRoomPassword(e.target.value)) }}
                 placeholder="Пароль комнаты (если есть)"
                 aria-label="Пароль комнаты"
               />

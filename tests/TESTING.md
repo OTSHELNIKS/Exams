@@ -5,6 +5,8 @@
 ## Как запускать автотесты
 
 ```bash
+npm --prefix app ci          # зависимости, в том числе PGlite для изолированных SQL-тестов
+npm --prefix app run test:security # изолированная PostgreSQL, RLS, клиент лобби и интерфейс
 node tests/bot.test.mjs     # 48 тестов логики бота, ноль зависимостей
 node tests/admin.test.mjs   # 11 проверок админки и оверлея карточки (статические)
 node tests/avatar.test.mjs  # 7 проверок геометрии обрезки аватарки

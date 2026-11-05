@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "build:singlefile": "vite build --config vite.singlefile.config.js",
     "build:native": "VITE_NATIVE=1 vite build",
+    "test:security": "node ../tests/security-rls.test.mjs && node ../tests/lobby-api.test.mjs && node ../tests/lobby-refresh.test.mjs && node ../tests/lobby-ui-refresh.test.mjs",
     "sync:android": "VITE_NATIVE=1 vite build && cap sync android",
     "sync:ios": "VITE_NATIVE=1 vite build && cap sync ios",
     "icons": "capacitor-assets generate --android --ios --splashBackgroundColor '#08080b' --splashBackgroundColorDark '#08080b'"
@@ -33,6 +34,7 @@
   "devDependencies": {
     "@capacitor/assets": "^4.0.0",
     "@capacitor/cli": "^8.6.0",
+    "@electric-sql/pglite": "^0.3.16",
     "@vitejs/plugin-react": "^4.3.4",
     "jsdom": "^30.1.3",
     "sharp": "^0.35.5",
