@@ -2055,7 +2055,8 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, onTrans
     })
     setResultBusy('')
     if (reply.error) {
-      setResultNote(reply.error === 'not_in_match' ? 'Ты не в составе этого матча.' : 'Не удалось отправить результат. Попробуй ещё раз.')
+      setResultNote(reply.error === 'rating_paused' ? 'Начисление рейтинга временно приостановлено. Результаты можно будет отправлять после обновления системы матчей.'
+        : reply.error === 'not_in_match' ? 'Ты не в составе этого матча.' : 'Не удалось отправить результат. Попробуй ещё раз.')
       return
     }
     setResultNote('Результат отправлен. Рейтинг изменится, когда соперник подтвердит — так один человек не может нарисовать себе победу.')
@@ -2069,7 +2070,8 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, onTrans
     setResultBusy('')
     if (reply.error) {
       setResultNote(
-        reply.error === 'not_opponent' ? 'Подтвердить может только соперник — ты отправил этот результат.'
+        reply.error === 'rating_paused' ? 'Начисление рейтинга временно приостановлено. Текущие очки сохранены.'
+          : reply.error === 'not_opponent' ? 'Подтвердить может только соперник — ты отправил этот результат.'
           : reply.error === 'already_confirmed' ? 'Этот матч уже подтверждён.'
             : 'Не удалось подтвердить. Попробуй ещё раз.',
       )
