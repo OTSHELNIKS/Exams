@@ -36,12 +36,13 @@ function json(obj, status) {
   })
 }
 
-async function tg(method, payload) {
+async function tg(method, payload, signal) {
   try {
     const r = await fetch(TG + '/' + method, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      ...(signal ? { signal } : {}),
     })
     const j = await r.json().catch(() => ({}))
     if (!r.ok || j.ok === false) console.error('tg api error', method, JSON.stringify(j).slice(0, 400))
@@ -50,6 +51,22 @@ async function tg(method, payload) {
     console.error('tg fetch failed', method, String(e))
     return { ok: false }
   }
+}
+
+// Реакция — необязательное подтверждение получения обычного сообщения.
+// Ошибка Telegram или таймаут не должны мешать обработке текста и команд.
+async function reactToMessage(msg) {
+  if (!msg?.message_id || !msg.from || msg.from.is_bot || msg.from.id !== msg.chat.id) return
+  const text = (msg.text || '').trim()
+  // Не реагируем на команды и коды привязки/входа.
+  if (!text || text.startsWith('/') || /^[0-9]{4,8}$/.test(text) || /^(?:link_)?[0-9a-f]{48}$/.test(text) || /^login_[A-Za-z0-9_-]{43}$/.test(text)) return
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 1200)
+  try {
+    const allowed = await dbRpc('claim_telegram_reaction', { p_chat_id: msg.chat.id }, controller.signal)
+    if (allowed?.ok && !controller.signal.aborted) await tg('setMessageReaction', { chat_id: msg.chat.id, message_id: msg.message_id,
+      reaction: [{ type: 'emoji', emoji: '👍' }] }, controller.signal)
+  } finally { clearTimeout(timeout) }
 }
 
 function send(chat_id, text, extra) {
@@ -73,7 +90,10 @@ function svcHeaders(extra) {
 
 async function dbSelect(table, params) {
   try {
-    const q = new URLSearchParams(params || {}).toString()
+    // Старые привязки не подтверждены безопасным способом и не дают доступ к
+    // профилям, уведомлениям или административным командам до перепривязки.
+    const filters = table === 'telegram_links' ? { ...(params || {}), verified_at: 'not.is.null', link_instance_id: 'not.is.null' } : (params || {})
+    const q = new URLSearchParams(filters).toString()
     const r = await fetch(SUPABASE_URL + '/rest/v1/' + table + (q ? '?' + q : ''), { headers: svcHeaders() })
     if (!r.ok) { console.error('db select failed', table, r.status); return [] }
     const j = await r.json().catch(() => [])
@@ -158,15 +178,28 @@ async function authGetUser(jwt) {
   }
 }
 
+// Аутентификация подтверждается только в личном чате владельца Telegram.
+async function tokenHash(value) {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(bytes), (x) => x.toString(16).padStart(2, '0')).join('')
+}
+async function dbRpc(name, args, signal) {
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + name, { method: 'POST', headers: svcHeaders(), body: JSON.stringify(args), ...(signal ? { signal } : {}) })
+    if (!r.ok) return { error: 'unavailable' }
+    return await r.json()
+  } catch { return { error: 'unavailable' } }
+}
+
 /* ---------------- bot logic ---------------- */
 const HELP_TEXT = '<b>NAME MLBB — команды</b>\n\n/profile — мой профиль и PTS\n/rating — топ-10 игроков\n/support — задать вопрос поддержке\n/unlink — отвязать Telegram\n/help — это сообщение'
 const ADMIN_HELP = '\n\n<b>Модерация</b>\n/ban — заблокировать: <code>/ban НИК причина</code>\n/unban — разблокировать\n/users — последние пользователи\n/userinfo — карточка: <code>/userinfo НИК</code>\n/review — очередь проверки (ники, фото, скриншоты)\n/pending — сколько на проверке\n/tickets — открытые заявки\n/ticket — заявка: <code>/ticket 3</code>\n/reply — ответить на заявку: <code>/reply 3</code>, дальше просто текст\n/close — закрыть заявку'
 
 function linkPrompt() {
-  return 'Я не знаю, кто ты, пока ты не покажешь код из приложения. Как привязать (1 минута):'
-    + '\n1) Войди в приложение по почте' + (APP_URL ? ': ' + APP_URL : '') + '.'
-    + '\n2) Открой Профиль → «Привязать Telegram» — там появится код из 6 цифр.'
-    + '\n3) Нажми «Открыть бота» и нажми START — либо просто отправь мне код сообщением.'
+  return 'Как привязать Telegram к NAME:'
+    + '\n1) Войди в приложение' + (APP_URL ? ': ' + APP_URL : '') + '.'
+    + '\n2) Открой Профиль → «Привязать Telegram» и получи одноразовую ссылку.'
+    + '\n3) Открой бота по ссылке, сверь код и подтверди привязку. Ссылку никому не пересылай.'
 }
 
 const APP_ORIGIN = APP_URL.replace(/\/+$/, '')
@@ -177,9 +210,8 @@ const WELCOME_TEXT = '<b>NAME</b> — соревновательный матч�
   + 'Здесь ID лобби, уведомления о матчах, ответы поддержки и рейтинг игроков.'
 
 // Описание бота в профиле: Telegram показывает его до первого /start.
-const BOT_DESCRIPTION = 'NAME — матчмейкинг Mobile Legends: Bang Bang: честный драфт, '
-  + 'свой сервер, зарплата топ-10 рейтинга. Бот пришлёт ID лобби, привяжет аккаунт '
-  + 'и примет обращение в поддержку.'
+const BOT_DESCRIPTION = 'NAME — платформа для игроков Mobile Legends: Bang Bang. '
+  + 'Бот поможет привязать аккаунт, получать уведомления и обращаться в поддержку.'
 const BOT_SHORT_DESCRIPTION = 'NAME MLBB: лобби, уведомления и поддержка в Telegram.'
 
 function appKeyboard() {
@@ -516,25 +548,11 @@ async function sendReviewItem(adminChatId) {
   }
 }
 
-async function linkByCode(chatId, tgUsername, rawCode) {
-  const code = String(rawCode || '').trim()
-  if (!/^[0-9]{6}$/.test(code)) return 'Код — это 6 цифр из приложения. Проверь и отправь ещё раз.'
-  const rows = await dbSelect('telegram_link_codes', { code: 'eq.' + code, select: '*' })
-  const row = rows[0]
-  if (!row) return 'Такой код не найден. Получи свежий код в профиле приложения.'
-  if (new Date(row.expires_at).getTime() < Date.now()) {
-    await dbDelete('telegram_link_codes', { code: 'eq.' + code })
-    return 'Код истёк (живёт 10 минут). Получи новый в профиле.'
-  }
-  // One chat = one account: drop previous bindings of this chat, then link.
-  await dbDelete('telegram_links', { tg_chat_id: 'eq.' + chatId })
-  const ok = await dbUpsert('telegram_links',
-    { user_id: row.user_id, tg_chat_id: chatId, tg_username: tgUsername || '' }, 'user_id')
-  if (!ok) return 'Не получилось привязать. Попробуй позже.'
-  await dbDelete('telegram_link_codes', { code: 'eq.' + code })
-  const profs = await dbSelect('player_profiles', { user_id: 'eq.' + row.user_id, select: 'nick' })
-  const nick = profs[0] && profs[0].nick ? ' «' + esc(profs[0].nick) + '»' : ''
-  return 'Готово! Telegram привязан к профилю' + nick + '. Теперь сюда будут приходить уведомления о матчах.\n\n' + HELP_TEXT
+async function promptLink(chatId, token) {
+  if (!/^[0-9a-f]{48}$/.test(token)) { await send(chatId, 'Ссылка недействительна. Получи новую в профиле NAME.'); return }
+  await send(chatId, 'Запрошена привязка Telegram к профилю NAME. Сверь код <b>' + esc(token.slice(0, 6)) + '</b> с приложением. Если запросил не ты — ничего не нажимай.', {
+    reply_markup: { inline_keyboard: [[{ text: 'Подтвердить привязку', callback_data: 'link:' + token }]] },
+  })
 }
 
 async function handleSupportCallback(q) {
@@ -611,6 +629,28 @@ async function handleCallback(q) {
   const data = (q && q.data) || ''
   const fromId = q && q.from ? q.from.id : null
   const msg = q ? q.message : null
+  if (data.startsWith('link:')) {
+    const token = data.slice(5)
+    if (!fromId || q.from.is_bot || !msg?.chat || msg.chat.type !== 'private' || msg.chat.id !== fromId || !/^[0-9a-f]{48}$/.test(token)) {
+      await tg('answerCallbackQuery', { callback_query_id: q.id, text: 'Подтверждение недоступно.' }); return
+    }
+    const result = await dbRpc('confirm_telegram_link', { p_token: token, p_chat_id: fromId, p_username: q.from.username || '' })
+    const text = result?.ok ? 'Готово! Telegram привязан к профилю NAME.' : result?.error === 'too_often' ? 'Слишком много попыток. Подожди минуту.' : 'Ссылка истекла или уже использована. Получи новую в профиле.'
+    await tg('answerCallbackQuery', { callback_query_id: q.id, text })
+    await send(fromId, text)
+    return
+  }
+  if (data.startsWith('login:')) {
+    const token = data.slice(6)
+    if (!fromId || !msg?.chat || msg.chat.type !== 'private' || msg.chat.id !== fromId || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
+      await tg('answerCallbackQuery', { callback_query_id: q.id, text: 'Подтверждение недоступно.' }); return
+    }
+    const result = await dbRpc('approve_telegram_token_auth', { p_bot_hash: await tokenHash(token), p_chat_id: fromId })
+    const text = result?.ok ? 'Вход подтверждён. Вернись в приложение.' : result?.error === 'not_linked' ? 'Сначала привяжи Telegram в профиле NAME.' : 'Ссылка истекла или уже использована.'
+    await tg('answerCallbackQuery', { callback_query_id: q.id, text })
+    await send(fromId, text)
+    return
+  }
   if (data.startsWith('t:')) { await handleTicketCallback(q); return }
   if (data.startsWith('s:')) { await handleSupportCallback(q); return }
   if (!data.startsWith('rev:') || !fromId || !msg) return
@@ -650,16 +690,18 @@ async function handleCallback(q) {
 async function handleUpdate(update) {
   if (update && update.callback_query) { await handleCallback(update.callback_query); return }
   const msg = update && update.message
-  if (!msg || (msg.chat && msg.chat.type !== 'private') || typeof msg.text !== 'string') return
+  if (!msg || !msg.chat || msg.chat.type !== 'private' || typeof msg.text !== 'string') return
+  await reactToMessage(msg)
   const chatId = msg.chat.id
-  const tgUsername = (msg.from && msg.from.username) || ''
   const text = msg.text.trim()
   const parts = text.split(/\s+/)
   const cmd = parts[0]
   const arg = parts[1]
 
   // Начатый диалог («Ответить» / «Написать в поддержку»): команда не нужна.
-  if (!text.startsWith('/') && !/^[0-9]{6}$/.test(text)) {
+  if (!text.startsWith('/')) {
+    // В начатом диалоге даже шестизначный текст может быть частью обращения
+    // (например, номером ошибки). Старые коды вне диалога всё равно отклоняются.
     if (await handlePlainText(chatId, text)) return
   }
 
@@ -670,7 +712,21 @@ async function handleUpdate(update) {
   }
 
   if (cmd === '/start') {
-    if (arg) { await send(chatId, await linkByCode(chatId, tgUsername, arg)); return }
+    if (arg && arg.startsWith('link_')) {
+      if (!msg.from || msg.from.is_bot || msg.from.id !== chatId) { await send(chatId, 'Ссылка недействительна.'); return }
+      await promptLink(chatId, arg.slice(5)); return
+    }
+    if (arg && arg.startsWith('login_')) {
+      const token = arg.slice(6)
+      if (!msg.from || msg.from.id !== chatId || !/^[A-Za-z0-9_-]{43}$/.test(token)) { await send(chatId, 'Ссылка недействительна.'); return }
+      const links = await dbSelect('telegram_links', { tg_chat_id: 'eq.' + chatId, select: 'user_id' })
+      if (!links[0]) { await send(chatId, linkPrompt()); return }
+      await send(chatId, 'Запрошен вход в NAME. Сверь код <b>' + esc(token.slice(0, 6)) + '</b> с приложением. Если запросил не ты — ничего не нажимай.', {
+        reply_markup: { inline_keyboard: [[{ text: 'Подтвердить вход', callback_data: 'login:' + token }]] },
+      })
+      return
+    }
+    if (arg) { await send(chatId, 'Старые коды привязки больше не принимаются. Получи новую ссылку в профиле NAME.'); return }
     const links = await dbSelect('telegram_links', { tg_chat_id: 'eq.' + chatId, select: '*' })
     if (links[0]) {
       const profs = await dbSelect('player_profiles', { user_id: 'eq.' + links[0].user_id, select: 'nick' })
@@ -680,7 +736,7 @@ async function handleUpdate(update) {
     }
     return
   }
-  if (/^[0-9]{6}$/.test(cmd) && !arg) { await send(chatId, await linkByCode(chatId, tgUsername, cmd)); return }
+  if (/^[0-9]{6}$/.test(cmd) && !arg) { await send(chatId, 'Старые коды привязки больше не принимаются. Получи новую ссылку в профиле NAME.'); return }
 
   if (cmd === '/profile') {
     const links = await dbSelect('telegram_links', { tg_chat_id: 'eq.' + chatId, select: '*' })
@@ -825,8 +881,8 @@ async function handleUpdate(update) {
   }
 
   if (cmd === '/unlink') {
-    await dbDelete('telegram_links', { tg_chat_id: 'eq.' + chatId })
-    await send(chatId, 'Готово, Telegram отвязан. Уведомления приходить не будут.')
+    const ok = await dbDelete('telegram_links', { tg_chat_id: 'eq.' + chatId })
+    await send(chatId, ok ? 'Готово, Telegram отвязан. Уведомления приходить не будут.' : 'Не удалось отвязать Telegram. Попробуй ещё раз.')
     return
   }
 
@@ -881,11 +937,11 @@ async function handleSetup(url) {
   if (!BOT_TOKEN) return json({ ok: false, error: 'no_bot_token' }, 500)
   if (!WEBHOOK_SECRET) return json({ ok: false, error: 'no_webhook_secret' }, 500)
   const fnUrl = SUPABASE_URL + '/functions/v1/telegram-bot'
-  let hook = await tg('setWebhook', { url: fnUrl, secret_token: WEBHOOK_SECRET, drop_pending_updates: true })
+  let hook = await tg('setWebhook', { url: fnUrl, secret_token: WEBHOOK_SECRET, drop_pending_updates: false })
   if (!hook || hook.ok !== true) {
     // Retry once: Telegram occasionally rejects a burst of setWebhook calls.
     await new Promise((resolve) => setTimeout(resolve, 700))
-    hook = await tg('setWebhook', { url: fnUrl, secret_token: WEBHOOK_SECRET, drop_pending_updates: true })
+    hook = await tg('setWebhook', { url: fnUrl, secret_token: WEBHOOK_SECRET, drop_pending_updates: false })
   }
   const me = await tg('getMe', {})
   const cmds = await tg('setMyCommands', { commands: [
@@ -893,16 +949,6 @@ async function handleSetup(url) {
     { command: 'profile', description: 'Мой профиль и PTS' },
     { command: 'rating', description: 'Топ-10 игроков' },
     { command: 'support', description: 'Вопрос поддержке' },
-    { command: 'ban', description: 'Заблокировать (админ)' },
-    { command: 'unban', description: 'Разблокировать (админ)' },
-    { command: 'users', description: 'Пользователи (админ)' },
-    { command: 'userinfo', description: 'Карточка игрока (админ)' },
-    { command: 'review', description: 'Проверка анкет (админ)' },
-    { command: 'pending', description: 'Сколько на проверке (админ)' },
-    { command: 'tickets', description: 'Открытые заявки (админ)' },
-    { command: 'ticket', description: 'Читать заявку (админ)' },
-    { command: 'reply', description: 'Ответить на заявку (админ)' },
-    { command: 'close', description: 'Закрыть заявку (админ)' },
     { command: 'unlink', description: 'Отвязать Telegram' },
     { command: 'help', description: 'Помощь' },
   ] })

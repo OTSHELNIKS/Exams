@@ -22,6 +22,10 @@ await db.exec(`
   create function auth.uid() returns uuid language sql stable as $$
     select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
   $$;
+  create function auth.jwt() returns jsonb language sql stable as $$
+    select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb
+  $$;
+  grant execute on function auth.jwt() to public;
   grant usage on schema public, auth to anon, authenticated, service_role;
   grant execute on function auth.uid() to public;
   -- Дефолты и обязательные поля совпадают со схемой рабочего проекта.
@@ -58,6 +62,8 @@ await db.exec('grant all on public.matches, public.match_players to anon, authen
 await db.exec(await migration('20261105010000_profile_write_permissions.sql'))
 await db.exec(await migration('20261105020000_lobby_security.sql'))
 await db.exec(await migration('20261105030000_pause_unverified_rating.sql'))
+await db.exec(await migration('20261105040000_authoritative_draft.sql'))
+await db.exec(await migration('20261105050000_profile_registered_only.sql'))
 
 after(async () => db.close())
 async function asUser(id, fn) {
@@ -69,6 +75,20 @@ async function asAnon(fn) {
   try { return await fn() } finally { await db.exec('reset role') }
 }
 const rows = async (sql, params = []) => (await db.query(sql, params)).rows
+
+test('anonymous Supabase sessions cannot create or edit profiles', async () => {
+  await asUser(ids[14], async () => {
+    await db.exec(`select set_config('request.jwt.claims', '{"is_anonymous":true}', false)`)
+    try {
+      await assert.rejects(db.query("insert into public.player_profiles (user_id, nick) values ($1, 'Guest')", [ids[14]]), /row-level security/)
+      await db.exec('reset role')
+      await db.query("insert into public.player_profiles (user_id,nick) values ($1,'Existing')", [ids[14]])
+      await db.exec('set role authenticated')
+      const changed = await rows("update public.player_profiles set nick='Guest' where user_id=$1 returning nick", [ids[14]])
+      assert.deepEqual(changed, [])
+    } finally { await db.exec("select set_config('request.jwt.claims', '{}', false)") }
+  })
+})
 
 test('profile upsert remains possible, including all actual client fields', async () => {
   await asUser(ids[0], async () => {
@@ -210,4 +230,102 @@ test('leaving removes access and host closes the lobby', async () => {
   })
   await asUser(ids[0], async () => assert.equal((await rows('select public.leave_lobby($1) as result', [lobbyId]))[0].result.ok, true))
   await asUser(ids[11], async () => assert.equal((await rows('select public.join_lobby($1) as result', [code]))[0].result.error, 'closed'))
+})
+
+let draftLobbyId, draftCode, draftState
+const draftRpc = async (name, id, args = []) => (await rows(`select public.${name}(${[id, ...args].map((_, n) => '$' + (n + 1)).join(',')}) as result`, [id, ...args]))[0].result
+
+test('5v5 draft requires an actual ten-player lobby and the host to start', async () => {
+  await asUser(ids[14], async () => {
+    const created = (await rows("select public.create_lobby('eu') as result"))[0].result
+    draftLobbyId = created.lobby_id; draftCode = created.code
+    assert.equal((await draftRpc('start_lobby_draft', draftLobbyId)).error, 'need_ten')
+  })
+  await asUser(ids[0], async () => {
+    assert.equal((await rows('select public.join_lobby($1) as result', [draftCode]))[0].result.lobby_id, draftLobbyId)
+    assert.equal((await draftRpc('start_lobby_draft', draftLobbyId)).error, 'not_host')
+  })
+  for (const id of ids.slice(1, 9)) {
+    await asUser(id, async () => assert.equal((await rows('select public.join_lobby($1) as result', [draftCode]))[0].result.lobby_id, draftLobbyId))
+  }
+  await asUser(ids[9], async () => {
+    assert.equal((await draftRpc('get_lobby_draft', draftLobbyId)).error, 'not_member')
+    await assert.rejects(db.exec('select * from public.lobby_drafts'), /permission denied/i)
+    await assert.rejects(db.query('select public._draft_pick($1,$2,false)', [draftLobbyId, ids[1]]), /permission denied/i)
+  })
+  await asUser(ids[14], async () => {
+    draftState = await draftRpc('start_lobby_draft', draftLobbyId)
+    assert.equal(draftState.status, 'active')
+    assert.equal(draftState.captain_a, ids[14])
+    assert.equal(draftState.captain_b, ids[0]) // 1200 PTS, strongest in this lobby
+    assert.equal(draftState.pool.length, 8)
+    assert.equal(draftState.turn, 'a')
+  })
+})
+
+test('only the active captain may pick, and auto-pick cannot run early', async () => {
+  const target = draftState.pool[0].user_id
+  await asUser(ids[0], async () => {
+    assert.equal((await draftRpc('pick_lobby_draft_player', draftLobbyId, [target])).error, 'not_turn')
+    assert.equal((await draftRpc('auto_pick_lobby_draft_player', draftLobbyId)).error, 'too_early')
+  })
+  await asUser(ids[14], async () => assert.equal((await draftRpc('pick_lobby_draft_player', draftLobbyId, [ids[12]])).error, 'not_in_pool'))
+  await db.query("update public.lobby_drafts set deadline=clock_timestamp()-interval '1 second' where lobby_id=$1", [draftLobbyId])
+  await asUser(ids[14], async () => assert.equal((await draftRpc('pick_lobby_draft_player', draftLobbyId, [target])).error, 'turn_expired'))
+  await asUser(ids[1], async () => { draftState = await draftRpc('auto_pick_lobby_draft_player', draftLobbyId) })
+  assert.equal(draftState.team_a.length, 2)
+  assert.equal(draftState.team_a[1].user_id, target)
+  assert.equal(draftState.turn, 'b')
+})
+
+test('captain transfer is restricted to the current captain and same team', async () => {
+  const teammateA = draftState.team_a[1].user_id
+  await asUser(ids[14], async () => {
+    assert.equal((await draftRpc('transfer_draft_captain', draftLobbyId, [ids[0]])).error, 'not_teammate')
+    assert.equal((await draftRpc('transfer_lobby_host', draftLobbyId, [ids[0]])).error, 'use_draft_transfer')
+    draftState = await draftRpc('transfer_draft_captain', draftLobbyId, [teammateA])
+    assert.equal(draftState.captain_a, teammateA)
+    assert.equal(draftState.team_a.find((x) => x.user_id===teammateA).isCaptain, true)
+  })
+  await asUser(ids[14], async () => assert.equal((await draftRpc('transfer_draft_captain', draftLobbyId, [teammateA])).error, 'not_captain'))
+  await asUser(ids[0], async () => assert.equal((await draftRpc('transfer_draft_captain', draftLobbyId, [teammateA])).error, 'not_teammate'))
+})
+
+test('both captains finish a shared 5v5 draft; the result is identical for all members', async () => {
+  while (draftState.status === 'active') {
+    const captain = draftState.turn === 'a' ? draftState.captain_a : draftState.captain_b
+    const target = draftState.pool[0].user_id
+    await asUser(captain, async () => { draftState = await draftRpc('pick_lobby_draft_player', draftLobbyId, [target]) })
+    assert.equal(draftState.error, undefined)
+  }
+  assert.equal(draftState.status, 'complete')
+  assert.equal(draftState.team_a.length, 5)
+  assert.equal(draftState.team_b.length, 5)
+  assert.equal(new Set([...draftState.team_a, ...draftState.team_b].map((p) => p.user_id)).size, 10)
+  await asUser(ids[8], async () => {
+    const other = await draftRpc('get_lobby_draft', draftLobbyId)
+    const { server_time: _a, ...expected } = draftState
+    const { server_time: _b, ...observed } = other
+    assert.deepEqual(observed, expected)
+  })
+  const bTeammate = draftState.team_b.find((p) => p.user_id !== draftState.captain_b).user_id
+  await asUser(ids[0], async () => { draftState = await draftRpc('transfer_draft_captain', draftLobbyId, [bTeammate]) })
+  assert.equal(draftState.captain_b, bTeammate)
+  assert.equal((await rows('select host_id from public.lobbies where id=$1', [draftLobbyId]))[0].host_id, ids[14])
+})
+
+test('a departure cancels the draft, reopens the lobby and permits a fresh draft after refill', async () => {
+  await asUser(ids[8], async () => assert.equal((await draftRpc('leave_lobby', draftLobbyId)).ok, true))
+  await asUser(ids[14], async () => {
+    assert.equal((await draftRpc('get_lobby_draft', draftLobbyId)).status, 'cancelled')
+    assert.equal((await draftRpc('start_lobby_draft', draftLobbyId)).error, 'need_ten')
+  })
+  await asUser(ids[9], async () => assert.equal((await rows('select public.join_lobby($1) as result', [draftCode]))[0].result.lobby_id, draftLobbyId))
+  await asUser(ids[14], async () => {
+    const restarted = await draftRpc('start_lobby_draft', draftLobbyId)
+    assert.equal(restarted.status, 'active')
+    assert.equal(restarted.team_a.length, 1)
+    assert.equal(restarted.team_b.length, 1)
+    assert.equal(restarted.pool.length, 8)
+  })
 })

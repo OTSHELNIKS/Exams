@@ -63,10 +63,11 @@ test('T-AUTH-02 Google — настоящий OAuth через Supabase', () => 
   assert.ok(nativeAuth.includes('redirectTo'), 'не задан адрес возврата')
 })
 
-test('T-AUTH-03 Telegram ведёт в бота без payload', () => {
-  assert.ok(/https:\/\/t\.me\/\$\{TELEGRAM_BOT_USERNAME\}/.test(auth), 'нет ссылки на бота')
-  assert.ok(!auth.includes('?start=login'), 'payload start=login бот поймёт как код привязки')
-  assert.ok(auth.includes('target="_blank"'), 'ссылка на бота должна открываться в новой вкладке')
+test('T-AUTH-03 Telegram открывает одноразовую ссылку в отдельном окне', () => {
+  const modal = read('app/src/telegram-auth-modal.jsx')
+  assert.ok(auth.includes('setTelegramAuthOpen(true)'), 'плитка не открывает подтверждение')
+  assert.ok(modal.includes('?start=login_'), 'нет одноразового payload')
+  assert.ok(modal.includes('target="_blank"'), 'ссылка на бота должна открываться в новой вкладке')
 })
 
 test('T-AUTH-04 MLBB и TikTok не выдают себя за рабочие', () => {

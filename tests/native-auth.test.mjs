@@ -178,11 +178,17 @@ test('T-NAT-14 ошибка Supabase пробрасывается наверх',
 
 // ------------------------------------------------------------- нативные файлы
 
-test('T-NAT-15 Android ловит возврат по схеме com.namemlbb.app', () => {
+test('T-NAT-15 Android использует отдельные схемы для обычной и тестовой сборки', () => {
   const manifest = read('app/android/app/src/main/AndroidManifest.xml')
+  const gradle = read('app/android/app/build.gradle')
+  const nativeAuth = read('app/src/native-auth.js')
   assert.match(manifest, /android\.intent\.action\.VIEW/)
-  assert.match(manifest, /android:scheme="com\.namemlbb\.app"/)
+  assert.match(manifest, /android:scheme="\$\{authScheme\}"/)
   assert.match(manifest, /android:host="auth"/)
+  assert.match(gradle, /authScheme:\s*"com\.namemlbb\.app"/)
+  assert.match(gradle, /NAME_STAGING[\s\S]*authScheme:\s*"com\.namemlbb\.app\.staging"/)
+  assert.match(gradle, /applicationIdSuffix\s+"\.staging"/)
+  assert.match(nativeAuth, /VITE_NATIVE_STAGING[\s\S]*com\.namemlbb\.app\.staging[\s\S]*com\.namemlbb\.app/)
 })
 
 test('T-NAT-16 iOS ловит возврат по CFBundleURLSchemes', () => {

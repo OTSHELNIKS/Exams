@@ -16,7 +16,7 @@ import { isNativeApp, openExternal } from './native.js'
 
 // Схема совпадает с appId в capacitor.config.ts (Android: intent-filter,
 // iOS: CFBundleURLSchemes). Менять только вместе с ними.
-export const NATIVE_SCHEME = 'com.namemlbb.app'
+export const NATIVE_SCHEME = import.meta.env?.VITE_NATIVE_STAGING === 'true' ? 'com.namemlbb.app.staging' : 'com.namemlbb.app'
 export const NATIVE_REDIRECT = `${NATIVE_SCHEME}://auth`
 
 // Куда Supabase должен вернуть игрока после OAuth.

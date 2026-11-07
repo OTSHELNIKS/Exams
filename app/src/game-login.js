@@ -92,7 +92,7 @@ export function describeGameLoginError(error) {
     case 'profile_not_found':
       return 'Аккаунта с таким Game ID и сервером нет. Проверь цифры или сначала зарегистрируйся по почте.'
     case 'telegram_not_linked':
-      return 'К этому профилю не привязан Telegram. Выбери код на внутриигровую почту — он работает без бота.'
+      return 'Telegram ещё не привязан к профилю. Сначала войди по почте, открой Профиль → Соцсети и привяжи бота.'
     case 'ingame_unavailable':
       return 'Почта в игре сейчас недоступна. Попробуй код в Telegram или через минуту.'
     case 'ingame_failed':
@@ -100,7 +100,7 @@ export function describeGameLoginError(error) {
     case 'too_often':
       return 'Код уже отправлен меньше 30 секунд назад. Подожди немного и попробуй снова.'
     case 'too_many_attempts':
-      return 'Слишком много неверных попыток. Запроси новый код.'
+      return 'Слишком много неверных попыток. Подожди 15 минут и запроси новый код.'
     case 'telegram_failed':
       return 'Telegram не принял сообщение. Проверь, что бот не заблокирован, и попробуй ещё раз.'
     case 'bad_request':

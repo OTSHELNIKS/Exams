@@ -25,3 +25,51 @@ jobs:
         run: npm --prefix app ci
       - name: Test database permissions and policies
         run: npm --prefix app run test:security
+
+  isolated-postgrest:
+    # Dedicated ephemeral DB and random roles. This job never connects to the
+    # Supabase project and must not receive project credentials.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install dependencies
+        run: npm --prefix app ci
+      - name: Start isolated PostgreSQL on a Unix socket
+        run: |
+          mkdir -p /tmp/name-ci-pg
+          chmod 777 /tmp/name-ci-pg
+          docker run --detach --name name-ci-postgres \
+            --volume /tmp/name-ci-pg:/var/run/postgresql \
+            --env POSTGRES_USER=name_test \
+            --env POSTGRES_HOST_AUTH_METHOD=trust \
+            postgres:17.11 -c listen_addresses='' -c unix_socket_permissions=0777
+          for attempt in $(seq 1 45); do
+            if docker exec name-ci-postgres pg_isready -U name_test; then exit 0; fi
+            sleep 1
+          done
+          docker logs name-ci-postgres
+          exit 1
+      - name: Extract pinned PostgREST binary
+        run: |
+          docker create --name name-ci-postgrest postgrest/postgrest:v14.15
+          docker cp --follow-link name-ci-postgrest:/bin/postgrest /tmp/name-ci-postgrest-bin
+          chmod 700 /tmp/name-ci-postgrest-bin
+          /tmp/name-ci-postgrest-bin --version
+      - name: Test concurrent transactions and PostgREST permissions
+        env:
+          NAME_TEST_PG_SOCKET: /tmp/name-ci-pg
+          NAME_TEST_PG_USER: name_test
+          NAME_TEST_PG_PORT: '5432'
+          NAME_TEST_POSTGREST_BIN: /tmp/name-ci-postgrest-bin
+        run: |
+          npm --prefix app run test:telegram-postgres
+          npm --prefix app run test:telegram-postgrest
+      - name: Remove isolated containers
+        if: always()
+        run: docker rm -f name-ci-postgres name-ci-postgrest || true

@@ -39,6 +39,7 @@ globalThis.fetch = async (url, opts = {}) => {
     const isForm = typeof FormData !== 'undefined' && opts.body instanceof FormData
     calls.tg.push({ method, payload: isForm ? { form: true } : JSON.parse(opts.body || '{}') })
     if (method === 'getMe') return J(200, { ok: true, result: { username: 'name_mlbb_bot' } })
+    if (method === 'setMessageReaction' && SCEN.reactionFail) return J(400, { ok: false, description: 'reaction unavailable' })
     // Telegram не смог скачать картинку по ссылке — бот должен залить файл.
     if (method === 'sendPhoto' && SCEN.photoFail && !isForm) {
       return J(400, { ok: false, error_code: 400, description: 'wrong file identifier/HTTP URL specified' })
@@ -125,32 +126,53 @@ t('T-BOT-03 /start for stranger shows link steps', async () => {
   assert.match(tgTexts(), /Привязать Telegram/)
 })
 
-t('T-BOT-04 valid link code binds chat to account', async () => {
-  reset({
-    telegram_link_codes: [{ code: '123456', user_id: 'user-1', expires_at: FUTURE }],
-    player_profiles: [{ nick: 'STRANGER' }],
-  })
-  await post('', { headers: H, body: upd('123456') })
-  assert.match(tgTexts(), /Готово! Telegram привязан/)
-  assert.match(tgTexts(), /STRANGER/)
-  const up = calls.db.find((c) => c.method === 'POST' && c.table === 'telegram_links')
-  assert.ok(up, 'expected upsert into telegram_links')
-  assert.equal(up.body.tg_chat_id, 111)
-  assert.equal(up.body.user_id, 'user-1')
+t('T-BOT-04 secure link requires explicit confirmation in the correct private chat', async () => {
+  const token = 'a'.repeat(48)
+  reset({})
+  await post('', { headers: H, body: upd('/start link_'+token) })
+  const prompt = calls.tg.find(c => c.method === 'sendMessage' && c.payload.reply_markup)
+  assert.match(prompt.payload.text, /Сверь код/)
+  assert.equal(prompt.payload.reply_markup.inline_keyboard[0][0].callback_data,'link:'+token)
+  assert.equal(calls.db.some(c => c.table === 'rpc/confirm_telegram_link'), false)
+  reset({'POST rpc/confirm_telegram_link':{ok:true}})
+  await post('', {headers:H, body:{callback_query:{id:'c',data:'link:'+token,from:{id:111,username:'tester'},message:{chat:{id:111,type:'private'}}}}})
+  assert.match(tgTexts(),/Telegram привязан/)
+  assert.deepEqual(calls.db.find(c=>c.table==='rpc/confirm_telegram_link').body,{p_token:token,p_chat_id:111,p_username:'tester'})
 })
 
-t('T-BOT-05 expired code is refused and deleted', async () => {
-  reset({ telegram_link_codes: [{ code: '000001', user_id: 'user-1', expires_at: PAST }] })
-  await post('', { headers: H, body: upd('000001') })
-  assert.match(tgTexts(), /Код истёк/)
-  const del = calls.db.find((c) => c.method === 'DELETE' && c.table === 'telegram_link_codes')
-  assert.ok(del, 'expected expired code to be deleted')
+t('T-BOT-05 expired link is refused without binding', async () => {
+  const token='a'.repeat(48); reset({'POST rpc/confirm_telegram_link':{error:'invalid'}})
+  await post('', {headers:H, body:{callback_query:{id:'c',data:'link:'+token,from:{id:111},message:{chat:{id:111,type:'private'}}}}})
+  assert.match(tgTexts(),/истекла или уже использована/)
+  assert.equal(calls.db.some(c=>c.method==='POST' && c.table==='telegram_links'),false)
 })
 
-t('T-BOT-06 unknown code is refused', async () => {
-  reset({ telegram_link_codes: [] })
-  await post('', { headers: H, body: upd('999999') })
-  assert.match(tgTexts(), /не найден/)
+t('T-BOT-06 six-digit legacy codes are no longer accepted', async () => {
+  reset({});await post('', {headers:H,body:upd('999999')})
+  assert.match(tgTexts(), /Старые коды привязки больше не принимаются/)
+  assert.equal(calls.db.some(c => c.table === 'telegram_link_codes'),false)
+})
+
+t('link confirmation cannot be forged from another or group chat', async () => {
+  for (const [from,chat,type] of [[222,111,'private'],[111,-1,'group']]) {
+    reset({});await post('', {headers:H,body:{callback_query:{id:'c',data:'link:'+'a'.repeat(48),from:{id:from},message:{chat:{id:chat,type}}}}})
+    assert.equal(calls.db.some(c=>c.table==='rpc/confirm_telegram_link'),false)
+  }
+})
+
+t('bot requests only verified links for identity and admin access', async () => {
+  reset({telegram_links:[]});await post('',{headers:H,body:upd('/help')})
+  const filters=calls.db.find(c=>c.table==='telegram_links').params
+  assert.equal(filters.verified_at,'not.is.null')
+  assert.equal(filters.link_instance_id,'not.is.null')
+})
+
+t('admin reply mode is cancelled if admin rights were revoked', async () => {
+  reset({telegram_links:[{user_id:'user-1'}], admins:[], telegram_sessions:[{chat_id:111,action:'reply',payload:{num:1},expires_at:FUTURE}]})
+  await post('',{headers:H,body:upd('Ответ на заявку')})
+  assert.match(tgTexts(),/только для администраторов/)
+  assert.ok(calls.db.some(c=>c.method==='DELETE' && c.table==='telegram_sessions'))
+  assert.equal(calls.db.some(c=>c.method==='PATCH' && c.table==='support_tickets'),false)
 })
 
 t('T-BOT-07 /profile shows linked user stats', async () => {
@@ -302,6 +324,21 @@ t('T-BOT-19 setup with correct secret wires webhook', async () => {
   assert.equal(r.json.ok, true)
   assert.equal(r.json.setWebhook, true)
   assert.equal(r.json.bot, 'name_mlbb_bot')
+})
+
+t('Общее меню не раскрывает админские команды, а /help показывает их лишь админу', async () => {
+  reset({})
+  await get('?setup=TESTSETUP')
+  const menu = calls.tg.find((c) => c.method === 'setMyCommands').payload.commands.map((c) => c.command)
+  for (const name of ['ban', 'unban', 'users', 'userinfo', 'review', 'pending', 'tickets', 'ticket', 'reply', 'close']) assert.ok(!menu.includes(name))
+  assert.ok(menu.includes('help'))
+  assert.equal(calls.tg.find((c) => c.method === 'setWebhook').payload.drop_pending_updates, false)
+  reset({ telegram_links: [{ user_id: 'ordinary' }], admins: [] })
+  await post('', { headers: H, body: upd('/help') })
+  assert.doesNotMatch(tgTexts(), /\/ban|Модерация/)
+  reset({ telegram_links: ADMIN, admins: ADMIN })
+  await post('', { headers: H, body: upd('/help', 999) })
+  assert.match(tgTexts(), /\/ban|Модерация/)
 })
 
 t('T-BOT-20 setup with wrong secret is forbidden', async () => {
@@ -587,6 +624,31 @@ t('T-BOT-40 поддержка: кнопка «Написать» + текст �
   assert.match(tgTexts(), /Заявка <b>#12<\/b> создана/)
 })
 
+t('Шестизначный текст в диалоге поддержки принимается как сообщение, не как старый код', async () => {
+  reset({
+    telegram_links: [{ user_id: 'user-1' }],
+    telegram_sessions: [{ chat_id: 111, action: 'support', payload: {}, expires_at: FUTURE }],
+    'POST support_tickets': [{ id: 'test-ticket', num: 13 }],
+  })
+  await post('', { headers: H, body: upd('123456') })
+  const ticket = calls.db.find((c) => c.method === 'POST' && c.table === 'support_tickets')
+  assert.equal(ticket.body.message, '123456')
+  assert.equal(calls.db.some((c) => c.table === 'telegram_link_codes'), false)
+  assert.doesNotMatch(tgTexts(), /Старые коды привязки/)
+})
+
+t('Шестизначный ответ администратора в начатом диалоге не требует команды', async () => {
+  reset({
+    telegram_links: ADMIN, admins: ADMIN,
+    telegram_sessions: [{ chat_id: 999, action: 'reply', payload: { num: 1 }, expires_at: FUTURE }],
+    support_tickets: [{ num: 1, user_id: 'u2', message: 'Вопрос', status: 'open', created_at: '2026-10-30T09:00:00Z', admin_reply: null }],
+  })
+  await post('', { headers: H, body: upd('123456', 999) })
+  const patch = calls.db.find((c) => c.method === 'PATCH' && c.table === 'support_tickets')
+  assert.equal(patch.body.admin_reply, '123456')
+  assert.equal(calls.db.some((c) => c.table === 'telegram_link_codes'), false)
+})
+
 t('T-BOT-41 /cancel сбрасывает режим', async () => {
   reset({
     telegram_links: ADMIN, admins: ADMIN,
@@ -662,6 +724,46 @@ t('T-BOT-46 ?setup прописывает описание бота', async () =
   assert.ok(d && d.payload.description.length > 40)
   const sd = calls.tg.find((c) => c.method === 'setMyShortDescription')
   assert.ok(sd && sd.payload.short_description.length <= 120)
+})
+
+t('реакция ставится на обычный текст в своём личном чате', async () => {
+  reset({ 'POST rpc/claim_telegram_reaction': { ok: true }, telegram_links: [] })
+  const body = upd('Привет'); body.message.message_id = 7
+  await post('', { headers: H, body })
+  assert.deepEqual(calls.tg.find(c => c.method === 'setMessageReaction').payload, { chat_id: 111, message_id: 7, reaction: [{ type: 'emoji', emoji: '👍' }] })
+  assert.ok(tgTexts(), 'обычный ответ бота не должен пропасть')
+})
+t('отказ реакции и серверный лимит не мешают ответу', async () => {
+  for (const allow of [true, false]) {
+    reset({ 'POST rpc/claim_telegram_reaction': { ok: allow }, reactionFail: true, telegram_links: [] })
+    const body = upd('Сообщение'); body.message.message_id = 8
+    await post('', { headers: H, body })
+    assert.equal(calls.tg.some(c => c.method === 'setMessageReaction'), allow)
+    assert.ok(tgTexts())
+  }
+})
+t('реакции не ставятся в группах, на команды, коды и чужие сообщения', async () => {
+  const items = [upd('Привет'), upd('/help'), upd('123456'), upd('Привет'), upd('link_' + 'a'.repeat(48)), upd('login_' + 'A'.repeat(43))]
+  items[0].message.chat.type = 'group'; items[3].message.from.id = 222
+  for (const body of items) {
+    reset({ telegram_links: [] }); body.message.message_id = 9
+    await post('', { headers: H, body })
+    assert.equal(calls.tg.some(c => c.method === 'setMessageReaction'), false)
+  }
+})
+t('ссылка входа требует подтверждения в привязанном приватном чате', async () => {
+  const token = 'A'.repeat(43)
+  reset({ telegram_links: [{user_id:'user-1'}] })
+  await post('', {headers:H, body:upd('/start login_'+token)})
+  const prompt = calls.tg.find(c => c.method === 'sendMessage' && c.payload.reply_markup)
+  assert.match(prompt.payload.text, /Сверь код/)
+  assert.equal(prompt.payload.reply_markup.inline_keyboard[0][0].callback_data, 'login:'+token)
+  reset({ 'POST rpc/approve_telegram_token_auth': { ok:true } })
+  await post('', {headers:H, body:{callback_query:{id:'c',data:'login:'+token,from:{id:111},message:{chat:{id:111,type:'private'}}}}})
+  assert.match(tgTexts(), /Вход подтверждён/)
+  assert.equal(calls.db.find(c => c.table === 'rpc/approve_telegram_token_auth').body.p_chat_id,111)
+  reset({}); await post('', {headers:H, body:{callback_query:{id:'c',data:'login:'+token,from:{id:222},message:{chat:{id:111,type:'private'}}}}})
+  assert.equal(calls.db.some(c => c.table === 'rpc/approve_telegram_token_auth'),false)
 })
 
 let pass = 0

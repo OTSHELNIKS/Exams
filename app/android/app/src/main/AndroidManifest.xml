@@ -19,12 +19,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Возврат после входа через Google/Telegram: com.namemlbb.app://auth -->
+            <!-- OAuth callback scheme differs for the isolated staging APK. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="com.namemlbb.app" android:host="auth" />
+                <data android:scheme="${authScheme}" android:host="auth" />
             </intent-filter>
         </activity>
 

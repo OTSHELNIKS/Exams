@@ -120,7 +120,9 @@ export const uploadScreenshot = async () => ({})
 export const deleteScreenshot = async () => ({})
 export const validateImage = () => null
 export const createTelegramLinkCode = async () => ({})
+export const cancelTelegramLink = async () => ({})
 export const getTelegramLink = async () => null
+export const getTelegramLinkStatus = async () => ({ link: null, needsReconfirm: false })
 export const deleteTelegramLink = async () => ({})
 export const notifyLobbyToTelegram = async () => ({})
 export const getPublicProfile = async () => state.publicProfile

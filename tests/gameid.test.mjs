@@ -75,10 +75,10 @@ test('T-ID-04 в форме регистрации два отдельных п�
   assert.equal((modal.match(/inputMode="numeric"/g) || []).length, 3, 'в модалке входа ID, сервер и код — цифровые')
 })
 
-test('T-ID-05 при регистрации Game ID обязателен, сервер опционален', () => {
-  const auth = screens.slice(screens.indexOf('export function AuthScreen'), screens.indexOf('export function WizardScreen'))
-  assert.ok(/register && !\/\^\\d\{6,12\}\$\/\.test\(gameId\)/.test(auth), 'нет проверки 6–12 цифр при регистрации')
-  assert.ok(!/gameServer.*\|\|.*setAuthError/.test(auth), 'сервер не должен быть обязательным')
+test('T-ID-05 регистрация по почте не требует Game ID до создания профиля', () => {
+  const form = screens.slice(screens.indexOf('export function RegistrationForm'), screens.indexOf('export function GameLoginModal'))
+  assert.ok(!form.includes('gameId'), 'почтовая регистрация не должна требовать игровой ID')
+  assert.ok(form.includes('auth.signUp'), 'нет регистрации по почте')
 })
 
 test('T-ID-06 анкета даёт исправить оба числа после регистрации', () => {
@@ -103,7 +103,8 @@ test('T-ID-08 миграция добавляет колонку и разбир
 test('T-ID-09 главная, профиль и админка показывают сервер', () => {
   assert.ok(screens.includes('formatGameId'), 'в экранах нет склейки id + сервер')
   assert.ok(screens.includes('gameServer={gameServer}') || screens.includes('gameServer'), 'параметры сервера не доходят до экранов')
-  assert.ok(landing.includes('setGameServer={setGameServer}'), 'лендинг не прокидывает сервер в форму')
+  assert.ok(app.includes('setGameServer={setGameServer}'), 'приложение не прокидывает сервер в форму входа')
+  assert.ok(!landing.includes('<AuthScreen'), 'промо не должно показывать форму входа')
   assert.ok(admin.includes('game_server'), 'админка не показывает сервер')
   assert.ok(/r\.game_server/.test(admin), 'поиск в админке не учитывает сервер')
 })

@@ -135,12 +135,13 @@ test('T-MMR-10 один игрок — один капитан, второй п�
   assert.deepEqual(draftCaptains({}), [null, null])
 })
 
-test('T-MMR-11 драфт больше не бросает монетку за капитана', () => {
+test('T-MMR-11 драфт начинается хостом лобби и состав хранится на сервере', () => {
   const screens = read('app/src/screens.jsx')
   const draft = screens.slice(screens.indexOf('export function DraftScreen'), screens.indexOf('export function MatchScreen'))
-  assert.ok(!/Math\.random\(\) > 0\.5/.test(draft), 'в драфте остался случайный выбор первого хода')
-  assert.match(draft, /draftCaptains\(/, 'драфт не использует капитана лобби')
-  assert.match(draft, /captainId/, 'драфт не принимает хоста лобби')
+  const sql = read('supabase/migrations/20261105040000_authoritative_draft.sql')
+  assert.match(draft, /ServerDraftScreen/, 'экран не подключает серверный драфт')
+  assert.match(sql, /v_lobby\.host_id\s*<>\s*v_uid/, 'запуск не ограничен организатором')
+  assert.match(sql, /array\[v_uid\].*array\[v_captain_b\]/i, 'капитан A — не организатор')
 })
 
 // ------------------------------------------------------------- результат

@@ -21,11 +21,13 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[staging-apk]') && 'pages-staging-skip' || 'pages' }}
   cancel-in-progress: true
 
 jobs:
   build:
+    # A staging APK push must never deploy the working website.
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[staging-apk]')
     runs-on: ubuntu-latest
     outputs:
       pages_ready: ${{ steps.pages.outputs.ready }}
@@ -59,6 +61,8 @@ jobs:
           VITE_BASE: /Exams/
           VITE_SUPABASE_URL: https://yjedqdbwvjvikyixsduw.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_yzJAjp-Nt7gfcsRXt0jKAQ_tFl2_-_x
+          VITE_HCAPTCHA_SITE_KEY: ${{ vars.VITE_HCAPTCHA_SITE_KEY }}
+          VITE_TELEGRAM_SECURE_ENABLED: ${{ vars.VITE_TELEGRAM_SECURE_ENABLED }}
           # ID приложения VK ID «NAME» (публичный, не секрет).
           # Можно переопределить переменной репозитория VITE_VK_CLIENT_ID.
           VITE_VK_CLIENT_ID: ${{ vars.VITE_VK_CLIENT_ID || '54867424' }}

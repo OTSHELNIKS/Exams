@@ -16,6 +16,7 @@ android {
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "com.namemlbb.app"
+        manifestPlaceholders = [authScheme: "com.namemlbb.app"]
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Номер сборки растёт с каждым прогоном CI, иначе Play не примет APK.
@@ -39,6 +40,16 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // A staging build must install alongside, never over, the real app.
+            // Enabled explicitly by the isolated test build only.
+            if (System.getenv("NAME_STAGING") == "1") {
+                applicationIdSuffix ".staging"
+                versionNameSuffix "-staging"
+                // Do not intercept callbacks belonging to the installed app.
+                manifestPlaceholders = [authScheme: "com.namemlbb.app.staging"]
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

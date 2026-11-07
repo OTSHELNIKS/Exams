@@ -9,10 +9,12 @@
     "preview": "vite preview",
     "build:singlefile": "vite build --config vite.singlefile.config.js",
     "build:native": "VITE_NATIVE=1 vite build",
-    "test:security": "node ../tests/security-rls.test.mjs && node ../tests/lobby-api.test.mjs && node ../tests/lobby-refresh.test.mjs && node ../tests/lobby-ui-refresh.test.mjs",
+    "test:security": "node ../tests/security-rls.test.mjs && node ../tests/lobby-api.test.mjs && node ../tests/lobby-refresh.test.mjs && node ../tests/lobby-ui-refresh.test.mjs && node ../tests/draft-ui.test.mjs && node ../tests/match-sync.test.mjs && node ../tests/registration-ui.test.mjs && node ../tests/account-gate.test.mjs && node ../tests/landing-product.test.mjs && node ../tests/telegram-link-security.test.mjs && node ../tests/telegram-link-chain.test.mjs && node ../tests/telegram-config.test.mjs && node ../tests/telegram-release-ui.test.mjs && node ../tests/telegram-link-ui.test.mjs && node ../tests/telegram-link-api.test.mjs && node ../tests/telegram-auth-rate.test.mjs && node ../tests/telegram-token-security.test.mjs && node ../tests/telegram-token-edge.test.mjs && node ../tests/telegram-login-security.test.mjs && node ../tests/telegram-login-ui.test.mjs && node ../tests/bot.test.mjs && node ../tests/game-login.test.mjs",
     "sync:android": "VITE_NATIVE=1 vite build && cap sync android",
     "sync:ios": "VITE_NATIVE=1 vite build && cap sync ios",
-    "icons": "capacitor-assets generate --android --ios --splashBackgroundColor '#08080b' --splashBackgroundColorDark '#08080b'"
+    "icons": "capacitor-assets generate --android --ios --splashBackgroundColor '#08080b' --splashBackgroundColorDark '#08080b'",
+    "test:telegram-postgres": "node ../tests/telegram-postgres-concurrency.test.mjs",
+    "test:telegram-postgrest": "node ../tests/telegram-postgrest.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",
@@ -26,6 +28,7 @@
     "@capacitor/status-bar": "^8.0.4",
     "@fontsource/inter": "^5.2.5",
     "@fontsource/unbounded": "^5.2.5",
+    "@hcaptcha/react-hcaptcha": "^2.2.0",
     "@supabase/supabase-js": "^2.118.0",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
@@ -37,6 +40,7 @@
     "@electric-sql/pglite": "^0.3.16",
     "@vitejs/plugin-react": "^4.3.4",
     "jsdom": "^30.1.3",
+    "pg": "^8.16.3",
     "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "vite": "^6.0.5",

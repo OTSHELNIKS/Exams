@@ -130,7 +130,7 @@ test('T-SOC-14 Telegram берётся из telegram_links, а не из мас�
   assert.ok(app.includes('getTelegramLink'), 'App не читает реальную привязку Telegram')
   assert.ok(app.includes('setTelegramLink'), 'нет состояния привязки Telegram')
   assert.ok(social.includes('telegramLink'), 'SocialRow не знает о привязке бота')
-  assert.ok(/telegramLink \? \[\{ provider: 'telegram'/.test(social), 'иконка Telegram не строится из привязки')
+  assert.ok(/telegramLink && !telegramStatusError \? \[\{ provider: 'telegram'/.test(social), 'иконка Telegram не строится из подтверждённой привязки')
   assert.ok(social.includes("x.provider !== 'telegram'"), 'ручной telegram всё ещё дублирует иконку')
 })
 
@@ -145,7 +145,7 @@ test('T-SOC-15 иконка Telegram не пропадает после пере
 
 test('T-SOC-16 Telegram привязывается через бота, ник не вводится', () => {
   assert.ok(social.includes('onStartTelegram'), 'нет получения кода у бота')
-  assert.ok(social.includes('https://t.me/${TELEGRAM_BOT_USERNAME}?start=${tgCode}'), 'бот не открывается с готовым кодом')
+  assert.ok(social.includes('https://t.me/${TELEGRAM_BOT_USERNAME}?start=link_${tgCode}'), 'бот не открывается с одноразовой ссылкой')
   assert.ok(social.includes('onRefreshTelegram'), 'нет проверки, привязал ли бот')
   assert.ok(/setInterval\(async \(\) =>/.test(social), 'нет опроса привязки')
   assert.ok(social.includes('Получить код для бота'), 'нет кнопки получения кода')

@@ -7,17 +7,17 @@ import { AppFrame, Logo } from './ui.jsx'
 import { Landing } from './landing.jsx'
 import {
   AuthScreen, WizardScreen, HomeScreen, ProfileScreen, DraftScreen,
-  MatchScreen, LeaderboardScreen, BannedScreen, SupportScreen, LobbyScreen, AppearanceScreen,
+  LeaderboardScreen, BannedScreen, SupportScreen, LobbyScreen, AppearanceScreen,
 } from './screens.jsx'
 import { equippedFromRow, playerState, look as computeLook } from './cosmetics.js'
 import { confirmedLoadoutPatch, watchCosmeticChanges } from './cosmetics-sync.js'
-import { transferCaptain } from './rating.js'
+import { ServerMatchScreen } from './server-match.jsx'
 import { AdminScreen } from './admin.jsx'
 import { DEFAULT_PROFILE, splitCombinedGameId, SOCIAL_IDS, parseSocial, formatSocial } from './data.js'
 import {
   supabase, profileToRow, rowToProfile, syncModerationReviews, clearPendingReviews,
-  getTelegramLink, deleteTelegramLink, createTelegramLinkCode,
-  transferLobbyHostByCode, loadLoadout, loadEntitlements,
+  getTelegramLinkStatus, deleteTelegramLink, createTelegramLinkCode, cancelTelegramLink,
+  loadLoadout, loadEntitlements,
 } from './supabase.js'
 import { parseVkReturn, completeVkAuth, startVkAuth, describeVkError, vkConfigured } from './vk-auth.js'
 import { parseTikTokReturn, completeTikTokAuth, startTikTokAuth, describeTikTokError } from './tiktok-auth.js'
@@ -97,7 +97,6 @@ function googleEmailOf(user) {
   if (identity) return identity.identity_data?.email || user.email || ''
   return user.app_metadata?.provider === 'google' ? (user.email || '') : ''
 }
-const LEGACY_STORAGE_KEY = 'name-mlbb-profile'
 
 export default function App() {
   const [mode, setMode] = useState('landing')
@@ -116,6 +115,7 @@ export default function App() {
     } catch { return '' }
   })
   const [session, setSession] = useState(null)
+  const sessionUserRef = useRef(null)
   const [sessionLoading, setSessionLoading] = useState(Boolean(supabase))
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -126,42 +126,22 @@ export default function App() {
   const [lobbyCode, setLobbyCode] = useState(() => {
     try { return localStorage.getItem(STORAGE_KEY + ':lobby') || '' } catch { return '' }
   })
-  // Хост лобби: он же капитан в драфте («кто собрал лобби — тот и капитан»).
-  const [lobbyHostId, setLobbyHostId] = useState(() => {
-    try { return localStorage.getItem(STORAGE_KEY + ':lobbyHost') || '' } catch { return '' }
-  })
   const [isAdmin, setIsAdmin] = useState(false)
   // Надетая косметика и права на коллекционные предметы.
   const [loadout, setLoadout] = useState(null)
   const [entitlements, setEntitlements] = useState([])
   // Реальная привязка Telegram (таблица telegram_links, её пишет бот).
   const [telegramLink, setTelegramLink] = useState(null)
+  const [telegramNeedsReconfirm, setTelegramNeedsReconfirm] = useState(false)
+  const [telegramStatusError, setTelegramStatusError] = useState(false)
   // Владение игровым аккаунтом: храним тот Game ID, который игрок подтвердил
   // кодом из внутриигровой почты (отметку ставит edge-функция game-login).
   // Заполненный в анкете Game ID — не повод писать «привязан», поэтому статус
   // сравнивает отметку с текущим ID: поменял ID — снова «не подтверждён».
   const [gameVerifiedId, setGameVerifiedId] = useState('')
   const [tgLoaded, setTgLoaded] = useState(false)
-  const [profile, setProfile] = useState(() => {
-    try {
-      localStorage.removeItem(LEGACY_STORAGE_KEY)
-      localStorage.removeItem(LEGACY_STORAGE_KEY + ':gameId')
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
-      return saved ? { ...DEFAULT_PROFILE, ...saved } : { ...DEFAULT_PROFILE }
-    } catch { return { ...DEFAULT_PROFILE } }
-  })
-
-  useEffect(() => {
-    if (!session && !sessionLoading) {
-      try {
-        const { avatar, ...rest } = profile
-        void avatar
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(rest))
-        localStorage.setItem(STORAGE_KEY + ':gameId', gameId)
-        localStorage.setItem(STORAGE_KEY + ':gameServer', gameServer)
-      } catch { /* noop */ }
-    }
-  }, [profile, gameId, gameServer, session, sessionLoading])
+  // Профиль загружается только после входа, не из гостевого хранилища.
+  const [profile, setProfile] = useState(() => ({ ...DEFAULT_PROFILE }))
 
   useEffect(() => {
     if (!supabase) return
@@ -170,6 +150,7 @@ export default function App() {
     let lastUserId
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
       const userId = next?.user?.id || null
+      sessionUserRef.current = userId
       setSession(next)
       if (lastUserId === userId) return
       const previousUserId = lastUserId
@@ -214,15 +195,20 @@ export default function App() {
             }
           }
           try {
-            setTelegramLink(await getTelegramLink(next.user.id))
-          } catch { setTelegramLink(null) }
+            const status = await getTelegramLinkStatus(next.user.id)
+            if (!active || current !== generation) return
+            setTelegramLink(status.link); setTelegramNeedsReconfirm(status.needsReconfirm); setTelegramStatusError(false)
+          } catch {
+            if (!active || current !== generation) return
+            setTelegramLink(null); setTelegramNeedsReconfirm(false); setTelegramStatusError(true)
+          }
           setTgLoaded(true)
           const { data: adminRow } = await supabase.from('admins').select('user_id').eq('user_id', next.user.id).maybeSingle()
           if (!active || current !== generation) return
           setIsAdmin(!!adminRow)
         } else if (previousUserId) {
           setProfile({ ...DEFAULT_PROFILE }); setGameId(''); setGameServer(''); setIsAdmin(false); setGameVerifiedId('')
-          setTelegramLink(null)
+          setTelegramLink(null); setTelegramNeedsReconfirm(false); setTelegramStatusError(false); setTgLoaded(false)
         }
         setSaveError(''); setSessionLoading(false)
       }, 0)
@@ -429,23 +415,32 @@ export default function App() {
   // Telegram: свежий код для бота и проверка, привязал ли бот.
   const startTelegramLink = async () => {
     if (!supabase || !session) throw new Error('Войди в аккаунт, чтобы получить код.')
-    return createTelegramLinkCode(session.user.id)
+    return createTelegramLinkCode()
   }
   const refreshTelegramLink = async () => {
     if (!supabase || !session) return null
-    const row = await getTelegramLink(session.user.id)
-    if (row) setTelegramLink(row)
-    return row
+    const userId = session.user.id
+    try {
+      const status = await getTelegramLinkStatus(userId)
+      if (sessionUserRef.current !== userId) return null
+      setTelegramLink(status.link); setTelegramNeedsReconfirm(status.needsReconfirm); setTelegramStatusError(false)
+      return status.link
+    } catch (error) { if (sessionUserRef.current === userId) setTelegramStatusError(true); throw error }
   }
 
   // Отвязка Telegram: удаляем строку в telegram_links — бот перестанет писать.
   const unlinkTelegram = async () => {
-    if (!supabase || !session) { setTelegramLink(null); return }
-    try { await deleteTelegramLink(session.user.id) } catch { /* noop */ }
-    setTelegramLink(null)
+    if (!supabase || !session) return { ok: false, error: 'Войди в аккаунт, чтобы отвязать Telegram.' }
+    const userId = session.user.id
+    try { await deleteTelegramLink(userId) }
+    catch { return { ok: false, error: 'Не удалось отвязать Telegram. Проверь соединение и попробуй ещё раз.' } }
+    if (sessionUserRef.current !== userId) return { ok: false, error: 'Аккаунт изменился. Обнови профиль.' }
+    setTelegramLink(null); setTelegramNeedsReconfirm(false); setTelegramStatusError(false)
+    return { ok: true }
   }
 
-  const go = (id) => setScreen(id)
+  const hasAccount = Boolean(session?.user?.id && !session.user.is_anonymous)
+  const go = (id) => setScreen(!hasAccount && ['home', 'wizard', 'profile', 'cosmetics'].includes(id) ? 'auth' : id)
 
   // Перечитать отметку о подтверждении аккаунта: её ставит edge-функция
   // game-login, когда игрок ввёл код из внутриигровой почты.
@@ -462,17 +457,17 @@ export default function App() {
     if (result && result.verified) setGameVerifiedId(String(gameId || ''))
     refreshGameVerification()
   }
-  const openApp = (id = 'auth') => { setScreen(id); setMode('app') }
+  const openApp = (id = 'auth') => { setScreen(!hasAccount && ['home', 'wizard', 'profile', 'cosmetics'].includes(id) ? 'auth' : id); setMode('app') }
 
   const profileFilled = Boolean(profile.nick && profile.nick.trim())
   // Онбординг пройден: вошёл в аккаунт — «Вход» больше не раздел меню,
   // заполнил анкету — из меню уходит и мастер анкеты (правится из профиля).
-  const hideEntry = (id) => (id === 'auth' && Boolean(session)) || (id === 'wizard' && profileFilled)
+  const hideEntry = (id) => (id === 'auth' && hasAccount) || (id === 'wizard' && (!hasAccount || profileFilled))
   const autoEntered = useRef(false)
 
   // Return visits: skip landing once per load — home for filled profiles, wizard for new ones.
   useEffect(() => {
-    if (!supabase || sessionLoading || !session || autoEntered.current) return
+    if (!supabase || sessionLoading || !hasAccount || autoEntered.current) return
     if (mode !== 'landing') return
     autoEntered.current = true
     openApp(profileFilled ? 'home' : 'wizard')
@@ -482,7 +477,7 @@ export default function App() {
   // Вернулся после входа (почта, Google, Telegram) — экран входа больше не в меню:
   // заполненный профиль ведём на главную, новый аккаунт — в анкету.
   useEffect(() => {
-    if (!session || screen !== 'auth') return
+    if (!hasAccount || screen !== 'auth') return
     if (sessionLoading) return
     setScreen(profileFilled ? 'home' : 'wizard')
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -490,7 +485,7 @@ export default function App() {
 
   const saveProfile = async () => {
     if (sessionLoading || saving) return
-    if (!session || !supabase) { go('home'); return }
+    if (!hasAccount || !supabase) { go('auth'); return }
     setSaving(true); setSaveError('')
     const { error } = await supabase.from('player_profiles').upsert(profileToRow(profile, gameId, gameServer, session.user.id))
     setSaving(false)
@@ -501,7 +496,7 @@ export default function App() {
   }
 
   const resetProfile = async () => {
-    if (sessionLoading || saving) return false
+    if (sessionLoading || saving || !hasAccount || !supabase) return false
     const fresh = { ...DEFAULT_PROFILE }
     setProfile(fresh); setGameId(''); setGameServer('')
     try {
@@ -518,14 +513,13 @@ export default function App() {
     return true
   }
 
-  const [draftTeams, setDraftTeams] = useState(null)
 
   // Сохранение «лёгких» изменений профиля (соцсети) сразу в базу.
   // Раньше привязка жила только в памяти: после F5 профиль перечитывался из
   // player_profiles, и привязанный Google «пропадал». Теперь сначала пишем
   // строку, и только при успехе меняем состояние — фантомных привязок нет.
   const persistProfileNow = async (next, label) => {
-    if (!supabase || !session) {
+    if (!supabase || !hasAccount) {
       return { ok: false, error: 'Войди в аккаунт, чтобы сохранить привязку.' }
     }
     setSaving(true); setSaveError('')
@@ -546,7 +540,7 @@ export default function App() {
     goDraft: () => go('draft'),
     goLobby: () => go('lobby'),
     goLeaderboard: () => go('leaderboard'),
-    addSlot: () => setProfile((p) => ({ ...p, extraSlots: Math.min(3, (p.extraSlots || 0) + 1) })),
+    addSlot: () => { if (hasAccount) setProfile((p) => ({ ...p, extraSlots: Math.min(3, (p.extraSlots || 0) + 1) })) },
     // Соцсеть добавляется только с ником: [provider, handle]. Без ника
     // привязка бессмысленна — вернуть false, чтобы экран не писал «привязана».
     addSocial: async (provider, handle) => {
@@ -586,17 +580,19 @@ export default function App() {
   }
 
   const renderScreen = () => {
+    if (['home', 'wizard', 'profile', 'cosmetics'].includes(screen) && sessionLoading) return <div className="screen"><p>Загружаем аккаунт…</p></div>
+    if (['home', 'wizard', 'profile', 'cosmetics'].includes(screen) && !hasAccount) return <AuthScreen gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} callbackError={nativeAuthError || AUTH_RETURN.message} supabase={supabase} authReady={!sessionLoading} />
     switch (screen) {
       case 'auth':
-        return <AuthScreen gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} callbackError={nativeAuthError || AUTH_RETURN.message} onLogin={() => go(profileFilled ? 'home' : 'wizard')} onPreview={() => go('home')} supabase={supabase} session={session} authReady={!sessionLoading} onSignOut={() => supabase.auth.signOut()} />
+        return <AuthScreen gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} callbackError={nativeAuthError || AUTH_RETURN.message} onLogin={() => go(profileFilled ? 'home' : 'wizard')} supabase={supabase} session={hasAccount ? session : null} authReady={!sessionLoading} onSignOut={() => supabase.auth.signOut()} />
       case 'wizard':
         return <WizardScreen profile={profile} setProfile={setProfile} gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} onDone={saveProfile} onBack={() => go('auth')} saveError={saveError} saving={saving || sessionLoading} supabase={supabase} userId={session?.user?.id || null} onReset={resetProfile} />
       case 'home':
-        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} gameVerified={gameVerified} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} look={look} supabase={supabase} userId={session?.user?.id || null} />
+        return <HomeScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} gameVerified={gameVerified} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} telegramNeedsReconfirm={tgLoaded && telegramNeedsReconfirm} telegramStatusError={tgLoaded && telegramStatusError} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onCancelTelegram={cancelTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onEdit={() => go('wizard')} isAdmin={isAdmin} onAdmin={() => go('admin')} look={look} supabase={supabase} userId={session?.user?.id || null} />
       case 'profile':
-        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} gameVerified={gameVerified} onGameVerified={handleGameVerified} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onBack={() => go('home')} onEdit={() => go('wizard')} onCosmetics={() => go('cosmetics')} look={look} supabase={supabase} userId={session?.user?.id || null} />
+        return <ProfileScreen profile={profile} actions={actions} gameId={gameId} gameServer={gameServer} gameVerified={gameVerified} onGameVerified={handleGameVerified} googleAccount={googleAccount} onLinkGoogle={linkGoogle} telegramLink={tgLoaded ? telegramLink : undefined} telegramNeedsReconfirm={tgLoaded && telegramNeedsReconfirm} telegramStatusError={tgLoaded && telegramStatusError} onUnlinkTelegram={unlinkTelegram} onStartTelegram={startTelegramLink} onCancelTelegram={cancelTelegramLink} onRefreshTelegram={refreshTelegramLink} onLinkVk={linkVk} onLinkTikTok={linkTikTok} socialNotice={socialNotice} onSocialNoticeShown={() => setSocialNotice('')} onBack={() => go('home')} onEdit={() => go('wizard')} onCosmetics={() => go('cosmetics')} look={look} supabase={supabase} userId={session?.user?.id || null} />
       case 'draft':
-        return <DraftScreen supabase={supabase} userId={session?.user?.id || null} captainId={lobbyHostId || null} lobbyCode={lobbyCode} onReady={(teams) => { setDraftTeams(teams); go('match') }} onBack={() => go('home')} />
+        return <DraftScreen supabase={supabase} userId={session?.user?.id || null} lobbyCode={lobbyCode} onReady={() => go('match')} onBack={() => go('home')} onLobby={() => go('lobby')} />
       case 'lobby':
         return (
           <LobbyScreen
@@ -608,7 +604,6 @@ export default function App() {
               const code = typeof next === 'string' ? next : (next && next.code) || ''
               const host = typeof next === 'string' ? '' : (next && next.hostId) || ''
               setLobbyCode(code || '')
-              if (host) setLobbyHostId(host)
               try {
                 if (code) localStorage.setItem(STORAGE_KEY + ':lobby', code)
                 else localStorage.removeItem(STORAGE_KEY + ':lobby')
@@ -617,33 +612,16 @@ export default function App() {
               } catch { /* приватный режим */ }
             }}
             onBack={() => go('home')}
-            onMatch={() => go('match')}
+            onDraft={() => go('draft')}
           />
         )
       case 'match':
-        return <MatchScreen
+        return <ServerMatchScreen
           onBack={() => go('draft')}
           onLeaderboard={() => go('leaderboard')}
           onProfile={() => go('profile')}
           onLobby={() => go('lobby')}
-          onTransferCaptain={async (side, newCaptainId) => {
-            // Чужие id отсекает функция: капитаном станет только участник этой команды.
-            const next = transferCaptain(draftTeams, side, newCaptainId)
-            if (next === draftTeams) return { error: 'not_member' }
-            setDraftTeams(next)
-            // Капитан = хост лобби, поэтому меняем и его: иначе следующий драфт
-            // вернёт старое капитанство.
-            const reply = lobbyCode
-              ? await transferLobbyHostByCode(lobbyCode, newCaptainId)
-              : { ok: false }
-            if (reply.ok) {
-              setLobbyHostId(newCaptainId)
-              try { localStorage.setItem(STORAGE_KEY + ':lobbyHost', newCaptainId) } catch { /* noop */ }
-            }
-            return { ok: true }
-          }}
           supabase={supabase}
-          teams={draftTeams}
           userId={session?.user?.id || null}
           lobbyCode={lobbyCode}
         />
@@ -684,8 +662,12 @@ export default function App() {
     return (
       <Landing
         onOpen={() => openApp('auth')}
-        onLogin={() => openApp(profileFilled ? 'home' : 'wizard')}
+        onLogin={() => openApp(hasAccount ? (profileFilled ? 'home' : 'wizard') : 'auth')}
         onOpenScreen={() => openApp('home')}
+        supabase={supabase}
+        session={hasAccount ? session : null}
+        authReady={!sessionLoading}
+        onSignOut={() => supabase?.auth.signOut()}
         gameId={gameId}
         setGameId={setGameId}
         gameServer={gameServer}

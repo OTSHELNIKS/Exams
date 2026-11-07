@@ -55,7 +55,7 @@ async function mount() {
   })
   root = createRoot(document.getElementById('root'))
   root.render(React.createElement(LobbyScreen, { supabase, userId: 'u1', lobbyCode: '123456', onBack() {}, onLobbyChange() {} }))
-  await settle()
+  for (let i = 0; i < 20 && !input('Room ID'); i += 1) await settle()
   assert.ok(input('Room ID'), 'лобби открылось')
 }
 after(() => { root?.unmount(); rmSync(bundle, { force: true }); dom.window.close() })

@@ -86,8 +86,10 @@ test('T-PUB-09 в рейтинге игрок открывается нажат�
 })
 
 test('T-PUB-10 из драфта видно профиль капитана и игрока пула', () => {
-  assert.ok(screens.includes('onOpenProfile={(id) => { setPeek(null); setOpenProfile(id) }}'), 'нет перехода из карточки игрока в профиль')
-  assert.ok(screens.includes('Открыть профиль'), 'нет кнопки «Открыть профиль»')
+  const draft = read('app/src/server-draft.jsx')
+  assert.ok(screens.includes('onOpenProfile={setOpenProfile}'), 'нет перехода в профиль')
+  assert.ok(draft.includes('onOpenProfile?.(captain.user_id)'), 'капитан не открывает профиль')
+  assert.ok(draft.includes('onOpenProfile?.(p.user_id)'), 'игрок пула не открывает профиль')
 })
 
 test('T-PUB-14 в лобби сокомандник открывается нажатием на ник', () => {

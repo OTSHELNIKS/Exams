@@ -70,7 +70,7 @@ await esbuild.build({
   outfile: bundle,
   jsx: 'automatic',
   external: ['react', 'react-dom', 'react/jsx-runtime', 'react-dom/client', 'lucide-react'],
-  define: { 'import.meta.env': '{}' },
+  define: { 'import.meta.env': '{\"VITE_TELEGRAM_SECURE_ENABLED\":\"true\"}' },
   logLevel: 'silent',
 })
 
@@ -103,6 +103,13 @@ await test('T-AU-01 способ «через игру» виден на экр�
   assert.match(html, /Войти через игровой аккаунт MLBB/, 'плитки MLBB нет в разметке')
   assert.match(html, /Войти через игру — код в MLBB/, 'нет крупной кнопки входа через игру')
   assert.match(html, /СПОСОБЫ РЕГИСТРАЦИИ/)
+})
+
+await test('T-AU-01b подсказка под входом в игру отделена от кнопки, просмотра экранов нет', () => {
+  const hint = document.querySelector('.auth__game-hint')
+  assert.ok(hint)
+  assert.equal(dom.window.getComputedStyle(hint).marginTop, '18px')
+  assert.doesNotMatch(document.body.textContent, /Посмотреть все экраны/)
 })
 
 await test('T-AU-02 плитка MLBB активна (не disabled, не «скоро»)', () => {

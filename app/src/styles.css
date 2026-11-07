@@ -95,7 +95,7 @@ a { color: inherit; }
   border: 1px solid rgba(255, 200, 61, .35); border-radius: 6px; padding: 1px 4px;
 }
 .auth__game-btn { width: 100%; margin-top: 12px; }
-.auth__game-hint { margin-top: 8px; }
+.auth .auth__game-hint { margin: 18px 0 14px; }
 .method__soon {
   position: absolute; top: 6px; right: 6px; font-style: normal; font-size: 8px; font-weight: 800;
   letter-spacing: .4px; text-transform: uppercase; color: var(--dim);
@@ -1868,3 +1868,26 @@ html.is-modal-open .rail { overflow: hidden !important; }
   border: 1px dashed rgba(255,255,255,.18); border-radius: 8px;
 }
 .cosmetic-card__banner--media.is-empty { height: 34px; }
+
+.draft-profile-link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+
+.auth__captcha { max-width: 100%; overflow-x: auto; text-align: left; }
+
+/* Промо — обзор продукта, а не интерактивная форма регистрации. */
+.product-preview { position: relative; width: min(100%, 450px); justify-self: center; overflow: hidden; padding: 24px; border: 1px solid #30323c; border-radius: 26px; background: radial-gradient(360px 220px at 90% 0%, rgba(255,75,18,.16), transparent 70%), #111218; box-shadow: 0 26px 70px rgba(0,0,0,.38); }
+.product-preview__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.product-preview__top > span, .product-preview__intro > span { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; color: #a5a6b1; }
+.product-preview__intro { padding: 38px 2px 25px; }
+.product-preview__intro h2 { margin: 12px 0; font: 900 clamp(25px, 3vw, 33px)/1.18 var(--display); letter-spacing: -1px; }
+.product-preview__intro h2 em { font-style: normal; color: var(--orange); }
+.product-preview__intro p { color: var(--muted); line-height: 1.55; font-size: 13px; }
+.product-preview__items { display: grid; gap: 9px; }
+.product-preview__items > div { display: flex; align-items: center; gap: 13px; padding: 13px; border: 1px solid #2b2d38; border-radius: 15px; background: rgba(255,255,255,.025); }
+.product-preview__items > div > span { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 12px; color: #ff7b49; background: rgba(255,75,18,.12); }
+.product-preview__items section { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.product-preview__items b { font-size: 13px; }
+.product-preview__items small { color: var(--dim); font-size: 12px; line-height: 1.4; }
+.product-preview__items > div > svg { color: #777985; }
+.product-preview__cta { display: flex; justify-content: center; align-items: center; gap: 9px; width: 100%; margin-top: 15px; padding: 14px; border: 0; border-radius: 14px; color: #190b05; background: var(--orange); font-size: 13px; font-weight: 800; }
+.hero-site__error { color: #ff8c7a; font-size: 13px; }
+@media (max-width: 640px) { .product-preview { padding: 19px; border-radius: 22px; } .product-preview__intro { padding-top: 27px; } }

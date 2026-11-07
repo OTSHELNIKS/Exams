@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { parseLobbyReply, normalizeLobbyCode, normalizeRoomId, normalizeRoomPassword } from './lobby.js'
+import { telegramBotUsername } from './telegram-config.js'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -193,9 +194,7 @@ export async function clearBannerMedia() {
   return { ok: true }
 }
 
-export const TELEGRAM_BOT_USERNAME = 'name_mlbb_bot'
-const LINK_CODE_TTL_MS = 10 * 60 * 1000
-
+export const TELEGRAM_BOT_USERNAME = telegramBotUsername(import.meta.env.VITE_TELEGRAM_BOT_USERNAME)
 const TG_TIMEOUT_MS = 20000
 
 /** Reject a hanging request so the UI never freezes silently. */
@@ -225,27 +224,38 @@ export async function getPublicProfile(userId) {
   return data || null
 }
 
-/** Issue a fresh 6-digit Telegram link code (valid 10 minutes). */
-export async function createTelegramLinkCode(userId) {
-  const code = String(Math.floor(100000 + Math.random() * 900000))
-  await withTimeout(supabase.from('telegram_link_codes').delete().eq('user_id', userId))
-  const { error } = await withTimeout(supabase.from('telegram_link_codes').insert({
-    code, user_id: userId,
-    expires_at: new Date(Date.now() + LINK_CODE_TTL_MS).toISOString(),
-  }))
+/** Сервер создаёт одноразовую ссылку только для вошедшего пользователя. */
+export async function createTelegramLinkCode() {
+  if (!supabase) throw new Error('Нет подключения к серверу.')
+  const { data, error } = await withTimeout(supabase.rpc('issue_telegram_link'))
   if (error) throw error
-  return code
+  if (data?.error === 'too_often') throw new Error('Подожди немного перед повторным запросом ссылки.')
+  if (!data?.token || !/^[0-9a-f]{48}$/.test(data.token)) throw new Error('Не удалось получить ссылку. Войди в аккаунт и попробуй ещё раз.')
+  return data.token
 }
 
-export async function getTelegramLink(userId) {
+export async function cancelTelegramLink(token) {
+  if (!supabase || !/^[0-9a-f]{48}$/.test(token || '')) return
+  const { data, error } = await withTimeout(supabase.rpc('cancel_telegram_link', { p_token: token }))
+  if (error || !data?.ok) throw new Error('Не удалось отменить ссылку; она истечёт автоматически.')
+}
+
+// Older schemas contain no verification columns. Such a row is visible to its
+// owner for migration messaging, but is never treated as a trusted link.
+export async function getTelegramLinkStatus(userId) {
   const { data, error } = await withTimeout(supabase.from('telegram_links').select('*').eq('user_id', userId).maybeSingle())
   if (error) throw error
-  return data
+  const verified = Boolean(data?.verified_at && data?.link_instance_id)
+  return { link: verified ? data : null, needsReconfirm: Boolean(data && !verified) }
+}
+export async function getTelegramLink(userId) {
+  return (await getTelegramLinkStatus(userId)).link
 }
 
 export async function deleteTelegramLink(userId) {
-  const { error } = await withTimeout(supabase.from('telegram_links').delete().eq('user_id', userId))
+  const { data, error } = await withTimeout(supabase.from('telegram_links').delete().eq('user_id', userId).select('user_id'))
   if (error) throw error
+  if (!Array.isArray(data) || data.length !== 1) throw new Error('Не удалось подтвердить отвязку Telegram.')
 }
 
 /** Mirror nick, avatar and screenshots into the moderation queue (best-effort). */

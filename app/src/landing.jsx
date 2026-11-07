@@ -1,15 +1,14 @@
 import React from 'react'
 import {
   ArrowRight, Swords, Server, Bot, Mic, ShieldCheck, Trophy, Download,
-  Smartphone, ChevronRight, Sparkles, Coins, Play,
+  Smartphone, Sparkles, Play, Users, UserRound, Palette,
 } from 'lucide-react'
-import { Logo, AppFrame, BrandMark, PrimaryButton, StatBadge } from './ui.jsx'
-import { AuthScreen } from './screens.jsx'
+import { Logo } from './ui.jsx'
 import { FEATURES, STEPS } from './data.js'
 
 const ICONS = { swords: Swords, server: Server, bot: Bot, mic: Mic, shield: ShieldCheck, trophy: Trophy }
 
-export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId, gameServer, setGameServer, callbackError, screensCount = 8 }) {
+export function Landing({ onOpen, onOpenScreen, callbackError }) {
   const scroll = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   return (
@@ -19,7 +18,7 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId, game
         <nav>
           <button type="button" onClick={() => scroll('features')}>Возможности</button>
           <button type="button" onClick={() => scroll('how')}>Как это работает</button>
-          <button type="button" onClick={() => scroll('prizes')}>Призы</button>
+          <button type="button" onClick={() => scroll('prizes')}>Рейтинг</button>
           <button type="button" onClick={() => scroll('ads')}>Партнёрам</button>
         </nav>
         <button type="button" className="site-head__cta" onClick={onOpen}>
@@ -29,15 +28,15 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId, game
 
       <section className="hero-site">
         <div className="hero-site__copy">
-          <span className="eyebrow"><Sparkles size={14} /> Платформа открыта для игроков</span>
+          <span className="eyebrow"><Sparkles size={14} /> Платформа для игроков MLBB</span>
           <h1>
+            <span>Собирай.</span>
             <span>Играй.</span>
-            <span>Побеждай.</span>
-            <span className="accent">Зарабатывай.</span>
+            <span className="accent">Побеждай.</span>
           </h1>
           <p className="hero-site__lead">
-            Соревновательный матчмейкинг <b>Mobile Legends: Bang Bang</b>: честный драфт
-            игроков, выбор сервера, автоматические лобби и зарплата за топ-10 рейтинга.
+            Профиль, лобби и рейтинг для игроков <b>Mobile Legends: Bang Bang</b>.
+            Собери состав с друзьями и подготовься к игре в Custom Room.
           </p>
           <div className="hero-site__buttons">
             <button type="button" className="btn btn--primary btn--glow" onClick={onOpen}>
@@ -47,31 +46,29 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId, game
               <Play size={17} /> Как это работает
             </button>
           </div>
-          <div className="hero-site__facts">
-            <div><b>10</b><span>игроков в лобби</span></div>
-            <div><b>2</b><span>капитана драфтят</span></div>
-            <div><b>20 000 ₽</b><span>первое место в месяц</span></div>
-          </div>
           <div className="hero-site__trust">
-            <ShieldCheck size={16} /> Античит и верификация каждого игрока
+            <ShieldCheck size={16} /> Создай профиль после входа в аккаунт
           </div>
+          {callbackError && <p className="hero-site__error" role="alert">{callbackError}</p>}
         </div>
 
-        <div className="hero-site__phone">
-          <div className="hero-site__glow" />
-          <AppFrame className="appframe--hero">
-            <AuthScreen gameId={gameId} setGameId={setGameId} gameServer={gameServer} setGameServer={setGameServer} callbackError={callbackError} onLogin={onLogin || onOpen} />
-          </AppFrame>
-          <button type="button" className="hero-site__hint" onClick={onOpenScreen}>
-            <ChevronRight size={15} /> Все {screensCount} экранов приложения — в интерактивном режиме
-          </button>
+        <div className="product-preview" aria-label="Возможности NAME">
+          <div className="product-preview__top"><Logo /><span>ВНУТРИ NAME</span></div>
+          <div className="product-preview__intro"><span>ДЛЯ ИГРОКОВ MLBB</span><h2>Твоя команда.<br /><em>Твоя игра.</em></h2><p>Всё необходимое для подготовки к матчу — в одном месте.</p></div>
+          <div className="product-preview__items">
+            <div><span><UserRound size={20} /></span><section><b>Профиль игрока</b><small>Роли, герои и оформление</small></section><ArrowRight size={16} /></div>
+            <div><span><Users size={20} /></span><section><b>Лобби по коду</b><small>Собери игроков и поделись Room ID</small></section><ArrowRight size={16} /></div>
+            <div><span><Trophy size={20} /></span><section><b>Рейтинг</b><small>Таблица игроков и история</small></section><ArrowRight size={16} /></div>
+            <div><span><Palette size={20} /></span><section><b>Оформление профиля</b><small>Свой стиль и карточка игрока</small></section><ArrowRight size={16} /></div>
+          </div>
+          <button type="button" className="product-preview__cta" onClick={onOpen}>Открыть приложение <ArrowRight size={16} /></button>
         </div>
       </section>
 
       <section className="section" id="features">
         <span className="section__eyebrow">ВОЗМОЖНОСТИ</span>
-        <h2 className="section__title">Всё, чего нет в обычном подборе MLBB</h2>
-        <p className="section__lead">Из презентации заказчика: продукт, в котором игрок сам влияет на то, с кем играет.</p>
+        <h2 className="section__title">Всё для подготовки к игре</h2>
+        <p className="section__lead">Собирай состав, оформи профиль и следи за рейтингом в NAME.</p>
         <div className="feature-grid">
           {FEATURES.map((f) => {
             const Icon = ICONS[f.icon] || Swords
@@ -88,7 +85,7 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId, game
 
       <section className="section section--alt" id="how">
         <span className="section__eyebrow">ПУТЬ ИГРОКА</span>
-        <h2 className="section__title">От Game ID до призов за 4 шага</h2>
+        <h2 className="section__title">Четыре шага к матчу</h2>
         <div className="steps-grid">
           {STEPS.map((s) => (
             <article key={s.n} className="step-card">
@@ -101,21 +98,9 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId, game
       </section>
 
       <section className="section" id="prizes">
-        <span className="section__eyebrow">ЭКОНОМИКА</span>
-        <h2 className="section__title">Играть выгодно</h2>
-        <div className="prize-grid">
-          <div className="prize-card prize-card--first">
-            <span className="prize-card__place">#1</span>
-            <b>20 000 ₽</b><span>в месяц</span>
-          </div>
-          <div className="prize-card"><span className="prize-card__place">#2</span><b>15 000 ₽</b><span>в месяц</span></div>
-          <div className="prize-card"><span className="prize-card__place">#3</span><b>10 000 ₽</b><span>в месяц</span></div>
-          <div className="prize-card prize-card--info">
-            <Coins size={22} />
-            <b>Внутриигровые покупки</b>
-            <span>Доп. слоты под фото (150 ₽), привязка соцсетей (30 ₽), премиум-оформление профиля.</span>
-          </div>
-        </div>
+        <span className="section__eyebrow">РЕЙТИНГ</span>
+        <h2 className="section__title">Следи за своим прогрессом</h2>
+        <p className="section__lead">Таблица игроков и история сохраняются. Отправка результатов и начисление очков временно приостановлены, пока мы работаем над их надёжной проверкой.</p>
       </section>
 
       <section className="section section--alt" id="ads">
@@ -124,12 +109,11 @@ export function Landing({ onOpen, onOpenScreen, onLogin, gameId, setGameId, game
             <span className="section__eyebrow">ПАРТНЁРАМ</span>
             <h2 className="section__title">Рекламные места в приложении</h2>
             <p className="section__lead">
-              Фоновые баннеры, вставки на переходных экранах и интеграции: техподдержка,
-              покупка алмазов, ставки и партнёрские предложения — ненавязчиво, в стилистике продукта.
+              Возможности сотрудничества и размещения партнёрских материалов обсуждаются отдельно.
             </p>
           </div>
           <button type="button" className="btn btn--outline" onClick={onOpenScreen}>
-            Увидеть баннер в приложении <ArrowRight size={17} />
+            Открыть приложение <ArrowRight size={17} />
           </button>
         </div>
       </section>

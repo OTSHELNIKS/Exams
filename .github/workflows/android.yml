@@ -28,11 +28,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-apk
+  group: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[staging-apk]') && 'android-staging-skip' || 'android-apk' }}
   cancel-in-progress: true
 
 jobs:
   build:
+    # The isolated APK is built by its own workflow, not android-latest.
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[staging-apk]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,6 +55,8 @@ jobs:
           VITE_NATIVE: '1'
           VITE_SUPABASE_URL: https://yjedqdbwvjvikyixsduw.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_yzJAjp-Nt7gfcsRXt0jKAQ_tFl2_-_x
+          VITE_HCAPTCHA_SITE_KEY: ${{ vars.VITE_HCAPTCHA_SITE_KEY }}
+          VITE_TELEGRAM_SECURE_ENABLED: ${{ vars.VITE_TELEGRAM_SECURE_ENABLED }}
           VITE_TIKTOK_CLIENT_KEY: awyj2tttpian4x4v
         run: npm --prefix app run build
 

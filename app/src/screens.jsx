@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Gamepad2, Send, ChevronLeft, Camera, Settings, Clock3, Lock, Plus, Copy, Mic,
-  MicOff, Headphones, LogOut, Crown, RotateCcw, Check, ShieldCheck, Zap, Bot,
+  MicOff, Headphones, LogOut, Crown, Check, ShieldCheck, Zap, Bot,
   Trophy, Sparkles, ArrowRight, X, UserRound, Upload, Coins, Server, Image as ImageIcon,
   RefreshCw, Ban, LifeBuoy, MessageSquare, Users,
 } from 'lucide-react'
@@ -10,13 +10,17 @@ import {
   StatBadge, Steps, GameIdIcon, CrownIcon, SuccessCheck, Modal, HeroPicker, HeroStrip,
 } from './ui.jsx'
 import {
-  RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, DRAFT_FILTERS, HERO_ROLE_FILTERS, HERO_ROLE_LABEL,
+  RANKS, ROLES, REGIONS, HERO_CLASSES, HEROES, HERO_ROLE_FILTERS, HERO_ROLE_LABEL,
   GAME_ID_MAX, GAME_SERVER_MAX, normalizeGameId, normalizeServerId, formatGameId,
   SOCIAL_PROVIDERS, SOCIAL_IDS, SOCIAL_ACTIVE, SOCIAL_ACTIVE_IDS, socialLabel, socialCaption, parseSocial,
 } from './data.js'
 import { AvatarCropModal } from './crop.jsx'
 import { requestGameCode, signInWithGameCode, refreshGameStats, describeGameLoginError } from './game-login.js'
-import { startOAuth } from './native-auth.js'
+import { TelegramAuthModal } from './telegram-auth-modal.jsx'
+import { loadTelegramAuth, clearTelegramAuth } from './telegram-auth.js'
+import { TELEGRAM_SECURE_ENABLED } from './telegram-release.js'
+import { startOAuth, authRedirectTo } from './native-auth.js'
+import HCaptcha from '@hcaptcha/react-hcaptcha'
 import { isNativeApp, openGameApp } from './native.js'
 import { openGame, gameHelpText, detectPlatform } from './game-link.js'
 import { tiktokConfigured } from './tiktok-auth.js'
@@ -27,12 +31,11 @@ import {
   createSupportTicket, fetchSupportTickets, announceSupportTicket,
   createLobby, joinLobby, leaveLobby, loadLobby, loadLobbyMembers, setLobbyRoom, setLobbyCheckedIn,
   loadLeaderboardRanks, reportMatch, confirmMatch, disputeMatch, loadMatchHistory,
-  loadLoadout, loadEntitlements, loadPublicLook, equipCosmetic, redeemCosmeticCode, transferLobbyHost,
+  loadLoadout, loadEntitlements, loadPublicLook, equipCosmetic, redeemCosmeticCode,
   uploadBanner, equipBannerMedia, clearBannerMedia, validateBanner, adminGrantAllPremium,
 } from './supabase.js'
 import {
-  mmrTier, rankTitle, formatDelta, playerForm, draftCaptains,
-  withCaptain, transferCaptain, captainOf,
+  mmrTier, rankTitle, formatDelta, playerForm, captainOf,
 } from './rating.js'
 import {
   COSMETIC_KINDS, KIND_LABEL, KINDS_TITLE, itemsOf, itemStatus, equippedFromRow, playerState,
@@ -41,6 +44,7 @@ import {
 import { ProfileFrame, ProfileBanner, NickPlate } from './frames.jsx'
 import { watchCosmeticChanges } from './cosmetics-sync.js'
 import { watchLobbyRefresh } from './lobby-refresh.js'
+import { ServerDraftScreen } from './server-draft.jsx'
 import {
   REGIONS as LOBBY_REGIONS, LOBBY_CAPACITY, ROOM_HINT, normalizeLobbyCode, lobbyCodeValid,
   normalizeRoomId, normalizeRoomPassword, regionLabel, regionHint, describeLobbyError,
@@ -48,38 +52,37 @@ import {
 } from './lobby.js'
 
 /* ================================================================ AUTH ==== */
-export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callbackError, onLogin, onPreview, supabase, session, onSignOut, authReady }) {
+export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callbackError, onLogin, supabase, session, onSignOut, authReady, captchaSiteKey = import.meta.env.VITE_HCAPTCHA_SITE_KEY || '' }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [registering, setRegistering] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState('')
+  const captchaRef = useRef(null)
   const [busy, setBusy] = useState(false)
   const [authError, setAuthError] = useState('')
-  const auth = async (register) => {
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 6) {
+  const auth = async () => {
+    if (!supabase) { setAuthError('Вход временно недоступен.'); return }
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || password.length < 6) {
       setAuthError('Укажите корректную почту и пароль не короче 6 символов.'); return
     }
-    if (register && !/^\d{6,12}$/.test(gameId)) {
-      setAuthError('Укажите Game ID — 6–12 цифр из профиля MLBB.'); return
-    }
+    if (captchaSiteKey && !captchaToken) { setAuthError('Пройдите проверку капчи.'); return }
     setBusy(true); setAuthError(''); setNotice('')
     try {
-      const redirectTo = window.location.protocol.startsWith('http') ? window.location.origin : undefined
-      const result = register
-        ? await supabase.auth.signUp({ email, password, options: redirectTo ? { emailRedirectTo: redirectTo } : {} })
-        : await supabase.auth.signInWithPassword({ email, password })
+      const result = await supabase.auth.signInWithPassword({ email: email.trim(), password, ...(captchaSiteKey ? { options: { captchaToken } } : {}) })
       if (result.error) throw result.error
-      if (register && !result.data.session) setNotice('Проверьте почту и подтвердите регистрацию, затем войдите.')
     } catch (error) { setAuthError(error.message || 'Ошибка входа') }
-    finally { setBusy(false) }
+    finally { setBusy(false); setCaptchaToken(''); captchaRef.current?.resetCaptcha() }
   }
   const [notice, setNotice] = useState('')
   const [methodNote, setMethodNote] = useState(callbackError || '')
   // Вход через игру живёт в отдельном компоненте GameLoginModal: тот же экран
   // «подтверди аккаунт кодом» открывается и на входе, и в профиле.
   const [gameOpen, setGameOpen] = useState(false)
-  const gameLoginProps = { open: gameOpen, onClose: () => setGameOpen(false), supabase, gameId, gameServer, setGameId, setGameServer }
-  const openGameLogin = () => {
-    setGameOpen(true)
-  }
+  const [telegramAuthOpen, setTelegramAuthOpen] = useState(() => TELEGRAM_SECURE_ENABLED && !session && Boolean(loadTelegramAuth()))
+  useEffect(() => { if (!TELEGRAM_SECURE_ENABLED) clearTelegramAuth() }, [])
+  const [initialGameChannel, setInitialGameChannel] = useState('ingame')
+  const gameLoginProps = { open: gameOpen, initialChannel: initialGameChannel, onClose: () => setGameOpen(false), supabase, gameId, gameServer, setGameId, setGameServer }
+  const openGameLogin = (channel) => { setInitialGameChannel(channel); setGameOpen(true) }
   // Включён ли Google в проекте: спрашиваем у Supabase один раз при открытии
   // экрана. Пока ответа нет — плитка активна (fail-open), если провайдер
   // выключен — показываем честный бейдж «скоро» вместо мёртвой кнопки.
@@ -116,6 +119,7 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
       )
     } finally { setBusy(false) }
   }
+  if (registering && !session) return <RegistrationForm supabase={supabase} captchaSiteKey={captchaSiteKey} onBack={() => setRegistering(false)} />
   return (
     <div className="screen auth">
       <div className="auth__logo"><Logo size="lg" /></div>
@@ -164,7 +168,7 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
 
       {/* Главный путь — вход через саму игру: кнопка стоит сразу под полями
           Game ID, чтобы её не приходилось искать среди плиток. */}
-      <button type="button" className="btn btn--primary auth__game-btn" disabled={busy} onClick={openGameLogin}>
+      <button type="button" className="btn btn--primary auth__game-btn" disabled={busy} onClick={() => openGameLogin('ingame')}>
         <Gamepad2 size={18} /> Войти через игру — код в MLBB
       </button>
       <p className="field-hint auth__game-hint">
@@ -173,7 +177,7 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
 
       <Label hint="одним нажатием">СПОСОБЫ РЕГИСТРАЦИИ</Label>
       <div className="methods">
-        <button type="button" className="method method--game" disabled={busy} onClick={openGameLogin} aria-label="Войти через игровой аккаунт MLBB">
+        <button type="button" className="method method--game" disabled={busy} onClick={() => openGameLogin('ingame')} aria-label="Войти через игровой аккаунт MLBB">
           <BrandMark type="mlbb" /><span>MLBB</span><em className="method__tag">код в игре</em>
         </button>
         <button
@@ -186,17 +190,16 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
           <BrandMark type="google" /><span>Google</span>
           {googleReady === false && <em className="method__soon">скоро</em>}
         </button>
-        <a className="method" href={`https://t.me/${TELEGRAM_BOT_USERNAME}`} target="_blank" rel="noreferrer" aria-label="Войти через Telegram-бота" title="Откроется бот: привязка по коду из Профиля">
-          <BrandMark type="telegram" /><span>Telegram</span>
-        </a>
+        <button type="button" className={`method${TELEGRAM_SECURE_ENABLED ? '' : ' method--soon'}`} disabled={busy} onClick={() => TELEGRAM_SECURE_ENABLED ? setTelegramAuthOpen(true) : setMethodNote('Вход через Telegram временно недоступен. Войди по почте, Google или через игру.')} aria-label="Войти через Telegram-бота" title={TELEGRAM_SECURE_ENABLED ? 'Подтверди вход в ранее привязанном боте' : 'Временно недоступно'}>
+          <BrandMark type="telegram" /><span>Telegram</span>{!TELEGRAM_SECURE_ENABLED && <em className="method__soon">скоро</em>}
+        </button>
         <button type="button" className="method method--soon" onClick={() => setMethodNote('TikTok — это привязка соцсети, а не вход: войди по почте или Google, затем привяжи TikTok в Профиле одним нажатием.')} aria-label="TikTok привязывается в профиле">
           <BrandMark type="tiktok" /><span>TikTok</span><em className="method__soon">скоро</em>
         </button>
       </div>
       <p className="auth-methods__note">
-        Игровой аккаунт входит по Game ID и серверу: код приходит на внутриигровую почту MLBB
-        (или в Telegram-бот @{TELEGRAM_BOT_USERNAME} — по выбору). Google входит сразу.
-        TikTok привязывается в Профиле.
+        Игровой аккаунт входит по Game ID и серверу: код приходит на внутриигровую почту MLBB.
+        {TELEGRAM_SECURE_ENABLED ? 'Telegram-вход доступен после привязки бота в профиле.' : 'Вход через Telegram временно недоступен.'} TikTok привязывается в Профиле.
       </p>
       {methodNote && <p className="auth-methods__note auth-methods__note--warn" role="status">{methodNote}</p>}
 
@@ -207,12 +210,13 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
           <button type="button" className="social" onClick={onSignOut}>Выйти из аккаунта</button>
         </div>
       ) : (
-        <form className="account-box" onSubmit={(e) => { e.preventDefault(); auth(false) }}>
+        <form className="account-box" onSubmit={(e) => { e.preventDefault(); auth() }}>
           <Label hint="основной способ">ИЛИ ПО ПОЧТЕ</Label>
           <label className="field"><span>EMAIL</span><input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
           <label className="field"><span>ПАРОЛЬ</span><input type="password" autoComplete="current-password" minLength={6} required value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+          {captchaSiteKey && <HCaptcha ref={captchaRef} sitekey={captchaSiteKey} onVerify={setCaptchaToken} onExpire={() => setCaptchaToken('')} onError={() => { setCaptchaToken(''); setAuthError('Не удалось загрузить капчу. Проверьте соединение.') }} />}
           <button className="social social--primary" disabled={busy} type="submit">Войти по почте</button>
-          <button className="social" disabled={busy} type="button" onClick={() => auth(true)}>Зарегистрироваться</button>
+          <button className="social" disabled={busy} type="button" onClick={() => { setAuthError(''); setCaptchaToken(''); setRegistering(true) }}>Зарегистрироваться</button>
           {authError && <p role="alert">{authError}</p>}
         </form>
       ))}
@@ -225,6 +229,7 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
       </div>
 
       <GameLoginModal {...gameLoginProps} />
+      <TelegramAuthModal open={telegramAuthOpen} onClose={() => setTelegramAuthOpen(false)} supabase={supabase} botUsername={TELEGRAM_BOT_USERNAME} />
 
       {notice && <div className="toast">{notice}</div>}
 
@@ -232,13 +237,52 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
         <ShieldCheck size={16} color="#ff6a2b" />
         <span>Античит и верификация каждого игрока</span>
       </div>
-      {onPreview && (
-        <button type="button" className="link-btn" onClick={onPreview}>
-          Посмотреть все экраны <ArrowRight size={15} />
-        </button>
-      )}
     </div>
   )
+}
+
+// Регистрация вынесена отдельно: проверка токена должна быть включена также
+// в Supabase Auth, иначе прямые запросы могут обойти клиентскую форму.
+export function RegistrationForm({ supabase, captchaSiteKey, onBack }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [token, setToken] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const captcha = useRef(null)
+  const submit = async (event) => {
+    event.preventDefault()
+    if (busy) return
+    if (!supabase || !captchaSiteKey) { setError('Регистрация временно недоступна: защита от ботов ещё не настроена.'); return }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || password.length < 6) { setError('Укажите корректную почту и пароль не короче 6 символов.'); return }
+    if (password !== confirmation) { setError('Пароли не совпадают.'); return }
+    if (!token) { setError('Пройдите проверку капчи.'); return }
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const redirectTo = authRedirectTo()
+      const result = await supabase.auth.signUp({ email: email.trim(), password, options: { captchaToken: token, ...(redirectTo ? { emailRedirectTo: redirectTo } : {}) } })
+      if (result.error) throw result.error
+      if (!result.data?.session) setNotice('Проверьте почту и подтвердите регистрацию, затем войдите.')
+    } catch (err) { setError(err.message || 'Не удалось зарегистрироваться.') }
+    finally { setBusy(false); setToken(''); captcha.current?.resetCaptcha() }
+  }
+  return <div className="screen auth auth--register">
+    <div className="auth__logo"><Logo size="lg" /></div>
+    <h1 className="screen-title">Регистрация</h1>
+    <p className="auth__subtitle">Создайте аккаунт, затем заполните профиль.</p>
+    <form className="account-box" onSubmit={submit}>
+      <label className="field"><span>EMAIL</span><input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+      <label className="field"><span>ПАРОЛЬ</span><input type="password" autoComplete="new-password" minLength={6} required value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+      <label className="field"><span>ПОДТВЕРДИТЕ ПАРОЛЬ</span><input type="password" autoComplete="new-password" minLength={6} required value={confirmation} onChange={(e) => setConfirmation(e.target.value)} /></label>
+      {captchaSiteKey ? <div className="auth__captcha"><HCaptcha ref={captcha} sitekey={captchaSiteKey} onVerify={(value) => { setToken(value); setError('') }} onExpire={() => setToken('')} onError={() => { setToken(''); setError('Не удалось загрузить капчу. Проверьте соединение.') }} /></div> : <p role="status">Регистрация временно недоступна: защита от ботов ещё не настроена.</p>}
+      {error && <p role="alert">{error}</p>}
+      {notice && <p role="status">{notice}</p>}
+      <button className="social social--primary" type="submit" disabled={busy || !supabase || !captchaSiteKey}>{busy ? 'Регистрируем…' : 'Создать аккаунт'}</button>
+      <button className="social" type="button" onClick={onBack} disabled={busy}>Вернуться ко входу</button>
+    </form>
+  </div>
 }
 
 /* ==================================================== GAME LOGIN MODAL ==== */
@@ -251,7 +295,7 @@ export function AuthScreen({ gameId, setGameId, gameServer, setGameServer, callb
 // refreshOnly — не вход, а обновление КДА и винрейта у уже подтверждённого
 // аккаунта: код из внутриигровой почты проверяется тем же способом, но
 // новая сессия не выдаётся и отметка «подтверждён» не переписывается.
-export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, setGameId, setGameServer, onlyIngame = false, refreshOnly = false, onVerified, onStats }) {
+export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, setGameId, setGameServer, onlyIngame = false, refreshOnly = false, onVerified, onStats, initialChannel = 'ingame' }) {
   const [gameStep, setGameStep] = useState('id')   // id | code
   const [gameCode, setGameCode] = useState('')
   const [gameBusy, setGameBusy] = useState(false)
@@ -261,8 +305,9 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
   // Канал подтверждения: письмо в игре (основной) или код в Telegram (запасной).
   // При привязке аккаунта из профиля запасного канала нет: владение доказывает
   // только код, который пришёл на внутриигровую почту.
-  const [gameChannel, setGameChannel] = useState('ingame')
-  const channel = onlyIngame ? 'ingame' : gameChannel
+  const allowTelegram = !onlyIngame && TELEGRAM_SECURE_ENABLED
+  const [gameChannel, setGameChannel] = useState(allowTelegram ? initialChannel : 'ingame')
+  const channel = allowTelegram ? gameChannel : 'ingame'
   const [gameHelp, setGameHelp] = useState('')
   const gamePlatform = detectPlatform()
 
@@ -270,8 +315,8 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
   useEffect(() => {
     if (!open) return
     setGameStep('id'); setGameCode(''); setGameError(''); setGameHelp('')
-    setGameChannel('ingame')
-  }, [open])
+    setGameChannel(allowTelegram ? initialChannel : 'ingame')
+  }, [open, allowTelegram, initialChannel])
 
   const askGameCode = async () => {
     if (!/^\d{6,12}$/.test(gameId)) { setGameError('Game ID — это 6–12 цифр из профиля MLBB.'); return }
@@ -314,7 +359,7 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
   }
   // Смена канала прямо на шаге ввода кода: перезапрашиваем код в другом канале.
   const switchGameChannel = async (next) => {
-    if (next === gameChannel || onlyIngame) return
+    if (next === gameChannel || !allowTelegram) return
     setGameChannel(next); setGameCode(''); setGameError('')
     setGameBusy(true)
     try {
@@ -328,12 +373,14 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
 
   return (
     <Modal open={open} onClose={onClose} labelledBy="game-login-title">
-        <h3 id="game-login-title">{refreshOnly ? 'Обновить данные игры' : 'Вход через игру'}</h3>
+        <h3 id="game-login-title">{refreshOnly ? 'Обновить данные игры' : gameChannel === 'telegram' && !onlyIngame ? 'Вход через Telegram' : 'Вход через игру'}</h3>
         <p className="modal__role">
           {gameStep === 'id'
             ? onlyIngame
               ? 'Укажи Game ID и сервер как в профиле MLBB — код придёт на внутриигровую почту, и только после него аккаунт станет подтверждённым.'
-              : 'Укажи Game ID и сервер как в профиле MLBB — подтвердим, что аккаунт твой.'
+              : gameChannel === 'telegram'
+                ? 'Укажи Game ID и сервер из профиля NAME. Код придёт в ранее привязанный Telegram-бот.'
+                : 'Укажи Game ID и сервер как в профиле MLBB — подтвердим, что аккаунт твой.'
             : gameChannel === 'ingame'
               ? `Код отправлен на внутриигровую почту MLBB${gameNick ? ` · ${gameNick}` : ''}. Он живёт ${Math.round(gameTtl / 60)} мин.`
               : `Код отправлен в Telegram${gameNick ? ` · ${gameNick}` : ''}. Он живёт ${Math.round(gameTtl / 60)} мин.`}
@@ -377,6 +424,8 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
                 Код приходит только на внутриигровую почту MLBB — это и есть доказательство,
                 что аккаунт твой. Telegram для подтверждения не подходит.
               </p>
+            ) : !allowTelegram ? (
+              <p className="field-hint">Вход через Telegram временно недоступен. Используй код из игры.</p>
             ) : (
               <div className="game-channel">
                 <button
@@ -429,7 +478,7 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
                 <button type="button" className="btn btn--ghost game-open-app" onClick={launchGame}>
                   <Gamepad2 size={16} /> Открыть игру и прочитать письмо
                 </button>
-                {!onlyIngame && (
+                {allowTelegram && (
                   <button type="button" className="link-btn game-channel__switch" disabled={gameBusy} onClick={() => switchGameChannel('telegram')}>
                     Нет доступа к игре? Прислать код в Telegram
                   </button>
@@ -438,7 +487,7 @@ export function GameLoginModal({ open, onClose, supabase, gameId, gameServer, se
             ) : (
               <>
                 <p className="field-hint">Кода нет? Открой бота @{TELEGRAM_BOT_USERNAME} — сообщение приходит сразу.</p>
-                {!onlyIngame && (
+                {allowTelegram && (
                   <button type="button" className="link-btn game-channel__switch" disabled={gameBusy} onClick={() => switchGameChannel('ingame')}>
                     Прислать код на внутриигровую почту
                   </button>
@@ -881,7 +930,7 @@ const SOCIAL_ICONS = { telegram: 'telegram', vk: 'vk', google: 'google', tiktok:
    аккаунт), поэтому «привязано» больше не бывает фальшивым. */
 export function SocialRow({
   profile, onAddSocial, onRemoveSocial, googleAccount = '', onLinkGoogle,
-  telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok,
+  telegramLink, telegramNeedsReconfirm = false, telegramStatusError = false, onUnlinkTelegram, onStartTelegram, onCancelTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok,
   notice = '', onNoticeShown,
 }) {
   const [toast, setToast] = useState('')
@@ -892,8 +941,12 @@ export function SocialRow({
   const [manual, setManual] = useState(false)
   const [handle, setHandle] = useState('')
   const [linking, setLinking] = useState(false)
+  const [removingLegacyTelegram, setRemovingLegacyTelegram] = useState(false)
+  const [checkingTelegramStatus, setCheckingTelegramStatus] = useState(false)
   const [tgCode, setTgCode] = useState('')
   const [tgWait, setTgWait] = useState(false)
+  const tgGeneration = useRef(0)
+  useEffect(() => () => { tgGeneration.current += 1 }, [])
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(''), 2600)
@@ -913,7 +966,7 @@ export function SocialRow({
   // если строки в socials ещё нет, иначе иконка исчезала после перезагрузки.
   const googleInSocials = (profile.socials || []).map(parseSocial).some((x) => x.provider === 'google')
   const bound = [
-    ...(telegramLink ? [{ provider: 'telegram', handle: botHandle, viaBot: true }] : []),
+    ...(telegramLink && !telegramStatusError ? [{ provider: 'telegram', handle: botHandle, viaBot: true }] : []),
     ...(googleAccount && !googleInSocials ? [{ provider: 'google', handle: googleAccount, viaGoogle: true }] : []),
     ...(profile.socials || []).map(parseSocial).filter((x) => SOCIAL_IDS.includes(x.provider) && x.provider !== 'telegram'),
   ]
@@ -944,6 +997,15 @@ export function SocialRow({
     return () => { alive = false; clearInterval(timer); setTgWait(false) }
   }, [open, provider, tgCode, onRefreshTelegram])
 
+  const discardTelegramLink = () => {
+    tgGeneration.current += 1
+    if (tgCode && onCancelTelegram) {
+      Promise.resolve(onCancelTelegram(tgCode)).catch(() => setToast('Не удалось отменить ссылку: она истечёт автоматически через 10 минут.'))
+    }
+    setTgCode('')
+    setLinking(false)
+  }
+  const closeAdd = () => { discardTelegramLink(); setOpen(false) }
   const openAdd = () => {
     setProvider(free[0]?.id || '')
     setHandle('')
@@ -953,14 +1015,21 @@ export function SocialRow({
     setOpen(true)
   }
   const startTelegram = async () => {
+    if (telegramStatusError) { setError('Не удалось проверить текущую привязку. Повтори проверку.'); return }
+    if (!TELEGRAM_SECURE_ENABLED) { setError('Привязка Telegram временно недоступна.'); return }
     if (!onStartTelegram) { setError('Бот недоступен: войди в аккаунт, тогда код придёт сюда.'); return }
+    const generation = ++tgGeneration.current
     setLinking(true); setError('')
     try {
       const code = await onStartTelegram()
+      if (generation !== tgGeneration.current) {
+        if (onCancelTelegram) await onCancelTelegram(code).catch(() => {})
+        return
+      }
       setTgCode(code)
     } catch (e) {
-      setError(e?.message || 'Не удалось получить код. Попробуй ещё раз.')
-    } finally { setLinking(false) }
+      if (generation === tgGeneration.current) setError(e?.message || 'Не удалось получить код. Попробуй ещё раз.')
+    } finally { if (generation === tgGeneration.current) setLinking(false) }
   }
   const startTikTok = async () => {
     if (!onLinkTikTok) { setError('TikTok не подключён в проекте.'); return }
@@ -995,12 +1064,32 @@ export function SocialRow({
     setToast(`${socialLabel(provider)} привязан: ${nick}`)
   }
 
-  const botLink = tgCode ? `https://t.me/${TELEGRAM_BOT_USERNAME}?start=${tgCode}` : `https://t.me/${TELEGRAM_BOT_USERNAME}`
+  const botLink = tgCode ? `https://t.me/${TELEGRAM_BOT_USERNAME}?start=link_${tgCode}` : `https://t.me/${TELEGRAM_BOT_USERNAME}`
 
   return (
     <div className="social-block">
       <div className="section-head"><span>СОЦСЕТИ</span><b>{bound.length}/{slotCount}</b></div>
-      {bound.length === 0 && (
+      {telegramStatusError && <div className="social-hint" role="status">
+        Не удалось проверить состояние Telegram. {onRefreshTelegram && <button type="button" className="link-btn" disabled={checkingTelegramStatus} onClick={async () => {
+          setCheckingTelegramStatus(true)
+          try { await onRefreshTelegram() } catch { setToast('Не удалось проверить Telegram. Попробуй ещё раз.') }
+          finally { setCheckingTelegramStatus(false) }
+        }}>{checkingTelegramStatus ? 'Проверяем…' : 'Повторить'}</button>}
+      </div>}
+      {telegramNeedsReconfirm && !telegramStatusError && (
+        <p className="social-hint" role="status">
+          Старая привязка Telegram не подтверждена новым способом. {TELEGRAM_SECURE_ENABLED ? 'Подтверди её заново через бота.' : 'Повторное подтверждение временно недоступно.'}
+        </p>
+      )}
+      {telegramNeedsReconfirm && !telegramStatusError && onUnlinkTelegram && <button type="button" className="link-btn" disabled={removingLegacyTelegram} onClick={async () => {
+        setRemovingLegacyTelegram(true)
+        try {
+          const result = await onUnlinkTelegram()
+          setToast(result?.ok === true ? 'Старая привязка Telegram удалена.' : (result?.error || 'Не удалось удалить старую привязку.'))
+        } catch { setToast('Не удалось удалить старую привязку.') }
+        finally { setRemovingLegacyTelegram(false) }
+      }}>Удалить старую привязку Telegram</button>}
+      {bound.length === 0 && !telegramNeedsReconfirm && !telegramStatusError && (
         <p className="social-hint">Ничего не привязано. Telegram — через бота, Google — одним нажатием.</p>
       )}
       <div className="social-row">
@@ -1023,7 +1112,7 @@ export function SocialRow({
         )}
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} labelledBy="social-add-title">
+      <Modal open={open} onClose={closeAdd} labelledBy="social-add-title">
         <h3 id="social-add-title">Привязать соцсеть</h3>
         <p className="modal__role">Telegram — через бота, Google — окном самого сервиса. Ничего вводить руками не нужно.</p>
         <div className="social-pick">
@@ -1034,8 +1123,8 @@ export function SocialRow({
                 key={p.id}
                 type="button"
                 className={`social-pick__item${provider === p.id ? ' is-active' : ''}`}
-                disabled={taken}
-                onClick={() => { setProvider(p.id); setError(''); setTgCode(''); setManual(false) }}
+                disabled={taken || (p.id === 'telegram' && telegramStatusError)}
+                onClick={() => { if (p.id !== provider) discardTelegramLink(); setProvider(p.id); setError(''); setManual(false) }}
               >
                 <BrandMark type={SOCIAL_ICONS[p.id]} />
                 <span>{p.label}</span>
@@ -1049,23 +1138,23 @@ export function SocialRow({
           <div className="social-flow">
             {tgCode ? (
               <>
-                <p className="social-flow__label">Код для бота</p>
-                <p className="social-flow__code">{tgCode}</p>
+                <p className="social-flow__label">Код для сверки</p>
+                <p className="social-flow__code">{tgCode.slice(0, 6)}</p>
                 <a className="btn btn--primary social-flow__cta" href={botLink} target="_blank" rel="noreferrer">
-                  Открыть @{TELEGRAM_BOT_USERNAME} и привязать
+                  Открыть @{TELEGRAM_BOT_USERNAME}
                 </a>
                 <p className="field-hint">
-                  Бот откроется с готовым кодом — просто нажми «Старт»/«Отправить».
-                  {tgWait ? ' Ждём подтверждения…' : ''} Код живёт 10 минут.
+                  В боте нажми «Старт», сверь код и подтверди привязку. Никому не пересылай ссылку.
+                  {tgWait ? ' Ждём подтверждения…' : ''} Ссылка действует 10 минут.
                 </p>
-                <button type="button" className="link-btn social-flow__again" onClick={startTelegram}>получить новый код</button>
+                <button type="button" className="link-btn social-flow__again" disabled={linking} onClick={startTelegram}>получить новую ссылку</button>
               </>
             ) : (
               <>
-                <button type="button" className="btn btn--primary social-flow__cta" disabled={linking} onClick={startTelegram}>
+                <button type="button" className="btn btn--primary social-flow__cta" disabled={linking || telegramStatusError || !TELEGRAM_SECURE_ENABLED} onClick={startTelegram}>
                   <BrandMark type="telegram" /> Получить код для бота
                 </button>
-                <p className="field-hint">Откроем бота с этим кодом — он сам свяжет Telegram с профилем.</p>
+                <p className="field-hint">{TELEGRAM_SECURE_ENABLED ? 'Открой бота по одноразовой ссылке и подтверди привязку. Если Telegram привязан давно, его понадобится подтвердить заново.' : 'Привязка Telegram временно недоступна. Попробуй позже.'}</p>
               </>
             )}
           </div>
@@ -1134,7 +1223,7 @@ export function SocialRow({
         {error && <p className="social-error" role="alert">{error}</p>}
 
         <div className="social-modal__actions">
-          <button type="button" className="btn btn--ghost" onClick={() => setOpen(false)}>Отмена</button>
+          <button type="button" className="btn btn--ghost" onClick={closeAdd}>Отмена</button>
           {provider === 'telegram' && telegramLink && (
             <PrimaryButton onClick={() => { setOpen(false); setToast('Telegram уже привязан') }}>Готово</PrimaryButton>
           )}
@@ -1168,7 +1257,8 @@ export function SocialRow({
                 className="btn btn--ghost"
                 onClick={async () => {
                   if (view.provider === 'telegram') {
-                    if (onUnlinkTelegram) await onUnlinkTelegram()
+                    const result = onUnlinkTelegram ? await onUnlinkTelegram() : { ok: false }
+                    if (result === false || result?.ok === false) { setError(result?.error || 'Не удалось отвязать Telegram.'); return }
                     setView(null)
                     setToast('Telegram отвязан от аккаунта')
                     return
@@ -1334,7 +1424,7 @@ export function RegionChips({ regions = [] }) {
   )
 }
 
-export function HomeScreen({ profile, actions, gameId, gameServer, gameVerified = false, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onEdit, isAdmin, onAdmin, look = null, onCosmetics, supabase, userId }) {
+export function HomeScreen({ profile, actions, gameId, gameServer, gameVerified = false, googleAccount, onLinkGoogle, telegramLink, telegramNeedsReconfirm = false, telegramStatusError = false, onUnlinkTelegram, onStartTelegram, onCancelTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onEdit, isAdmin, onAdmin, look = null, onCosmetics, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -1389,7 +1479,7 @@ export function HomeScreen({ profile, actions, gameId, gameServer, gameVerified 
         </>
       )}
 
-      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} onUnlinkTelegram={onUnlinkTelegram} onStartTelegram={onStartTelegram} onRefreshTelegram={onRefreshTelegram} onLinkVk={onLinkVk} onLinkTikTok={onLinkTikTok} notice={socialNotice} onNoticeShown={onSocialNoticeShown} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} telegramNeedsReconfirm={telegramNeedsReconfirm} telegramStatusError={telegramStatusError} onUnlinkTelegram={onUnlinkTelegram} onStartTelegram={onStartTelegram} onCancelTelegram={onCancelTelegram} onRefreshTelegram={onRefreshTelegram} onLinkVk={onLinkVk} onLinkTikTok={onLinkTikTok} notice={socialNotice} onNoticeShown={onSocialNoticeShown} />
 
       <div className="home__actions">
         {profile.nick
@@ -1561,7 +1651,7 @@ function TelegramLinkCard({ supabase, userId }) {
 }
 
 /* ============================================================= PROFILE ==== */
-export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerified, onGameVerified, googleAccount, onLinkGoogle, telegramLink, onUnlinkTelegram, onStartTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onBack, onEdit, onCosmetics, look = null, supabase, userId }) {
+export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerified, onGameVerified, googleAccount, onLinkGoogle, telegramLink, telegramNeedsReconfirm = false, telegramStatusError = false, onUnlinkTelegram, onStartTelegram, onCancelTelegram, onRefreshTelegram, onLinkVk, onLinkTikTok, socialNotice, onSocialNoticeShown, onBack, onEdit, onCosmetics, look = null, supabase, userId }) {
   const [toast, setToast] = useState('')
   useEffect(() => {
     if (!toast) return
@@ -1629,7 +1719,7 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
         <Settings size={15} /> {(profile.heroes || []).length ? 'Изменить героев' : 'Выбрать героев'}
       </button>
 
-      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} onUnlinkTelegram={onUnlinkTelegram} onStartTelegram={onStartTelegram} onRefreshTelegram={onRefreshTelegram} onLinkVk={onLinkVk} onLinkTikTok={onLinkTikTok} notice={socialNotice} onNoticeShown={onSocialNoticeShown} />
+      <SocialRow profile={profile} onAddSocial={actions.addSocial} onRemoveSocial={actions.removeSocial} googleAccount={googleAccount} onLinkGoogle={onLinkGoogle} telegramLink={telegramLink} telegramNeedsReconfirm={telegramNeedsReconfirm} telegramStatusError={telegramStatusError} onUnlinkTelegram={onUnlinkTelegram} onStartTelegram={onStartTelegram} onCancelTelegram={onCancelTelegram} onRefreshTelegram={onRefreshTelegram} onLinkVk={onLinkVk} onLinkTikTok={onLinkTikTok} notice={socialNotice} onNoticeShown={onSocialNoticeShown} />
       <GameAccountCard
         gameId={gameId}
         gameServer={gameServer}
@@ -1688,315 +1778,15 @@ export function ProfileScreen({ profile, actions, gameId, gameServer, gameVerifi
 }
 
 /* =============================================================== DRAFT ==== */
-const DRAFT_ROLE_MAP = { 'МИД': ['Маг'], 'ЛЕС': ['Лесник'], 'РОУМ': ['Поддержка'], 'БОЕЦ': ['Боец'], 'СТРЕЛОК': ['Стрелок'], 'ТАНК': ['Танк'] }
-function matchDraftRole(p, f) {
-  if (f === 'ВСЕ') return true
-  return (p.roles || []).some((r) => (DRAFT_ROLE_MAP[f] || []).includes(r))
-}
-
-function PlayerPeek({ player, onClose, onPick, onOpenProfile }) {
-  const roles = (player.roles || []).join(', ')
-  return (
-    <Modal open={Boolean(player)} onClose={onClose}>
-      {player && (
-        <>
-        <div className="modal__avatar">{(player.nick?.[0] || '?').toUpperCase()}</div>
-        <h3>{player.nick}</h3>
-        <p className="modal__role">{roles || 'Роли не указаны'} · {player.pts ?? 0} PTS</p>
-        <div className="modal__stats">
-          <div><b>{player.pts ?? 0}</b><span>PTS</span></div>
-          <div><b>{player.rank || '—'}</b><span>Ранг</span></div>
-          <div><b>{(player.roles || []).length || '—'}</b><span>Роли</span></div>
-        </div>
-        <PrimaryButton glow={false} onClick={() => { onPick(); onClose() }}>ВЫБРАТЬ В КОМАНДУ</PrimaryButton>
-        {onOpenProfile && (
-          <button type="button" className="btn btn--ghost pub__open" onClick={() => onOpenProfile(player.user_id)}>
-            <UserRound size={15} /> Открыть профиль
-          </button>
-        )}
-        </>
-      )}
-    </Modal>
-  )
-}
-
-export function DraftScreen({ supabase, userId, onReady, onBack, captainId = null, lobbyCode = '' }) {
-  const [teamA, setTeamA] = useState([])
-  const [teamB, setTeamB] = useState([])
-  const [turn, setTurn] = useState('A')
-  const [timer, setTimer] = useState(30)
-  const [filter, setFilter] = useState('ВСЕ')
-  const [peek, setPeek] = useState(null)
+// Драфт хранится на сервере; этот экспорт используется навигацией приложения.
+export function DraftScreen(props) {
   const [openProfile, setOpenProfile] = useState(null)
-  const [coin, setCoin] = useState(null)
-  const [toast, setToast] = useState('')
-  // Капитан может уступить место игроку своей команды — в пределах раунда.
-  const [capOverride, setCapOverride] = useState({ A: null, B: null })
-  const [players, setPlayers] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState('')
-
-  const loadPlayers = async () => {
-    if (!supabase) { setLoading(false); setLoadError('Нет подключения к серверу.'); return }
-    setLoading(true); setLoadError('')
-    try {
-      const { data, error } = await supabase.from('leaderboard').select('*').order('pts', { ascending: false }).limit(100)
-      if (error) throw error
-      setPlayers(data || [])
-    } catch (e) {
-      setLoadError('Не удалось загрузить игроков: ' + (e.message || e))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { loadPlayers() }, [])
-
-  const ranked = useMemo(() => [...(players || [])].sort((a, b) => (b.pts || 0) - (a.pts || 0)), [players])
-  // Капитан — тот, кто собрал лобби: так честно, и не зависит от того, у кого
-  // больше очков. Второй капитан — сильнейший из оставшихся.
-  const captains = useMemo(() => draftCaptains({ members: ranked, hostId: captainId }), [ranked, captainId])
-  const captainIds = captains.filter(Boolean).map((c) => c.user_id)
-  const pickedIds = useMemo(() => [...teamA, ...teamB].map((p) => p.user_id), [teamA, teamB])
-  const pool = ranked.filter((p) => !captainIds.includes(p.user_id) && !pickedIds.includes(p.user_id))
-  const total = ranked.length
-  const short = total < 3
-  const full = !short && pool.length === 0 && (teamA.length + teamB.length) > 0
-
-  // Хост собирал лобби — он и начинает драфт. Монетка больше не нужна:
-  // право первого выбора теперь понятное и одинаковое для всех.
-  useEffect(() => {
-    setCoin('A')
-    setTurn('A')
-  }, [])
-
-  useEffect(() => {
-    if (full) return
-    const t = setInterval(() => setTimer((v) => (v > 0 ? v - 1 : 30)), 1000)
-    return () => clearInterval(t)
-  }, [full])
-
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(''), 2200)
-    return () => clearTimeout(t)
-  }, [toast])
-
-  const pick = (player) => {
-    if (full) return
-    if (turn === 'A' && teamA.length < 4) {
-      setTeamA((a) => [...a, player]); setTurn('B')
-    } else if (turn === 'B' && teamB.length < 4) {
-      setTeamB((b) => [...b, player]); setTurn('A')
-    }
-    setTimer(30)
-  }
-
-  const autoPick = () => {
-    const candidates = pool.filter((p) => matchDraftRole(p, filter))
-    const p = (candidates.length ? candidates : pool)[0]
-    if (p) { pick(p); setToast('Таймер вышел — игрок выбран автоматически') }
-  }
-
-  useEffect(() => {
-    if (timer === 0 && !full) autoPick()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timer])
-
-  const reset = () => {
-    setTeamA([]); setTeamB([]); setTimer(30); setFilter('ВСЕ')
-    setCoin('A'); setTurn('A')
-  }
-
-  const visible = pool.filter((p) => matchDraftRole(p, filter))
-
-  // Состав стороны: капитан + выбранные им игроки.
-  const rosterOf = (side) => {
-    const base = side === 'A' ? captains[0] : captains[1]
-    const picked = side === 'A' ? teamA : teamB
-    return [base, ...picked].filter(Boolean)
-  }
-  const captainOfSide = (side) => {
-    const want = capOverride[side]
-    const roster = rosterOf(side)
-    if (want) {
-      const found = roster.find((m) => m.user_id === want)
-      if (found) return found
-    }
-    return roster[0] || null
-  }
-  // Передать капитанство можно только своему игроку: и вызывающий должен быть
-  // капитаном, и цель — из этой же команды.
-  const handOver = (side, player) => {
-    const cap = captainOfSide(side)
-    if (!cap || cap.user_id !== userId || !player) return
-    setCapOverride((prev) => ({ ...prev, [side]: player.user_id }))
-    setToast(`Капитан команды ${side}: ${player.nick}`)
-  }
-
-  const TeamCard = ({ side, roster }) => {
-    const cap = captainOfSide(side)
-    if (!cap) return null
-    const iAmCaptain = cap.user_id === userId
-    return (
-      <div className={`team-card team-card--${side.toLowerCase()} ${turn === side && !full ? 'is-active' : ''}`}>
-        <div className="team-card__head"><span>TEAM {side}</span><b>{cap.pts ?? 0} PTS</b></div>
-        <div className="team-card__captain">
-          <span className="team-card__avatar" style={{ borderColor: side === 'A' ? '#ff6a1a' : '#f0334f' }}>{(cap.nick?.[0] || '?').toUpperCase()}</span>
-          <div>
-            <strong><CrownIcon /> {cap.nick}{cap.user_id === userId ? ' (вы)' : ''}</strong>
-            <small>{side === 'A' ? 'Капитан лобби' : 'Капитан'} · {cap.pts ?? 0} MMR</small>
-          </div>
-        </div>
-        <div className="team-card__slots">
-          {Array.from({ length: 4 }, (_, i) => (
-            <span key={i} className={roster[i] ? 'is-filled' : ''}>
-              {roster[i] ? (roster[i].nick?.[0] || '?').toUpperCase() : <Plus size={16} />}
-            </span>
-          ))}
-        </div>
-        {iAmCaptain && roster.filter((m) => m.user_id !== cap.user_id).length > 0 && (
-          <div className="team-card__handover">
-            <small>Передать капитанство внутри команды:</small>
-            {roster.filter((m) => m.user_id !== cap.user_id).map((m) => (
-              <button
-                key={m.user_id}
-                type="button"
-                className="btn btn--small"
-                onClick={() => handOver(side, m)}
-                title={`Сделать капитаном ${m.nick}`}
-              >
-                {m.nick}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  if (loading) {
-    return (
-      <div className="screen draft">
-        <div className="empty-block"><p>Загрузка игроков…</p></div>
-      </div>
-    )
-  }
-  if (loadError) {
-    return (
-      <div className="screen draft">
-        <div className="empty-block">
-          <p>{loadError}</p>
-          <button type="button" className="btn btn--ghost" onClick={loadPlayers}>Повторить</button>
-        </div>
-      </div>
-    )
-  }
-  if (short) {
-    return (
-      <div className="screen draft">
-        <div className="draft__head">
-          <div>
-            <h1>CAPTAIN'S DRAFT</h1>
-            <p>Формат 5v5 • Выбор игроков в ростер</p>
-          </div>
-        </div>
-        <div className="empty-block">
-          <p>Для драфта нужно минимум 3 игрока, сейчас зарегистрирован{total === 1 ? '' : 'о'}: {total}. Пригласи друзей — как только они заполнят анкеты, появятся здесь.</p>
-          <button type="button" className="btn btn--ghost" onClick={onBack}>На главную</button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="screen draft">
-      <div className="draft__head">
-        <div>
-          <h1>CAPTAIN'S DRAFT</h1>
-          <p>Формат 5v5 • Выбор игроков в ростер</p>
-        </div>
-        <div className="draft__timer"><Clock3 size={16} /> 00:{String(timer).padStart(2, '0')}</div>
-        <button type="button" className="icon-btn" onClick={reset} title="Сбросить драфт"><RotateCcw size={18} /></button>
-      </div>
-
-      <div className="draft__turn">
-        <span>Очередь:</span>
-        <b>{full ? 'РОСТЕРЫ УКОМПЛЕКТОВАНЫ' : `КОМАНДА ${turn}`}</b>
-        {!full && <em>{captains[0] ? `Капитан лобби: ${captains[0].nick}` : 'Капитан не выбран'} · первый ход — TEAM A</em>}
-      </div>
-
-      <div className="draft__teams">
-        <TeamCard side="A" roster={teamA} />
-        <div className="draft__vs">VS</div>
-        <TeamCard side="B" roster={teamB} />
-      </div>
-
-      <div className="chips chips--scroll">
-        {DRAFT_FILTERS.map((f) => <Chip key={f} active={filter === f} onClick={() => setFilter(f)}>{f}</Chip>)}
-      </div>
-
-      <div className="section-head draft__poolhead">
-        <span>ПУЛ ДОСТУПНЫХ ИГРОКОВ</span><b>{pool.length} свободно</b>
-      </div>
-
-      <div className="pool">
-        {visible.map((p) => (
-          <div key={p.user_id} className="pool-row">
-            <button type="button" className="pool-row__info" onClick={() => setPeek(p)}>
-              <span className="pool-row__avatar">{(p.nick?.[0] || '?').toUpperCase()}</span>
-              <span className="pool-row__text">
-                <strong>{p.nick}{p.user_id === userId ? ' (вы)' : ''} <em>{p.pts ?? 0}</em></strong>
-                <small>{(p.roles || []).join(', ') || 'Без ролей'}{p.rank ? ` · ${p.rank}` : ''}</small>
-              </span>
-            </button>
-            <button type="button" className="pick-btn" disabled={full} onClick={() => pick(p)}>
-              <UserRound size={15} /> ВЫБРАТЬ В КОМАНДУ
-            </button>
-          </div>
-        ))}
-        {visible.length === 0 && <div className="empty">Игроков с такой ролью не осталось</div>}
-      </div>
-
-      <div className="draft__bottom">
-        {full
-          ? <PrimaryButton onClick={() => onReady(withCaptain({
-              teamA: rosterOf('A').map((m) => ({ ...m, isCaptain: m.user_id === captainOfSide('A').user_id })),
-              teamB: rosterOf('B').map((m) => ({ ...m, isCaptain: m.user_id === captainOfSide('B').user_id })),
-              lobbyCode,
-            }))}>МАТЧ ГОТОВ — ОТКРЫТЬ ЛОББИ</PrimaryButton>
-          : <button type="button" className="btn btn--ghost" onClick={onBack}>Отменить поиск</button>}
-      </div>
-
-      {peek && (
-        <PlayerPeek
-          player={peek}
-          onClose={() => setPeek(null)}
-          onPick={() => pick(peek)}
-          onOpenProfile={(id) => { setPeek(null); setOpenProfile(id) }}
-        />
-      )}
-      <PublicProfileModal
-        userId={openProfile}
-        isMe={openProfile === userId}
-        supabase={supabase}
-        onClose={() => setOpenProfile(null)}
-        onPick={openProfile && openProfile !== userId ? () => {
-          const target = ranked.find((p) => p.user_id === openProfile)
-          if (target) pick(target)
-        } : undefined}
-      />
-      {toast && <div className="toast toast--fixed">{toast}</div>}
-    </div>
-  )
+  return <><ServerDraftScreen {...props} onOpenProfile={setOpenProfile} /><PublicProfileModal userId={openProfile} isMe={openProfile === props.userId} supabase={props.supabase} onClose={() => setOpenProfile(null)} /></>
 }
 
 /* =============================================================== MATCH ==== */
 export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, onTransferCaptain, supabase, teams, userId, lobbyCode }) {
   const [copied, setCopied] = useState(false)
-  const [micOn, setMicOn] = useState(true)
-  const [muted, setMuted] = useState({})
-  const [speaking, setSpeaking] = useState([])
   const [sending, setSending] = useState(false)
   const [needLink, setNeedLink] = useState(false)
   const [toast, setToast] = useState('')
@@ -2108,13 +1898,6 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, onTrans
     }
   }
 
-  useEffect(() => {
-    const t = setInterval(() => {
-      setSpeaking(members.filter((m) => !muted[m.user_id]).slice(0, 2).map((m) => m.user_id))
-    }, 2600)
-    return () => clearInterval(t)
-  }, [muted])
-
   const copy = () => {
     navigator.clipboard?.writeText(lobbyId).catch(() => {})
     setCopied(true)
@@ -2136,7 +1919,7 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, onTrans
     <div className="screen match">
       <div className="match__badges"><span className="match__badge"><i /> Состав собран</span></div>
       <h1 className="match__title">Матч готов</h1>
-      <p className="match__sub"><Bot size={16} /> Комната создаётся в разделе «Лобби»</p>
+      <p className="match__sub"><Bot size={16} /> Укажи Room ID из MLBB в разделе «Лобби»</p>
 
       {lobbyId ? (
         <div className="lobby-card">
@@ -2167,7 +1950,8 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, onTrans
       )}
       <button type="button" className="link-btn" onClick={onLobby}>Лобби: регион и Room ID <ArrowRight size={15} /></button>
 
-      {inMatch && (
+      {inMatch && <div className="result-card"><span className="lobby-card__label">РЕЗУЛЬТАТ МАТЧА</span><p className="field-hint">Отправка и подтверждение результатов временно приостановлены. Очки и история сохранены.</p></div>}
+      {false && inMatch && (
         <div className="result-card">
           <span className="lobby-card__label">РЕЗУЛЬТАТ МАТЧА</span>
           {pending ? (
@@ -2224,7 +2008,7 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, onTrans
 
       <div className="voice-card">
         <div className="voice-card__head">
-          <span><Headphones size={17} /> Голосовой чат · {myLabel}</span>
+          <span><Headphones size={17} /> Состав · {myLabel}</span>
           <b>{members.length}/{members.length}</b>
         </div>
         {members.map((m) => (
@@ -2236,16 +2020,8 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, onTrans
               title={`Открыть профиль ${m.nick}`}
               aria-label={`Открыть профиль ${m.nick}`}
             >
-              <span className={`voice-row__avatar ${speaking.includes(m.user_id) ? 'is-speaking' : ''}`}>{(m.nick?.[0] || '?').toUpperCase()}</span>
+              <span className="voice-row__avatar">{(m.nick?.[0] || '?').toUpperCase()}</span>
               <span className="voice-row__text"><strong>{m.nick}{m.user_id === userId ? ' (вы)' : ''}</strong><small>{(m.roles || []).join(', ') || m.rank || 'Игрок'}</small></span>
-            </button>
-            <button
-              type="button"
-              className={`voice-row__mic ${muted[m.user_id] ? 'is-muted' : ''}`}
-              onClick={() => setMuted((x) => ({ ...x, [m.user_id]: !x[m.user_id] }))}
-              title={muted[m.user_id] ? 'Включить' : 'Заглушить'}
-            >
-              {muted[m.user_id] ? <MicOff size={18} /> : <Mic size={18} />}
             </button>
           </div>
         ))}
@@ -2259,8 +2035,9 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, onTrans
                 className="btn btn--small"
                 onClick={async () => {
                   setResultNote('')
-                  if (onTransferCaptain) await onTransferCaptain(inB ? 'b' : 'a', m.user_id)
-                  setToast(`Капитан: ${m.nick}`)
+                  const reply = onTransferCaptain ? await onTransferCaptain(inB ? 'b' : 'a', m.user_id) : { error: 'Передача недоступна.' }
+                  if (reply?.error) setResultNote(reply.error)
+                  else setToast(`Капитан: ${m.nick}`)
                 }}
                 title={`Сделать капитаном ${m.nick}`}
               >
@@ -2270,18 +2047,11 @@ export function MatchScreen({ onBack, onLeaderboard, onProfile, onLobby, onTrans
           </div>
         )}
         <div className="voice-card__foot">
-          <button type="button" className={`btn btn--small ${micOn ? '' : 'is-off'}`} onClick={() => setMicOn(!micOn)}>
-            {micOn ? <Mic size={16} /> : <MicOff size={16} />} Микрофон
-          </button>
           <button type="button" className="btn btn--small btn--danger" onClick={onBack}><LogOut size={16} /> Выйти</button>
         </div>
       </div>
 
-      <div className="parse-note">
-        <span><ImageIcon size={17} /> Авто-парсинг скриншота после игры</span>
-        <i />
-      </div>
-      <p className="match__hint">Бот сам посчитает статистику и начислит PTS.</p>
+      <p className="match__hint">Голосовой чат и автоматическая обработка скриншотов пока недоступны. Начисление рейтинга приостановлено.</p>
       <button type="button" className="link-btn" onClick={onLeaderboard}>Смотреть таблицу лидеров <ArrowRight size={15} /></button>
       <PublicProfileModal
         userId={openProfile}
@@ -2659,7 +2429,7 @@ export function SupportScreen({ supabase, userId, onBack, onAuth }) {
 // Лобби по региону. Матчмейкинг MLBB снаружи не переключить — регион привязан к
 // аккаунту. Зато в игре есть Custom Room: хост создаёт комнату, а приложение
 // собирает состав, сверяет серверы и раздаёт Room ID. См. src/lobby.js.
-export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCode, onLobbyChange, onBack, onMatch }) {
+export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCode, onLobbyChange, onBack, onDraft }) {
   const [region, setRegion] = useState('ru')
   const [joinCode, setJoinCode] = useState('')
   const [lobby, setLobby] = useState(null)
@@ -2822,20 +2592,6 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
     await refresh(lobby.id)
   }
 
-  // Хост может уступить лобби участнику: он станет капитаном в драфте.
-  const handOverLobby = async (memberId) => {
-    if (!lobby || !memberId) return
-    setBusy('host'); setError('')
-    const reply = await transferLobbyHost(lobby.id, memberId)
-    setBusy('')
-    if (reply.error) {
-      setError(reply.error === 'not_member' ? 'Этот игрок уже не в лобби.' : 'Не удалось передать лобби. Обнови и попробуй снова.')
-      return
-    }
-    setToast('Лобби передано: новый хост станет капитаном драфта')
-    await refresh(lobby.id)
-  }
-
   const copyInvite = () => {
     const text = lobbyInvite({ code: lobby.code, region: lobby.region })
     navigator.clipboard?.writeText(text).catch(() => {})
@@ -2981,23 +2737,7 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
             </span>
           </div>
         ))}
-        {isHost && members.filter((m) => m.user_id !== userId).length > 0 && (
-          <div className="team-card__handover">
-            <small>Передать лобби (и капитанство):</small>
-            {members.filter((m) => m.user_id !== userId).map((m) => (
-              <button
-                key={m.user_id}
-                type="button"
-                className="btn btn--small"
-                onClick={() => handOverLobby(m.user_id)}
-                disabled={busy === 'host'}
-                title={`Передать лобби ${m.nick || 'игроку'}`}
-              >
-                {m.nick || 'Игрок'}
-              </button>
-            ))}
-          </div>
-        )}
+        <p className="field-hint">Капитанство можно передать только игроку своей команды после выбора.</p>
         <div className="voice-card__foot">
           <button type="button" className={`btn btn--small ${me && me.checked_in ? 'btn--ghost' : ''}`} onClick={toggleIn} disabled={busy === 'check'}>
             <Check size={16} /> {me && me.checked_in ? 'Я в игре' : 'Отметить «я в игре»'}
@@ -3009,9 +2749,9 @@ export function LobbyScreen({ supabase, userId, gameServer, lobbyCode: initialCo
       </div>
 
       {progress.allIn && <p className="lobby__servers">Все отметились — можно стартовать в игре.</p>}
-      {onMatch && (
-        <button type="button" className="link-btn" onClick={onMatch}>
-          Смотреть карточку матча <ArrowRight size={15} />
+      {onDraft && (
+        <button type="button" className="link-btn" onClick={onDraft}>
+          Открыть драфт <ArrowRight size={15} />
         </button>
       )}
       {error && <p className="lobby__error" role="alert">{error}</p>}

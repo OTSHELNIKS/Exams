@@ -123,6 +123,25 @@ async function dbDelete(table, params) {
   } catch (e) { console.error('db delete threw', table, String(e)); return false }
 }
 
+// Роли и попытки проверяет БД одной транзакцией; ошибки связи не считаем успехом.
+async function dbRpc(name, args) {
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + name, {
+      method: 'POST', headers: svcHeaders(), body: JSON.stringify(args),
+    })
+    if (!r.ok) return { error: 'internal' }
+    const result = await r.json()
+    return result && typeof result === 'object' ? result : { error: 'internal' }
+  } catch { return { error: 'internal' } }
+}
+
+function randomTelegramCode() {
+  const values = new Uint32Array(1)
+  const max = 4294967296 - (4294967296 % 900000)
+  do { crypto.getRandomValues(values) } while (values[0] >= max)
+  return String(100000 + (values[0] % 900000))
+}
+
 async function sendTelegram(chatId, text) {
   if (!BOT_TOKEN) { console.error('no bot token'); return false }
   try {
@@ -337,11 +356,12 @@ async function findProfile(gameId, gameServer) {
   const filters = { game_id: 'eq.' + gameId, select: 'user_id,game_id,game_server,nick', order: 'updated_at.desc' }
   if (gameServer) filters.game_server = 'eq.' + gameServer
   const rows = await dbSelect('player_profiles', filters)
-  return rows[0] || null
+  // Нельзя выбирать чужой профиль произвольно при одинаковом Game ID.
+  return rows.length === 1 ? rows[0] : null
 }
 
 async function telegramChatOf(userId) {
-  const links = await dbSelect('telegram_links', { user_id: 'eq.' + userId, select: 'tg_chat_id' })
+  const links = await dbSelect('telegram_links', { user_id: 'eq.' + userId, verified_at: 'not.is.null', link_instance_id: 'not.is.null', select: 'tg_chat_id' })
   return links[0] ? links[0].tg_chat_id : null
 }
 
@@ -385,27 +405,33 @@ async function handleCode(req) {
   const profile = await findProfile(gameId, gameServer)
   if (!profile) return json({ ok: false, error: 'profile_not_found' }, 404)
 
-  if (await cooldownLeft(profile.user_id) > 0) return json({ ok: false, error: 'too_often' }, 429)
+  if (channel === 'ingame' && await cooldownLeft(profile.user_id) > 0) return json({ ok: false, error: 'too_often' }, 429)
 
   const chatId = await telegramChatOf(profile.user_id)
 
   if (channel === 'telegram') {
     if (!chatId) return json({ ok: false, error: 'telegram_not_linked' }, 409)
-    await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id })
-    const code = String(Math.floor(100000 + Math.random() * 900000))
-    const saved = await dbInsert('game_login_codes', {
-      code, user_id: profile.user_id, game_id: gameId,
-      game_server: gameServer || profile.game_server || '',
-      channel: 'telegram', attempts: 0,
-      expires_at: new Date(Date.now() + CODE_TTL_MS).toISOString(),
-    })
-    if (!saved) return json({ ok: false, error: 'internal' }, 500)
+    let code = ''
+    let saved = { error: 'collision' }
+    for (let n = 0; n < 5 && saved.error === 'collision'; n++) {
+      code = randomTelegramCode()
+      saved = await dbRpc('start_telegram_login', { p_user_id: profile.user_id, p_game_id: gameId,
+        p_game_server: gameServer || profile.game_server || '', p_chat_id: chatId, p_code: code })
+    }
+    if (!saved || saved.error || !saved.ok) {
+      const reason = saved?.error || 'internal'
+      return json({ ok: false, error: reason === 'collision' ? 'internal' : reason },
+        reason === 'too_often' || reason === 'too_many_attempts' ? 429 : reason === 'telegram_not_linked' ? 409 : 500)
+    }
     const sent = await sendTelegram(chatId,
       '🔐 <b>Код входа на NAME</b>\n\n<code>' + code + '</code>\n\n' +
       'Введи его на сайте в течение 5 минут: Game ID <code>' + gameId + '</code>' +
       (gameServer ? ' · сервер <code>' + gameServer + '</code>' : '') + '.\n\n' +
       'Если это был не ты — просто проигнорируй сообщение.')
-    if (!sent) return json({ ok: false, error: 'telegram_failed' }, 502)
+    if (!sent) {
+      await dbDelete('game_login_codes', { user_id: 'eq.' + profile.user_id, code: 'eq.' + code, channel: 'eq.telegram' })
+      return json({ ok: false, error: 'telegram_failed' }, 502)
+    }
     return json({ ok: true, channel: 'telegram', ttl: Math.round(CODE_TTL_MS / 1000), nick: profile.nick || null })
   }
 
@@ -462,16 +488,13 @@ async function applyCode(profile, gameId, gameServer, code, channel) {
     return { error: 'too_many_attempts', status: 429 }
   }
 
-  let valid = false
-  let gameJwt = ''
-  if (channel === 'telegram') {
-    valid = String(attempt.code) === String(code) && attempt.game_id === gameId
-  } else {
-    const check = await verifyInGameCode(gameId, gameServer || attempt.game_server || '', code)
-    if (check.error === 'ingame_unavailable') return { error: 'ingame_unavailable', status: 503 }
-    valid = !check.error
-    gameJwt = check.jwt || ''
-  }
+  // Telegram проверяется отдельной атомарной функцией consume_telegram_login.
+  if (channel !== 'ingame') return { error: 'bad_code', status: 401 }
+  const check = await verifyInGameCode(gameId, gameServer || attempt.game_server || '', code)
+  if (check.error === 'ingame_unavailable') return { error: 'ingame_unavailable', status: 503 }
+  const valid = !check.error
+  const gameJwt = check.jwt || ''
+
 
   if (!valid) {
     const used = (attempt.attempts || 0) + 1
@@ -514,9 +537,12 @@ async function handleSession(req) {
   const profile = await findProfile(gameId, gameServer)
   if (!profile) return json({ ok: false, error: 'bad_code' }, 401)
 
-  const checked = await applyCode(profile, gameId, gameServer, code, channel)
+  const checked = channel === 'telegram'
+    ? await dbRpc('consume_telegram_login', { p_user_id: profile.user_id, p_game_id: gameId, p_game_server: gameServer, p_code: code })
+    : await applyCode(profile, gameId, gameServer, code, channel)
   if (!checked.ok) {
-    return json({ ok: false, error: checked.error, attemptsLeft: checked.attemptsLeft }, checked.status)
+    const reason = checked?.error || 'internal'
+    return json({ ok: false, error: reason, attemptsLeft: checked?.attemptsLeft }, checked?.status || (reason === 'too_many_attempts' ? 429 : reason === 'internal' ? 500 : 401))
   }
 
   // Владение аккаунтом доказано кодом из игры — только теперь ставим отметку

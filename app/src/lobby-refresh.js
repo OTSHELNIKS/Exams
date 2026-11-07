@@ -3,7 +3,7 @@
 // второй запрос, пока первый не завершился; закрытие экрана убирает таймер.
 export const LOBBY_REFRESH_INTERVAL_MS = 15000
 
-export function watchLobbyRefresh({ refresh, documentRef = globalThis.document, timers = globalThis }) {
+export function watchLobbyRefresh({ refresh, intervalMs = LOBBY_REFRESH_INTERVAL_MS, documentRef = globalThis.document, timers = globalThis }) {
   let stopped = false
   let running = false
 
@@ -16,7 +16,7 @@ export function watchLobbyRefresh({ refresh, documentRef = globalThis.document, 
       .finally(() => { running = false })
   }
   const onVisibility = () => { if (documentRef?.visibilityState !== 'hidden') run() }
-  const timer = timers.setInterval(run, LOBBY_REFRESH_INTERVAL_MS)
+  const timer = timers.setInterval(run, intervalMs)
   documentRef?.addEventListener('visibilitychange', onVisibility)
 
   return () => {

@@ -75,7 +75,7 @@ test('T-RET-06 экран входа показывает ошибку возв�
   // ошибка обмена deep-link кода, поэтому допускаем префикс.
   assert.ok(/callbackError=\{(?:\w+ \|\| )?AUTH_RETURN\.message\}/.test(app), 'сообщение не доходит до экрана')
   const landing = read('app/src/landing.jsx')
-  assert.ok(landing.includes('callbackError={callbackError}'), 'лендинг не прокидывает ошибку')
+  assert.ok(landing.includes('{callbackError}'), 'лендинг не показывает ошибку возврата')
 })
 
 test('T-RET-07 новый аккаунт после входа попадает в анкету, а не в пустую главную', () => {

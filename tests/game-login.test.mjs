@@ -58,6 +58,23 @@ function rest(table, url, init) {
     if (!raw.startsWith('eq.')) return true
     return String(row[key]) === raw.slice(3)
   }
+  if (table === 'rpc/start_telegram_login' && method === 'POST') {
+    const b = JSON.parse(init.body)
+    const current = state.codes.find((r) => r.user_id === b.p_user_id)
+    if (current && Date.now()-new Date(current.created_at).getTime()<30000) return J(200,{error:'too_often'})
+    if (!state.links.some((r) => r.user_id === b.p_user_id && String(r.tg_chat_id) === String(b.p_chat_id))) return J(200,{error:'telegram_not_linked'})
+    state.codes = state.codes.filter((r) => r.user_id !== b.p_user_id)
+    state.codes.push({ code:b.p_code, user_id:b.p_user_id, game_id:b.p_game_id, game_server:b.p_game_server, channel:'telegram', telegram_chat_id:b.p_chat_id, attempts:0, expires_at:new Date(Date.now()+300000).toISOString(), created_at:new Date().toISOString() })
+    return J(200,{ok:true})
+  }
+  if (table === 'rpc/consume_telegram_login' && method === 'POST') {
+    const b = JSON.parse(init.body)
+    const row = state.codes.find((r) => r.user_id === b.p_user_id && r.channel === 'telegram')
+    if (!row || !state.links.some((r) => r.user_id === b.p_user_id && String(r.tg_chat_id) === String(row.telegram_chat_id))) return J(200,{error:'bad_code'})
+    if (new Date(row.expires_at).getTime() < Date.now()) { state.codes=state.codes.filter((x) => x !== row); return J(200,{error:'code_expired'}) }
+    if (row.code !== b.p_code || row.game_id !== b.p_game_id || (b.p_game_server && row.game_server !== b.p_game_server)) { row.attempts++; return J(200,{error: row.attempts>=5?'too_many_attempts':'bad_code',attemptsLeft:Math.max(0,5-row.attempts)}) }
+    state.codes=state.codes.filter((x) => x !== row); return J(200,{ok:true})
+  }
   if (table === 'player_profiles' && method === 'GET') {
     return J(200, state.profiles.filter((r) => eq(r, 'game_id') && eq(r, 'game_server')))
   }
@@ -98,7 +115,7 @@ function rest(table, url, init) {
   }
   if (table === 'game_login_codes' && method === 'DELETE') {
     const before = state.codes.length
-    state.codes = state.codes.filter((r) => !(eq(r, 'code') || eq(r, 'user_id')))
+    state.codes = state.codes.filter((r) => !(eq(r, 'code') && eq(r, 'user_id') && eq(r, 'channel')))
     state.deleted.push(before - state.codes.length)
     return J(204, null)
   }
@@ -411,7 +428,7 @@ await test('T-GL-20 ошибки переведены на человеческ�
 
 await test('T-GL-21 плитка MLBB на входе активна и открывает модалку', () => {
   const src = read('app/src/screens.jsx')
-  assert.match(src, /onClick=\{openGameLogin\}/, 'плитка не подключена к openGameLogin')
+  assert.match(src, /openGameLogin\('ingame'\)/, 'плитка не подключена к openGameLogin')
   assert.doesNotMatch(src, /method method--soon[^>]*MLBB/, 'MLBB всё ещё «скоро»')
   assert.match(src, /вход через игру/i)
   assert.match(src, /requestGameCode/)
@@ -592,7 +609,8 @@ await test('T-GL-37 модалка: каналы, кнопка игры и по�
   assert.match(src, /launchGame/)
   assert.match(src, /switchGameChannel/)
   // Канал, который реально уходит на сервер: при привязке — всегда ingame.
-  assert.match(src, /channel: onlyIngame \? 'ingame'|const channel = onlyIngame \? 'ingame' : gameChannel/)
+  assert.match(src, /const allowTelegram = !onlyIngame && TELEGRAM_SECURE_ENABLED/)
+  assert.match(src, /const channel = allowTelegram \? gameChannel : 'ingame'/)
 })
 
 await test('T-GL-38 тексты каналов без пароля Moonton', () => {

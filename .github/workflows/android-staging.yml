@@ -1,0 +1,99 @@
+# Temporary isolated device test. Never publishes Pages or android-latest.
+name: Android staging APK
+
+on:
+  push:
+    branches:
+      - arena/cc650609-exams
+    paths:
+      - '.github/workflows/android-staging.yml'
+      - '.github/scripts/staging-android-bridge.js'
+      - 'app/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: contains(github.event.head_commit.message, '[staging-apk]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NAME_STAGING: '1'
+      VITE_NATIVE_STAGING: 'true'
+      VITE_TELEGRAM_SECURE_ENABLED: 'true'
+      VITE_TELEGRAM_BOT_USERNAME: Tester_mlbb_bot
+      VITE_SUPABASE_URL: https://bhurngeasoekgzqxzrlq.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_mFH2t1_WJo7KL60BEL1mfQ_Ru6GYW0O
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install and build staging web resources
+        run: |
+          npm --prefix app ci
+          node tests/staging-android-bridge.test.mjs
+          npm --prefix app run build:native
+          if grep -R -q 'yjedqdbwvjvikyixsduw' app/dist; then
+            echo '::error::Working database URL found in staging bundle'
+            exit 1
+          fi
+          cp .github/scripts/staging-android-bridge.js app/dist/staging-bridge.js
+          python3 - <<'PY'
+          from pathlib import Path
+          index = Path('app/dist/index.html')
+          content = index.read_text()
+          assert content.count('</head>') == 1
+          index.write_text(content.replace('</head>', '<script src="./staging-bridge.js"></script></head>'))
+          strings = Path('app/android/app/src/main/res/values/strings.xml')
+          text = strings.read_text()
+          text = text.replace('<string name="app_name">NAME</string>', '<string name="app_name">NAME TEST</string>')
+          text = text.replace('<string name="title_activity_main">NAME</string>', '<string name="title_activity_main">NAME TEST</string>')
+          assert 'NAME TEST' in text
+          strings.write_text(text)
+          PY
+      - name: Copy resources into Android
+        working-directory: app
+        run: npx cap sync android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Ensure Android SDK
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          test -n "$SDK"
+          echo "sdk.dir=$SDK" > app/android/local.properties
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --install 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Build isolated debug APK
+        working-directory: app/android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 1.0.${{ github.run_number }}
+        run: ./gradlew assembleDebug --no-daemon
+      - name: Verify package identity
+        run: |
+          APK=app/android/app/build/outputs/apk/debug/app-debug.apk
+          AAPT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools/36.0.0/aapt"
+          "$AAPT" dump badging "$APK" > /tmp/staging-badging.txt
+          grep -q "package: name='com.namemlbb.app.staging'" /tmp/staging-badging.txt
+          grep -q "application-label:'NAME TEST'" /tmp/staging-badging.txt
+          cp "$APK" NAME-staging.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-staging-test
+          path: NAME-staging.apk
+          retention-days: 1
+          if-no-files-found: error
+      - name: Publish separate test APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view android-staging > /dev/null 2>&1 || gh release create android-staging --target "$GITHUB_SHA" --title 'Android test APK' --notes 'Temporary isolated staging build. Not for Google Play or production use.' --latest=false
+          gh release upload android-staging NAME-staging.apk --clobber
